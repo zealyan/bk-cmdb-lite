@@ -1,0 +1,161 @@
+================================================================================
+数据库表结构改动详细验证报告
+生成时间: 2026-05-16 14:42:13
+================================================================================
+
+### 1. API服务状态
+--------------------------------------------------------------------------------
+✓ API服务运行正常
+  服务版本: 1.0.0
+  数据库状态: connected
+  数据库路径: /workspace/bk-cmdb/cmdb_server_lite/cmdb.duckdb
+
+### 2. cc_ObjAttDes表结构验证
+--------------------------------------------------------------------------------
+验证: bk_issystem字段已添加
+  模型: bk_slb (负载均衡)
+  属性总数: 19
+
+  前5个属性的bk_issystem字段值:
+    - id                   | bk_issystem: False
+    - bk_lb_name           | bk_issystem: False
+    - bk_lb_type           | bk_issystem: False
+    - bk_lb_algorithm      | bk_issystem: False
+    - bk_lb_ip             | bk_issystem: False
+
+  统计: 0/19 个属性为系统属性(bk_issystem=True)
+✓ cc_ObjAttDes表结构验证通过
+
+### 3. 实例表结构验证
+--------------------------------------------------------------------------------
+验证: 所有实例表包含bk_operate_time字段
+
+  负载均衡(bk_slb):
+    实例数: 8
+    示例实例: ID=1, 名称=web-slb-public
+    时间字段验证:
+      - bk_operate_time: ✓
+      - create_time: ✓
+      - last_time: ✓
+      - bk_operate_time值: None
+
+  主机(bk_host):
+    实例数: 10
+    示例实例: ID=1001, 名称=web-server-01
+    时间字段验证:
+      - bk_operate_time: ✓
+      - create_time: ✓
+      - last_time: ✓
+      - bk_operate_time值: None
+
+  交换机(bk_switch):
+    实例数: 10
+    示例实例: ID=1, 名称=core-switch-01
+    时间字段验证:
+      - bk_operate_time: ✓
+      - create_time: ✓
+      - last_time: ✓
+      - bk_operate_time值: None
+
+  SLB后端服务器(bk_slb_server):
+    实例数: 27
+    示例实例: ID=1, 名称=web-server-01
+    时间字段验证:
+      - bk_operate_time: ✓
+      - create_time: ✓
+      - last_time: ✓
+      - bk_operate_time值: None
+
+  SLB监听器(bk_slb_listener):
+    实例数: 30
+    示例实例: ID=1, 名称=http-80
+    时间字段验证:
+      - bk_operate_time: ✓
+      - create_time: ✓
+      - last_time: ✓
+      - bk_operate_time值: None
+
+✓ 实例表结构验证通过
+
+### 4. cc_ObjDes表验证
+--------------------------------------------------------------------------------
+模型定义总数: 5
+
+模型列表:
+  - bk_switch            | 交换机        | 分类: switch2
+  - bk_host              | 主机         | 分类: host
+  - bk_slb               | 负载均衡       | 分类: loadbalance
+  - bk_slb_server        | 后端服务器      | 分类: server
+  - bk_slb_listener      | 监听器        | 分类: share
+
+✓ cc_ObjDes表验证通过
+
+### 5. 关联表结构验证
+--------------------------------------------------------------------------------
+
+  cc_ObjAsst表:
+    模型 bk_slb 的关联数量: 3
+    关联详情:
+      - bk_slb → bk_slb_server
+        关联类型: SLB后端服务器 (slb_to_server)
+      - bk_slb → bk_slb_listener
+        关联类型: SLB监听器 (slb_to_listener)
+      - bk_slb → bk_slb_listener
+        关联类型: SLB监听器 (slb_to_listener)
+
+  cc_InstAsst_0_pub表:
+    实例ID=1的关联记录数: 36
+    示例关联:
+      - bk_slb:1 → bk_slb_server:1
+      - bk_slb:1 → bk_slb_server:2
+      - bk_slb:1 → bk_slb_server:3
+
+✓ 关联表结构验证通过
+
+### 6. cc_AsstDes表验证
+--------------------------------------------------------------------------------
+关联类型总数: 5
+
+关联类型列表:
+  - slb_to_listener      | SLB监听器
+    bk_slb → bk_slb_listener
+  - server_to_slb        | 所属SLB
+    bk_slb_server → bk_slb
+  - listener_to_slb      | 所属SLB
+    bk_slb_listener → bk_slb
+  - slb_to_server        | SLB后端服务器
+    bk_slb → bk_slb_server
+  - slb_to_listener      | SLB监听器
+    bk_slb → bk_slb_listener
+
+✓ cc_AsstDes表验证通过
+
+### 7. 数据库统计信息
+--------------------------------------------------------------------------------
+各实例表记录数:
+  cc_ObjectBase_0_pub_bk_host                   |    10 条
+  cc_ObjectBase_0_pub_bk_slb                    |     8 条
+  cc_ObjectBase_0_pub_bk_slb_listener           |    30 条
+  cc_ObjectBase_0_pub_bk_slb_server             |    27 条
+  cc_ObjectBase_0_pub_bk_switch                 |    10 条
+
+  总计: 85 条实例记录
+
+✓ 数据库统计验证通过
+
+================================================================================
+验证总结
+================================================================================
+✓ 所有验证项通过
+
+已验证的改动:
+  1. cc_ObjAttDes表新增bk_issystem字段
+  2. 所有实例表包含bk_operate_time字段
+  3. cc_ObjDes表结构正确
+  4. cc_ObjAsst表结构正确
+  5. cc_AsstDes表结构正确
+  6. cc_InstAsst_0_pub表结构正确
+  7. API接口返回数据完整且正确
+
+结论: 数据库表结构改动已成功应用并验证通过
+================================================================================

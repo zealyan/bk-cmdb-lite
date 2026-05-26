@@ -1,0 +1,62 @@
+
+> cmdb-ui-lite@1.0.0 dev
+> vue-cli-service serve --env=development
+
+ INFO  Starting development server...
+ DONE  Compiled successfully in 3306ms1:36:24 PM
+
+
+  App running at:
+  - Local:   http://localhost:8080/ 
+  - Network: http://10.19.105.164:8080/
+
+  Note that the development build is not optimized.
+  To create a production build, run npm run build.
+
+(node:7408) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ WAIT  Compiling...1:48:43 PM
+
+ DONE  Compiled successfully in 346ms1:48:43 PM
+
+
+  App running at:
+  - Local:   http://localhost:8080/ 
+  - Network: http://10.19.105.164:8080/
+
+ WAIT  Compiling...2:17:09 PM
+
+ DONE  Compiled successfully in 271ms2:17:09 PM
+
+
+  App running at:
+  - Local:   http://localhost:8080/ 
+  - Network: http://10.19.105.164:8080/
+
+ WAIT  Compiling...2:18:31 PM
+
+ DONE  Compiled successfully in 239ms2:18:32 PM
+
+
+  App running at:
+  - Local:   http://localhost:8080/ 
+  - Network: http://10.19.105.164:8080/
+
+ WAIT  Compiling...2:19:33 PM
+
+ DONE  Compiled successfully in 205ms2:19:33 PM
+
+
+  App running at:
+  - Local:   http://localhost:8080/ 
+  - Network: http://10.19.105.164:8080/
+
+ WAIT  Compiling...2:30:26 PM
+
+ DONE  Compiled successfully in 299ms2:30:27 PM
+
+
+  App running at:
+  - Local:   http://localhost:8080/ 
+  - Network: http://10.19.105.164:8080/
+

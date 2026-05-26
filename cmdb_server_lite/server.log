@@ -1,0 +1,276 @@
+/workspace/bk-cmdb/cmdb_server_lite/main.py:157: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+INFO:     Started server process [10459]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+CMDB Server Lite - Starting on http://0.0.0.0:8000
+Database: /workspace/bk-cmdb/cmdb_server_lite/cmdb.duckdb
+INFO:     127.0.0.1:59854 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+[INFO] Created new instance in cc_ObjectBase_0_pub_bk_switch with id=11
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances/11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/11/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+[INFO] Batch updated -1 instances in cc_ObjectBase_0_pub_bk_switch
+INFO:     127.0.0.1:0 - "PUT /api/models/bk_switch/instances HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/1/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/2/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_switch, config_key: bk_switch_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_switch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_switch/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_host, config_key: bk_host_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_host HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances/search HTTP/1.1" 200 OK
+[INFO] Created new instance in cc_ObjectBase_0_pub_bk_host with id=1011
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_host, config_key: bk_host_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_host HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_host, config_key: bk_host_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_host HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances/1011 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/1011/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_host, config_key: bk_host_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_host HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances/search HTTP/1.1" 200 OK
+[INFO] Batch updated -1 instances in cc_ObjectBase_0_pub_bk_host
+INFO:     127.0.0.1:0 - "PUT /api/models/bk_host/instances HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_host, config_key: bk_host_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_host HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances/1011 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/1011/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_host, config_key: bk_host_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_host HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_host/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/find/classificationobject HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/usercustom/user/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_slb_server, config_key: bk_slb_server_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_slb_server HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_slb_server/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/1/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_slb_server, config_key: bk_slb_server_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_slb_server HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_slb_server/instances/search HTTP/1.1" 200 OK
+[INFO] Created new instance in cc_ObjectBase_0_pub_bk_slb_server with id=66
+INFO:     127.0.0.1:0 - "POST /api/models/bk_slb_server/instances HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_slb_server, config_key: bk_slb_server_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_slb_server HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_slb_server/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_slb_server, config_key: bk_slb_server_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_slb_server HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_slb_server/instances/search HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances/50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/instances/50/associations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/relations HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_server"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_listener" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_slb_listener"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_listener/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_switch" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_switch"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_switch/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     [SEARCH DEBUG] SQL: SELECT * FROM "cc_ObjectBase_0_pub_bk_host" LIMIT 100 OFFSET 0
+INFO:     [SEARCH DEBUG] COUNT SQL: SELECT COUNT(*) as cnt FROM "cc_ObjectBase_0_pub_bk_host"
+INFO:     127.0.0.1:0 - "GET /api/models/bk_host/instances?page=1&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "GET /api/models/bk_slb_server/attributes HTTP/1.1" 200 OK
+[DEBUG] get_model_user_custom - user_name: admin, obj_id: bk_slb_server, config_key: bk_slb_server_custom_table_columns
+[DEBUG] get_model_user_custom - query result: None
+[DEBUG] get_model_user_custom - no config found, returning empty
+INFO:     127.0.0.1:0 - "GET /api/usercustom/model/bk_slb_server HTTP/1.1" 200 OK
+INFO:     127.0.0.1:0 - "POST /api/models/bk_slb_server/instances/search HTTP/1.1" 200 OK

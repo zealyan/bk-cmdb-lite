@@ -1,0 +1,226 @@
+{
+  "info": [
+    {
+      "bk_property_id": "id",
+      "bk_property_name": "实例ID",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": true,
+      "editable": false,
+      "bk_property_index": 0,
+      "width": 120,
+      "display": "none"
+    },
+    {
+      "bk_property_id": "bk_host_innerip",
+      "bk_property_name": "内网IP",
+      "bk_property_type": "singlechar",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 1,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_host_outerip",
+      "bk_property_name": "外网IP",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 2,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_cloud_id",
+      "bk_property_name": "云区域",
+      "bk_property_type": "int",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 3,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_host_name",
+      "bk_property_name": "主机名称",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 4,
+      "width": 150
+    },
+    {
+      "bk_property_id": "os_type",
+      "bk_property_name": "操作系统",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 5,
+      "width": 100,
+      "option": [
+        "Linux",
+        "Windows",
+        "AIX",
+        "Solaris"
+      ]
+    },
+    {
+      "bk_property_id": "os_version",
+      "bk_property_name": "操作系统版本",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 6,
+      "width": 150
+    },
+    {
+      "bk_property_id": "cpu",
+      "bk_property_name": "CPU核数",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 7,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_disk",
+      "bk_property_name": "磁盘容量(GB)",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 8,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_mem",
+      "bk_property_name": "内存容量(MB)",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 9,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_biz_name",
+      "bk_property_name": "所属业务",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 10,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_module_name",
+      "bk_property_name": "模块名称",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 11,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_set_name",
+      "bk_property_name": "集群名称",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 12,
+      "width": 150
+    },
+    {
+      "bk_property_id": "operator",
+      "bk_property_name": "运维人员",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 13,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_state_name",
+      "bk_property_name": "主机状态",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 14,
+      "width": 100,
+      "option": [
+        "正常",
+        "异常",
+        "维护中",
+        "已下线"
+      ]
+    },
+    {
+      "bk_property_id": "bk_host_id",
+      "bk_property_name": "主机ID",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": true,
+      "editable": false,
+      "bk_property_index": 15,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_agent_status",
+      "bk_property_name": "Agent状态",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 16,
+      "width": 100,
+      "option": [
+        "正常",
+        "异常",
+        "未知"
+      ]
+    },
+    {
+      "bk_property_id": "bk_cpu_module",
+      "bk_property_name": "CPU型号",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 17,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_os_bit",
+      "bk_property_name": "系统位数",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 18,
+      "width": 100,
+      "option": [
+        "32位",
+        "64位"
+      ]
+    },
+    {
+      "bk_property_id": "import_from",
+      "bk_property_name": "导入来源",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 19,
+      "width": 120
+    }
+  ]
+}

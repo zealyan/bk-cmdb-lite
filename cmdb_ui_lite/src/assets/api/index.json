@@ -1,0 +1,67 @@
+{
+  "models": [
+    {
+      "bk_obj_id": "bk_switch",
+      "bk_obj_name": "交换机",
+      "bk_obj_icon": "icon-cc-switch2"
+    },
+    {
+      "bk_obj_id": "bk_host",
+      "bk_obj_name": "主机",
+      "bk_obj_icon": "icon-cc-host"
+    },
+    {
+      "bk_obj_id": "bk_slb",
+      "bk_obj_name": "负载均衡",
+      "bk_obj_icon": "icon-cc-loadbalance",
+      "associations": [
+        {
+          "target_obj_id": "bk_slb_server",
+          "target_obj_name": "后端服务器",
+          "relation_type_id": "slb_to_server",
+          "relation_type_name": "SLB后端服务器",
+          "cardinality": "1:n",
+          "direction": "forward"
+        },
+        {
+          "target_obj_id": "bk_slb_listener",
+          "target_obj_name": "监听器",
+          "relation_type_id": "slb_to_listener",
+          "relation_type_name": "SLB监听器",
+          "cardinality": "1:n",
+          "direction": "forward"
+        }
+      ]
+    },
+    {
+      "bk_obj_id": "bk_slb_server",
+      "bk_obj_name": "后端服务器",
+      "bk_obj_icon": "icon-cc-server",
+      "associations": [
+        {
+          "target_obj_id": "bk_slb",
+          "target_obj_name": "所属SLB",
+          "relation_type_id": "server_to_slb",
+          "relation_type_name": "所属SLB",
+          "cardinality": "n:1",
+          "direction": "reverse"
+        }
+      ]
+    },
+    {
+      "bk_obj_id": "bk_slb_listener",
+      "bk_obj_name": "监听器",
+      "bk_obj_icon": "icon-cc-share",
+      "associations": [
+        {
+          "target_obj_id": "bk_slb",
+          "target_obj_name": "所属SLB",
+          "relation_type_id": "listener_to_slb",
+          "relation_type_name": "所属SLB",
+          "cardinality": "n:1",
+          "direction": "reverse"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,351 @@
+{
+  "info": [
+    {
+      "bk_property_id": "id",
+      "bk_property_name": "实例ID",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": true,
+      "editable": false,
+      "bk_property_index": 0,
+      "width": 120,
+      "display": "none"
+    },
+    {
+      "bk_property_id": "name",
+      "bk_property_name": "交换机名称",
+      "bk_property_type": "singlechar",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 1,
+      "width": 180
+    },
+    {
+      "bk_property_id": "management_ip",
+      "bk_property_name": "管理IP",
+      "bk_property_type": "singlechar",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 2,
+      "width": 150
+    },
+    {
+      "bk_property_id": "model",
+      "bk_property_name": "型号",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 3,
+      "width": 200
+    },
+    {
+      "bk_property_id": "vendor",
+      "bk_property_name": "厂商",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 4,
+      "width": 100,
+      "option": [
+        "H3C",
+        "Cisco",
+        "Huawei",
+        "Arista",
+        "Juniper",
+        "Dell"
+      ]
+    },
+    {
+      "bk_property_id": "vlan",
+      "bk_property_name": "VLAN",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 5,
+      "width": 80
+    },
+    {
+      "bk_property_id": "biz_name",
+      "bk_property_name": "所属业务",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 6,
+      "width": 150
+    },
+    {
+      "bk_property_id": "description",
+      "bk_property_name": "描述",
+      "bk_property_type": "longchar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 7,
+      "width": 300
+    },
+    {
+      "bk_property_id": "asset_id",
+      "bk_property_name": "资产编号",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 8,
+      "width": 150
+    },
+    {
+      "bk_property_id": "sn",
+      "bk_property_name": "序列号",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 9,
+      "width": 180
+    },
+    {
+      "bk_property_id": "import_from",
+      "bk_property_name": "导入来源",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 10,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_cloud_id",
+      "bk_property_name": "云区域",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 11,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_host_innerip",
+      "bk_property_name": "内网IP",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 12,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_host_outerip",
+      "bk_property_name": "外网IP",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 13,
+      "width": 150
+    },
+    {
+      "bk_property_id": "os_type",
+      "bk_property_name": "操作系统",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 14,
+      "width": 100,
+      "option": [
+        "Linux",
+        "Windows",
+        "AIX",
+        "Solaris",
+        "Other"
+      ]
+    },
+    {
+      "bk_property_id": "os_version",
+      "bk_property_name": "操作系统版本",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 15,
+      "width": 150
+    },
+    {
+      "bk_property_id": "cpu_model",
+      "bk_property_name": "CPU型号",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 16,
+      "width": 150
+    },
+    {
+      "bk_property_id": "cpu_module",
+      "bk_property_name": "CPU模块",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 17,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_disk",
+      "bk_property_name": "磁盘容量(GB)",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 18,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_mem",
+      "bk_property_name": "内存容量(MB)",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 19,
+      "width": 120
+    },
+    {
+      "bk_property_id": "port_count",
+      "bk_property_name": "端口数",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 20,
+      "width": 80
+    },
+    {
+      "bk_property_id": "up_link",
+      "bk_property_name": "上联端口",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 21,
+      "width": 120
+    },
+    {
+      "bk_property_id": "power_type",
+      "bk_property_name": "电源类型",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 22,
+      "width": 100,
+      "option": [
+        "AC",
+        "DC",
+        "AC/DC"
+      ]
+    },
+    {
+      "bk_property_id": "mac_address",
+      "bk_property_name": "MAC地址",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 23,
+      "width": 180
+    },
+    {
+      "bk_property_id": "app_id",
+      "bk_property_name": "业务ID",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 24,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_sla",
+      "bk_property_name": "SLA等级",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 25,
+      "width": 100,
+      "option": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    {
+      "bk_property_id": "bk_bakcup",
+      "bk_property_name": "备份状态",
+      "bk_property_type": "bool",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 26,
+      "width": 100
+    },
+    {
+      "bk_property_id": "service_category",
+      "bk_property_name": "服务分类",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 27,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_supplier_account",
+      "bk_property_name": "供应商",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 28,
+      "width": 100
+    },
+    {
+      "bk_property_id": "operator",
+      "bk_property_name": "运维人员",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 29,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_biz_name",
+      "bk_property_name": "业务名称",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 30,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_company_id",
+      "bk_property_name": "公司ID",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 31,
+      "width": 100
+    }
+  ]
+}

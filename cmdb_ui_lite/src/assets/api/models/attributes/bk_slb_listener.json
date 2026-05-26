@@ -1,0 +1,190 @@
+{
+  "info": [
+    {
+      "bk_property_id": "id",
+      "bk_property_name": "实例ID",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": true,
+      "editable": false,
+      "bk_property_index": 0,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_listener_name",
+      "bk_property_name": "监听器名称",
+      "bk_property_type": "singlechar",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 1,
+      "width": 180
+    },
+    {
+      "bk_property_id": "bk_protocol",
+      "bk_property_name": "协议",
+      "bk_property_type": "enum",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 2,
+      "width": 100,
+      "option": [
+        "TCP",
+        "HTTP",
+        "HTTPS",
+        "UDP"
+      ]
+    },
+    {
+      "bk_property_id": "bk_frontend_port",
+      "bk_property_name": "前端端口",
+      "bk_property_type": "int",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 3,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_backend_port",
+      "bk_property_name": "后端端口",
+      "bk_property_type": "int",
+      "isrequired": true,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 4,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_scheduler",
+      "bk_property_name": "调度算法",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 5,
+      "width": 120,
+      "option": [
+        "轮询",
+        "加权轮询",
+        "最少连接",
+        "一致性哈希"
+      ]
+    },
+    {
+      "bk_property_id": "bk_slb_id",
+      "bk_property_name": "所属SLB",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 6,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_bandwidth_limit",
+      "bk_property_name": "带宽限制",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 7,
+      "width": 100
+    },
+    {
+      "bk_property_id": "bk_connection_drain",
+      "bk_property_name": "连接耗尽",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 8,
+      "width": 100,
+      "option": [
+        "关闭",
+        "开启"
+      ]
+    },
+    {
+      "bk_property_id": "bk_health_check_type",
+      "bk_property_name": "健康检查方式",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 9,
+      "width": 120,
+      "option": [
+        "TCP",
+        "HTTP",
+        "HTTPS"
+      ]
+    },
+    {
+      "bk_property_id": "bk_health_check_interval",
+      "bk_property_name": "健康检查间隔(s)",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 10,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_health_check_timeout",
+      "bk_property_name": "健康检查超时(s)",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 11,
+      "width": 120
+    },
+    {
+      "bk_property_id": "bk_health_check_path",
+      "bk_property_name": "健康检查路径",
+      "bk_property_type": "singlechar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 12,
+      "width": 150
+    },
+    {
+      "bk_property_id": "bk_status",
+      "bk_property_name": "状态",
+      "bk_property_type": "enum",
+      "isrequired": false,
+      "isreadonly": true,
+      "editable": false,
+      "bk_property_index": 13,
+      "width": 100,
+      "option": [
+        "运行中",
+        "已停止",
+        "异常"
+      ]
+    },
+    {
+      "bk_property_id": "bk_server_count",
+      "bk_property_name": "后端服务器数",
+      "bk_property_type": "int",
+      "isrequired": false,
+      "isreadonly": true,
+      "editable": false,
+      "bk_property_index": 14,
+      "width": 120
+    },
+    {
+      "bk_property_id": "description",
+      "bk_property_name": "描述",
+      "bk_property_type": "longchar",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 15,
+      "width": 250
+    }
+  ]
+}

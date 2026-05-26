@@ -1,0 +1,22 @@
+{
+  "relations": [
+    {
+      "bk_relation_type_id": "to",
+      "bk_relation_type_name": "指向",
+      "bk_src_model": "bk_slb",
+      "bk_dst_model": "bk_slb_server",
+      "src_des": "指向",
+      "dest_des": "被指向",
+      "cardinality": "1:n"
+    },
+    {
+      "bk_relation_type_id": "to",
+      "bk_relation_type_name": "指向",
+      "bk_src_model": "bk_slb",
+      "bk_dst_model": "bk_slb_listener",
+      "src_des": "指向",
+      "dest_des": "被指向",
+      "cardinality": "1:n"
+    }
+  ]
+}
