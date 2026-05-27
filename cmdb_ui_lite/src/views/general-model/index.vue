@@ -1560,7 +1560,7 @@ export default {
 
       .search-input {
         flex: 1;
-        height: 30px;
+        height: 32px;
         padding: 0 10px;
         border: 1px solid #c4c6cc;
         border-right: none;
@@ -1569,7 +1569,7 @@ export default {
         outline: none;
         min-width: 0;
         box-sizing: border-box;
-        line-height: 30px;
+        line-height: 32px;
 
         &:focus {
           border-color: #3a84ff;
@@ -1587,7 +1587,7 @@ export default {
 
           .enum-multi-input {
             width: 100%;
-            height: 30px;
+            height: 32px;
             padding: 0 32px 0 10px;
             border: 1px solid #c4c6cc;
             border-radius: 0;
@@ -1600,7 +1600,7 @@ export default {
             overflow: hidden;
             text-overflow: ellipsis;
             box-sizing: border-box;
-            line-height: 30px;
+            line-height: 32px;
 
             &:focus,
             &:hover {
