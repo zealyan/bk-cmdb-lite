@@ -6,9 +6,32 @@
 
 import json
 import duckdb
+import os
+from pathlib import Path
 
-UI_PROJECT = "../cmdb_ui_lite/src/assets/api"
-DB_PATH = "cmdb.duckdb"
+# 基于当前文件动态计算路径
+def get_project_root():
+    """获取项目根目录，支持从环境变量读取或自动计算"""
+    # 优先从环境变量读取 PROJECT_ROOT
+    project_root = os.environ.get("PROJECT_ROOT")
+    if project_root and os.path.exists(project_root):
+        return Path(project_root).resolve()
+    
+    # 自动计算：当前文件在 cmdb_server_lite 目录下，向上两级是项目根目录
+    current_file = Path(__file__).resolve()
+    # cmdb_server_lite/ -> 项目根目录
+    project_root = current_file.parent.parent
+    return project_root
+
+PROJECT_ROOT = get_project_root()
+
+# 基于项目根目录计算其他路径
+CMDB_UI_LITE = PROJECT_ROOT / "cmdb_ui_lite"
+CMDB_SERVER_LITE = PROJECT_ROOT / "cmdb_server_lite"
+BK_CMDB = PROJECT_ROOT / "bk-cmdb"
+
+UI_PROJECT = str(CMDB_UI_LITE / "src" / "assets" / "api")
+DB_PATH = str(CMDB_SERVER_LITE / "cmdb.duckdb")
 
 # 系统字段列表 - 与原项目保持一致
 # 参考原项目: /workspace/bk-cmdb/src/common/definitions.go
