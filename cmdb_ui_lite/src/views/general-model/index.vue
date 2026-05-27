@@ -128,7 +128,7 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    &lt;bk-table
+    <bk-table
       ref="tableRef"
       class="models-table"
       v-bkloading="{ isLoading: table.loading }"
