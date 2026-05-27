@@ -413,13 +413,12 @@ export default {
 
 <style lang="scss" scoped>
 .instance-association {
-  padding: 20px;
+  height: 100%;
 }
 
 .association-options {
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
+  padding: 15px 0;
+  font-size: 0;
 }
 
 .association-list {

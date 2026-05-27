@@ -1,11 +1,9 @@
 <template>
   <div class="model-details-page">
-
-    <div class="details-content">
-      <bk-tab :active.sync="activeTab" type="unborder-card">
+    <div class="details-layout">
+      <bk-tab :active.sync="activeTab" type="unborder-card" class="details-tab">
         <bk-tab-panel name="info" label="基本信息">
           <div class="info-card">
-            <h3 class="card-title">基本信息</h3>
             <div class="info-grid">
               <div
                 v-for="property in displayProperties"
@@ -286,33 +284,29 @@ export default {
 
 <style lang="scss" scoped>
 .model-details-page {
-  padding: 20px;
   background: #f5f7fa;
   min-height: 100%;
 }
 
-.details-content {
-  background: #fff;
-  border-radius: 4px;
-  padding: 24px;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+.details-layout {
+  overflow: hidden;
 
-  :deep(.bk-tab) {
-    .bk-tab-section {
-      padding: 20px 0 0 0;
+  .details-tab {
+    min-height: 400px;
+
+    :deep(.bk-tab-header) {
+      padding: 0;
+      margin: 0 20px;
+    }
+
+    :deep(.bk-tab-section) {
+      padding-bottom: 10px;
     }
   }
 }
 
 .info-card {
-  .card-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #313238;
-    margin: 0 0 20px 0;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #e7e9ef;
-  }
+  padding: 20px;
 }
 
 .info-grid {
