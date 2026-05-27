@@ -128,9 +128,10 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <bk-table
+    &lt;bk-table
       ref="tableRef"
       class="models-table"
+      v-bkloading="{ isLoading: table.loading }"
       :data="table.list"
       :pagination="table.pagination"
       :sort="tableSort"
@@ -614,6 +615,7 @@ export default {
   },
   methods: {
     async loadModelData(searchParams = null) {
+      this.table.loading = true
       try {
         const query = this.$route.query
         const currentField = query.field || this.filter.field
@@ -735,6 +737,8 @@ export default {
       } catch (error) {
         console.error('[ERROR] 加载数据失败:', error)
         this.$bkMessage({ message: '加载数据失败', theme: 'error' })
+      } finally {
+        this.table.loading = false
       }
     },
     setTableHeader() {
