@@ -1,13 +1,5 @@
 <template>
   <div class="instance-association" v-bkloading="{ isLoading: loading }">
-    <div class="association-options">
-      <div class="fl">
-        <bk-button theme="primary" @click="handleAddAssociation">
-          新增关联
-        </bk-button>
-      </div>
-    </div>
-
     <div class="association-list">
       <div v-if="!hasAssociations" class="association-empty">
         <span>暂无关联关系</span>
@@ -25,20 +17,25 @@
             <span class="title-text">{{ item.relationTypeName }}</span>
             <span class="title-count">({{ item.total }})</span>
           </div>
-          <div class="info-pagination fr" v-if="item.totalPages > 1" @click.stop>
-            <span class="pagination-info">
-              {{ getPaginationText(item) }}
-            </span>
-            <span class="pagination-toggle">
-              <i class="pagination-icon bk-icon icon-cc-arrow-down left"
-                :class="{ disabled: item.current <= 1 }"
-                @click="togglePage(item, -1)"
-              ></i>
-              <i class="pagination-icon bk-icon icon-cc-arrow-down right"
-                :class="{ disabled: item.current >= item.totalPages }"
-                @click="togglePage(item, 1)"
-              ></i>
-            </span>
+          <div class="info-actions fr">
+            <bk-button theme="primary" class="options-button" @click.stop="handleAddAssociation">
+              新增关联
+            </bk-button>
+            <div class="info-pagination" v-if="item.totalPages > 1">
+              <span class="pagination-info">
+                {{ getPaginationText(item) }}
+              </span>
+              <span class="pagination-toggle">
+                <i class="pagination-icon bk-icon icon-cc-arrow-down left"
+                  :class="{ disabled: item.current <= 1 }"
+                  @click.stop="togglePage(item, -1)"
+                ></i>
+                <i class="pagination-icon bk-icon icon-cc-arrow-down right"
+                  :class="{ disabled: item.current >= item.totalPages }"
+                  @click.stop="togglePage(item, 1)"
+                ></i>
+              </span>
+            </div>
           </div>
         </div>
         <bk-table
@@ -416,11 +413,6 @@ export default {
   height: 100%;
 }
 
-.association-options {
-  padding: 15px 0;
-  font-size: 0;
-}
-
 .association-list {
   .association-empty {
     padding: 60px 20px;
@@ -475,8 +467,20 @@ export default {
       }
     }
 
-    .info-pagination {
+    .info-actions {
       float: right;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .options-button {
+        height: 32px;
+        line-height: 30px;
+        font-size: 14px;
+      }
+    }
+
+    .info-pagination {
       display: flex;
       align-items: center;
       color: #8b8d95;
