@@ -81,12 +81,6 @@
                 :placeholder="filterPlaceholder"
                 @change="handleSearch">
               </cmdb-search-date>
-              <bk-button
-                class="search-btn"
-                :text="true"
-                @click="handleSearch">
-                <span class="bk-icon icon-search"></span>
-              </bk-button>
             </template>
             <template v-else-if="isTimeField">
               <cmdb-search-time
@@ -96,12 +90,6 @@
                 :placeholder="filterPlaceholder"
                 @change="handleSearch">
               </cmdb-search-time>
-              <bk-button
-                class="search-btn"
-                :text="true"
-                @click="handleSearch">
-                <span class="bk-icon icon-search"></span>
-              </bk-button>
             </template>
             <template v-else>
               <input
@@ -110,12 +98,6 @@
                 v-model="filter.value"
                 :placeholder="filterPlaceholder"
                 @keyup.enter="handleSearch">
-              <bk-button
-                class="search-btn"
-                :text="true"
-                @click="handleSearch">
-                <span class="bk-icon icon-search"></span>
-              </bk-button>
             </template>
           </div>
           <span v-else class="filter-placeholder">请先选择字段</span>
@@ -1563,8 +1545,7 @@ export default {
         height: 32px;
         padding: 0 10px;
         border: 1px solid #c4c6cc;
-        border-right: none;
-        border-radius: 0;
+        border-radius: 2px;
         font-size: 14px;
         outline: none;
         min-width: 0;
@@ -1737,33 +1718,6 @@ export default {
           }
         }
       }
-
-      .search-btn {
-        flex-shrink: 0;
-        height: 32px;
-        padding: 0 12px;
-        border: 1px solid #c4c6cc;
-        border-left: none;
-        border-radius: 0 2px 2px 0;
-        background: #fff;
-        cursor: pointer;
-        transition: all 0.2s;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-
-        &:hover {
-          background: #f0f1f5;
-          border-color: #3a84ff;
-        }
-
-        .bk-icon {
-          font-size: 16px;
-          color: #63656e;
-          line-height: 1;
-        }
-      }
     }
   }
 
@@ -1856,12 +1810,6 @@ export default {
           &.is-open .enum-dropdown {
             transform: translateY(0);
           }
-        }
-
-        .search-btn {
-          width: 100%;
-          border-radius: 0 0 2px 2px;
-          border-top: none;
         }
       }
     }
