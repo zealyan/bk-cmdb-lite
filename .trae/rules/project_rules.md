@@ -3,9 +3,9 @@
 ## 项目架构
 
 ```
-bk-cmdb/
-├── cmdb_ui_lite/           # 前端子项目 (Vue 2 + bk-magic-vue)
-└── cmdb_server_lite/       # 后端子项目 (Python + FastAPI + DuckDB)
+bk-cmdb/  # 原项目
+cmdb_ui_lite/           # 前端子项目 (Vue 2 + bk-magic-vue)
+cmdb_server_lite/       # 后端子项目 (Python + FastAPI + DuckDB)
 ```
 
 ---
@@ -249,13 +249,7 @@ python3 -c "import duckdb; ..."          # 数据库调试
 
 ## 八、快速参考路径
 
-| 路径 | 说明 |
-|------|------|
-| `/workspace/bk-cmdb/cmdb_ui_lite/` | 前端项目根目录 |
-| `/workspace/bk-cmdb/cmdb_server_lite/` | 后端项目根目录 |
-| `/workspace/bk-cmdb/src/ui/src/` | 原项目 UI 源码 |
-| `/workspace/bk-cmdb/cmdb_ui_lite/src/api/` | 前端 API 调用 |
-| `/workspace/bk-cmdb/cmdb_server_lite/cmdb.duckdb` | 数据库文件 |
+
 
 ---
 

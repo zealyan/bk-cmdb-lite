@@ -7,8 +7,8 @@
 import json
 import duckdb
 
-UI_PROJECT = "/workspace/bk-cmdb/cmdb_ui_lite/src/assets/api"
-DB_PATH = "/workspace/bk-cmdb/cmdb_server_lite/cmdb.duckdb"
+UI_PROJECT = "../cmdb_ui_lite/src/assets/api"
+DB_PATH = "cmdb.duckdb"
 
 # 系统字段列表 - 与原项目保持一致
 # 参考原项目: /workspace/bk-cmdb/src/common/definitions.go
