@@ -417,8 +417,10 @@ export default {
 }
 
 .association-options {
-  padding: 15px 0;
+  padding: 12px 20px;
   font-size: 0;
+  background: #fff;
+  border-bottom: 1px solid #e7e9ef;
 
   .options-button {
     height: 32px;
@@ -428,6 +430,8 @@ export default {
 }
 
 .association-list {
+  padding-top: 0;
+
   .association-empty {
     padding: 60px 20px;
     text-align: center;
@@ -442,6 +446,7 @@ export default {
   border: 1px solid #e7e9ef;
   border-radius: 2px 2px 0 0;
   overflow: hidden;
+  margin-top: 0;
 
   .group-info {
     height: 42px;
