@@ -1,5 +1,5 @@
 <template>
-  <div class="instance-association">
+  <div class="instance-association" v-bkloading="{ isLoading: loading }">
     <div class="association-options">
       <div class="fl">
         <bk-button theme="primary" @click="handleAddAssociation">
@@ -121,6 +121,7 @@ export default {
       pageSize: 10,
       groupStates: {},
       showCreateDialog: false,
+      loading: false,
       loadedProperties: {} // 按需加载的属性缓存
     }
   },
@@ -129,8 +130,12 @@ export default {
     propertiesMap: {
       handler(newMap) {
         console.log('[InstanceAssociation] propertiesMap 变化:', Object.keys(newMap))
+        this.loading = true
         // 清空缓存，强制重新构建列
         this.loadedProperties = {}
+        this.$nextTick(() => {
+          this.loading = false
+        })
       },
       deep: true
     },
@@ -138,8 +143,12 @@ export default {
     associations: {
       handler() {
         console.log('[InstanceAssociation] associations 变化')
+        this.loading = true
         // 清空分组状态
         this.groupStates = {}
+        this.$nextTick(() => {
+          this.loading = false
+        })
       },
       deep: true
     }

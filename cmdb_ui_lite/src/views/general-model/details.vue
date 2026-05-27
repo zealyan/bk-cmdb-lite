@@ -34,17 +34,26 @@
           </div>
         </bk-tab-panel>
 
-        <bk-tab-panel name="association" label="关联" v-if="isDataReady && hasAssociations">
-          <instance-association
-            :obj-id="objId"
-            :inst-id="instId"
-            :associations="allAssociations"
-            :relations="modelRelations"
-            :instances-map="instancesMap"
-            :properties-map="propertiesMap"
-            @view-instance="handleViewAssociatedInstance"
-            @association-change="handleAssociationChange">
-          </instance-association>
+        <bk-tab-panel name="association" label="关联">
+          <div v-bkloading="{ isLoading: associationLoading }">
+            <div v-if="!isDataReady" class="empty-state">
+              <span>数据加载中...</span>
+            </div>
+            <div v-else-if="!hasAssociations" class="empty-state">
+              <span>暂无关联关系</span>
+            </div>
+            <instance-association
+              v-else
+              :obj-id="objId"
+              :inst-id="instId"
+              :associations="allAssociations"
+              :relations="modelRelations"
+              :instances-map="instancesMap"
+              :properties-map="propertiesMap"
+              @view-instance="handleViewAssociatedInstance"
+              @association-change="handleAssociationChange">
+            </instance-association>
+          </div>
         </bk-tab-panel>
       </bk-tab>
     </div>
@@ -76,9 +85,10 @@ export default {
       apiAssociations: [],
       apiRelations: [],
       apiInstances: {},
-        apiAttributes: {},
-        isDataReady: false,
-        editingPropertyId: null // 当前正在编辑的属性ID
+      apiAttributes: {},
+      isDataReady: false,
+      associationLoading: false,
+      editingPropertyId: null // 当前正在编辑的属性ID
       }
   },
   computed: {
@@ -132,6 +142,13 @@ export default {
       return (hasSourceData || hasTargetData) && this.modelRelations.length > 0
     }
   },
+  watch: {
+    activeTab (newTab) {
+      if (newTab === 'association' && !this.isDataReady) {
+        this.associationLoading = true
+      }
+    }
+  },
   created () {
     this.objId = this.$route.params.objId
     this.instId = parseInt(this.$route.params.instId, 10)
@@ -139,6 +156,7 @@ export default {
   },
   methods: {
     async loadInstanceData () {
+      this.associationLoading = true
       try {
         if (!this.objId || !this.instId) {
           return
@@ -208,6 +226,8 @@ export default {
         
       } catch (error) {
         console.error('加载实例数据失败:', error)
+      } finally {
+        this.associationLoading = false
       }
     },
     goBack () {
@@ -324,5 +344,13 @@ export default {
     word-break: break-all;
     flex: 1;
   }
+}
+
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: #909399;
+  background: #fafafa;
+  border-radius: 4px;
 }
 </style>
