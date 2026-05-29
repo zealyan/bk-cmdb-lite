@@ -49,8 +49,8 @@ class AssociationService:
                 oa.target_obj_name,
                 oa.bk_asst_id AS relation_type_id,
                 ad.bk_asst_name AS relation_type_name,
-                oa.cardinality,
-                ad.direction
+                oa.bk_obj_asst_id,
+                oa.bk_obj_asst_name
             FROM cc_ObjAsst oa
             JOIN cc_AsstDes ad ON oa.bk_asst_id = ad.bk_asst_id
             WHERE oa.bk_obj_id = :model_id
