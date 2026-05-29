@@ -1428,7 +1428,25 @@ export default {
       }
     },
     handleViewDetails(instance) {
-      this.syncStateToUrl()
+      // 进入详情页前，确保URL中包含当前的高级筛选条件
+      const query = this.$route.query
+      const filterAdv = query.filter_adv || (this.advancedFilterConditions ? QS.stringify(
+        Object.keys(this.advancedFilterConditions).reduce((acc, id) => {
+          const { operator, value } = this.advancedFilterConditions[id]
+          const key = `${id}.${operator.replace('$', '')}`
+          if (String(value).length) {
+            acc[key] = Array.isArray(value) ? value.join(',') : value
+          }
+          return acc
+        }, {}), { encode: false }
+      ) : null)
+      
+      const s = query.s || 'adv'
+      
+      this.syncStateToUrl({ 
+        filter_adv: filterAdv,
+        s: filterAdv ? s : undefined
+      })
       this.prevInstanceId = instance.id
       this.$router.push({
         name: 'ResourceInstanceDetails',
