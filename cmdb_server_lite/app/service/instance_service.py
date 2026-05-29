@@ -484,18 +484,21 @@ class InstanceService:
         if not ids:
             return 0
         
-        # 先删除关联表中的记录
-        placeholders = ','.join(['?' for _ in ids])
+        # 先删除关联表中的记录（使用命名参数）
+        id_params = {f'id_{idx}': inst_id for idx, inst_id in enumerate(ids)}
+        id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
         
-        delete_assoc_src_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_obj_id = ? AND bk_inst_id IN ({placeholders})'
-        execute(delete_assoc_src_sql, [model_id] + ids)
+        delete_assoc_src_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
+        params_src = {'model_id': model_id, **id_params}
+        execute(delete_assoc_src_sql, params_src)
         
-        delete_assoc_dest_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_asst_obj_id = ? AND bk_asst_inst_id IN ({placeholders})'
-        execute(delete_assoc_dest_sql, [model_id] + ids)
+        delete_assoc_dest_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
+        execute(delete_assoc_dest_sql, params_src)
         
         # 删除实例表中的记录
-        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE id IN ({placeholders})'
-        execute(delete_instance_sql, ids)
+        id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
+        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE id IN ({id_placeholders})'
+        execute(delete_instance_sql, id_params)
         
         return len(ids)
     
