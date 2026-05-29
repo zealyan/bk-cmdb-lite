@@ -1,9 +1,30 @@
 from flask import Blueprint, jsonify, request
 from app.service.association_service import AssociationService
+from app.service.instance_service import InstanceService
 from app.utils.logger import get_logger
 
 logger = get_logger('api.association')
 association_bp = Blueprint('association', __name__)
+
+@association_bp.route('/find/<obj_id>', methods=['POST'])
+def find_instances(obj_id):
+    """查询实例（旧版兼容接口）"""
+    try:
+        data = request.get_json() or {}
+        condition = data.get('condition', {})
+        
+        if 'id' in condition:
+            instance_id = condition.get('id')
+            instance = InstanceService.get_instance(obj_id, instance_id)
+            if instance:
+                return jsonify(instance)
+            return jsonify({})
+        
+        instances = InstanceService.get_instances(obj_id, 1, 100, condition)
+        return jsonify(instances)
+    except Exception as e:
+        logger.error(f"Error finding instances for {obj_id}: {e}")
+        return jsonify({'detail': str(e)}), 500
 
 @association_bp.route('/find/associationtype', methods=['POST'])
 def find_association_type():
