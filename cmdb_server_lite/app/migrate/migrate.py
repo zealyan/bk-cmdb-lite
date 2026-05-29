@@ -286,6 +286,16 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
+            "user_custom": """
+                CREATE TABLE IF NOT EXISTS user_custom (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_name VARCHAR NOT NULL,
+                    config_key VARCHAR NOT NULL,
+                    config_value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_name, config_key)
+                )
+            """,
         }
         
         for table_name, create_sql in core_tables_sql.items():
