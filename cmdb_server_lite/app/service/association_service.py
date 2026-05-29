@@ -77,7 +77,7 @@ class AssociationService:
     def create_instance_association(data):
         """创建实例关联"""
         data['id'] = generate_id()
-        data['_id'] = data['id']
+        data['_id'] = str(data['id'])
         data.setdefault('bk_supplier_account', '0')
         
         sql = """

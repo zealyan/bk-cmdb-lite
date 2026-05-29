@@ -9,12 +9,14 @@ import uuid
 
 def generate_id() -> int:
     """
-    生成唯一 ID
+    生成唯一 ID（使用时间戳 + 随机数）
     
     Returns:
         唯一整数 ID
     """
-    return int(uuid.uuid4().int >> 64)
+    import time
+    import random
+    return int(time.time() * 1000000) + random.randint(0, 999999)
 
 def safe_get(data: dict, key: str, default: Any = None) -> Any:
     """
