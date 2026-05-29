@@ -3,7 +3,6 @@
 ## Python 版本
 
 - **Python 版本**: Python 3.9.20
-- **推荐范围**: Python 3.7+（推荐 3.9+）
 
 ## 相关依赖和版本
 
@@ -16,7 +15,7 @@ Werkzeug==2.3.7
 Flask-CORS==6.0.2
 
 # Database Connection Pool & SQL Execution
-SQLAlchemy>=2.0.35  # 建议使用 2.0.35+ 以兼容 Python 3.9-3.14
+SQLAlchemy>=2.0.35
 
 # Native DB drivers
 psycopg2-binary==2.9.7  # PostgreSQL
@@ -250,12 +249,9 @@ which pip
 # 应该指向: /workspace/cmdb_server_lite/venv/bin/pip
 ```
 
-### Q4: Python 3.9 可以兼容其他版本吗？
+### Q4: Python 版本要求是什么？
 
-**A**: 是的，本项目同时兼容：
-- Python 3.7+
-- Python 3.9+（推荐）
-- Python 3.14（需要 SQLAlchemy 2.0.35+）
+**A**: 本项目固定使用 Python 3.9.20。
 
 ## 数据库连接测试
 

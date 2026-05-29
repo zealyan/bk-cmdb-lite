@@ -274,8 +274,8 @@ app/sql/
 
 ## 注意事项
 
-1. **Python 版本**：推荐 Python 3.7+，备选 Python 3.9+（当前环境 Python 3.14，需使用 SQLAlchemy 2.0.35+）
-2. **SQLAlchemy 版本**：建议使用 2.0.35+ 以获得更好的 Python 3.14 兼容性
+1. **Python 版本**：固定为 Python 3.9.20
+2. **SQLAlchemy 版本**：建议使用 2.0.35+
 3. **SQLite**：Python 3 内置，无需额外安装 pysqlite3
 4. **数据库驱动**：PostgreSQL 使用 psycopg2-binary，MySQL 使用 pymysql
 
