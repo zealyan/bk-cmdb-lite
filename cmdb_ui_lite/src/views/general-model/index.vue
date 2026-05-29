@@ -253,6 +253,7 @@ import TimeSearch from '@/components/search/time.vue'
 import modelIndex from '@/assets/api/index.json'
 import { modelAPI, userCustom } from '@/api/client'
 import routerQuery from '@/utils/router-query'
+import { buildSearchParams } from '@/utils/query-builder'
 
 export default {
   name: 'GeneralModel',
@@ -475,7 +476,24 @@ export default {
         console.log('[Index.watch] 从详情页返回，优先恢复状态')
         this.restoreStateFromUrl()
         this.updateFilterTagsFromQuery()
-        this.loadModelData()
+        
+        // 如果有高级筛选条件，使用高级筛选参数加载数据
+        if (this.advancedFilterConditions) {
+          const rawConditions = []
+          Object.keys(this.advancedFilterConditions).forEach(field => {
+            const cond = this.advancedFilterConditions[field]
+            rawConditions.push({
+              field,
+              operator: cond.operator,
+              value: cond.value
+            })
+          })
+          const searchParams = this.buildAdvancedSearchParams(rawConditions)
+          console.log('[Index.watch] 从详情页返回，使用高级筛选参数:', searchParams)
+          this.loadModelData(searchParams)
+        } else {
+          this.loadModelData()
+        }
         return
       }
 
@@ -497,22 +515,40 @@ export default {
         const filterChanged = query.filter !== oldQuery.filter
         const fuzzyChanged = query.fuzzy !== oldQuery.fuzzy
         const sortChanged = query.sort !== oldQuery.sort
+        const conditionsChanged = query.conditions !== oldQuery.conditions
 
-        console.log('[Index.watch] 变化检测:', { pageChanged, limitChanged, fieldChanged, filterChanged, fuzzyChanged, sortChanged })
+        console.log('[Index.watch] 变化检测:', { pageChanged, limitChanged, fieldChanged, filterChanged, fuzzyChanged, sortChanged, conditionsChanged })
 
         if (pageChanged || limitChanged) {
           this.table.pagination.current = parseInt(query.page || 1, 10)
           this.table.pagination.limit = parseInt(query.limit || 10, 10)
         }
-        if (fieldChanged || filterChanged || fuzzyChanged || sortChanged) {
+        if (fieldChanged || filterChanged || fuzzyChanged || sortChanged || conditionsChanged) {
           console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl和updateFilterTagsFromQuery')
           this.restoreStateFromUrl()
           this.updateFilterTagsFromQuery()
         }
 
-        if (pageChanged || limitChanged || fieldChanged || filterChanged || fuzzyChanged || sortChanged) {
+        if (pageChanged || limitChanged || fieldChanged || filterChanged || fuzzyChanged || sortChanged || conditionsChanged) {
           console.log('[Index.watch] 执行loadModelData')
-          this.loadModelData()
+          
+          // 如果有高级筛选条件，使用高级筛选参数加载数据
+          if (this.advancedFilterConditions) {
+            const rawConditions = []
+            Object.keys(this.advancedFilterConditions).forEach(field => {
+              const cond = this.advancedFilterConditions[field]
+              rawConditions.push({
+                field,
+                operator: cond.operator,
+                value: cond.value
+              })
+            })
+            const searchParams = this.buildAdvancedSearchParams(rawConditions)
+            console.log('[Index.watch] 使用高级筛选参数:', searchParams)
+            this.loadModelData(searchParams)
+          } else {
+            this.loadModelData()
+          }
         }
       }
     }, { throttle: 100 })
@@ -533,7 +569,25 @@ export default {
     document.addEventListener('click', this.clickOutsideHandler)
 
     setTimeout(() => {
-      this.loadModelData()
+      // 如果有高级筛选条件，构建 searchParams 并传递给 loadModelData
+      if (this.advancedFilterConditions) {
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        
+        // 构建高级筛选的 searchParams
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        console.log('[Index.mounted] 从URL恢复高级筛选参数:', searchParams)
+        this.loadModelData(searchParams)
+      } else {
+        this.loadModelData()
+      }
     }, 0)
   },
   beforeDestroy() {
@@ -911,6 +965,46 @@ export default {
         this.table.sort = query.sort
       }
 
+      // 恢复高级筛选条件
+      if (query.conditions) {
+        try {
+          const rawConditions = JSON.parse(decodeURIComponent(query.conditions))
+          console.log('[restoreStateFromUrl] 恢复高级筛选条件:', rawConditions)
+          
+          if (rawConditions && Array.isArray(rawConditions) && rawConditions.length > 0) {
+            // 构建 conditionMap
+            const conditionMap = {}
+            rawConditions.forEach(c => {
+              conditionMap[c.field] = {
+                operator: c.operator,
+                value: c.value
+              }
+            })
+            this.advancedFilterConditions = conditionMap
+            
+            // 恢复 filterTags
+            this.filterTags = rawConditions.map(c => {
+              const property = this.allProperties.find(p => p.bk_property_id === c.field)
+              return {
+                id: c.field,
+                property: property || {},
+                propertyName: property?.bk_property_name || c.field,
+                operator: c.operator,
+                value: c.value
+              }
+            })
+            
+            console.log('[restoreStateFromUrl] 高级筛选条件已恢复，filterTags:', this.filterTags)
+          }
+        } catch (e) {
+          console.error('[restoreStateFromUrl] 解析高级筛选条件失败:', e)
+          this.advancedFilterConditions = null
+          this.filterTags = []
+        }
+      } else {
+        this.advancedFilterConditions = null
+      }
+
       this.updateFilterTagsFromQuery()
 
       console.log('[restoreStateFromUrl] 恢复后的状态:', {
@@ -918,11 +1012,12 @@ export default {
         value: this.filter.value,
         fuzzyQuery: this.filter.fuzzyQuery,
         page: this.table.pagination.current,
-        sort: this.table.sort
+        sort: this.table.sort,
+        hasAdvancedFilter: !!this.advancedFilterConditions
       })
     },
     syncStateToUrl(options = {}) {
-      const { keepSort = true, resetPage = false } = options
+      const { keepSort = true, resetPage = false, conditions = null } = options
       const query = {}
 
       if (!resetPage) {
@@ -941,6 +1036,15 @@ export default {
       }
       if (keepSort && this.table.sort) {
         query.sort = this.table.sort
+      }
+
+      // 同步高级筛选条件到URL
+      if (conditions && conditions.length > 0) {
+        try {
+          query.conditions = encodeURIComponent(JSON.stringify(conditions))
+        } catch (e) {
+          console.error('[syncStateToUrl] 编码高级筛选条件失败:', e)
+        }
       }
 
       this.isUrlUpdateTriggered = true
@@ -989,6 +1093,10 @@ export default {
 
       this.table.pagination.current = 1
       
+      // 同步高级筛选条件到URL
+      this.syncStateToUrl({ resetPage: true, conditions: rawConditions })
+      this.isUrlUpdateTriggered = true
+      
       this.loadModelData(searchParams)
     },
     handleAdvancedFilterReset() {
@@ -1001,10 +1109,17 @@ export default {
       this.filter.values = []
       this.filter.fuzzyQuery = false
       this.isUrlUpdateTriggered = true
-      routerQuery.setAll({
+      // 清除URL中的高级筛选条件
+      const query = {
         page: 1,
         limit: this.table.pagination.limit
-      })
+      }
+      // 清除高级筛选条件
+      if (this.$route.query.conditions) {
+        routerQuery.setAll(query)
+      } else {
+        routerQuery.setAll(query)
+      }
       this.loadModelData()
     },
     handleImport() {
@@ -1109,6 +1224,59 @@ export default {
           this.$bkMessage({ message: '检查关联关系失败，请稍后重试', theme: 'error' })
           this.table.loading = false
         })
+    },
+    buildAdvancedSearchParams(rawConditions) {
+      // 从 rawConditions 构建 conditionMap
+      const conditionMap = {}
+      
+      rawConditions.forEach(cond => {
+        const { field, operator, value } = cond
+        
+        // 获取属性信息
+        const property = this.allProperties.find(p => p.bk_property_id === field)
+        const isEnumOrList = property && ['enum', 'list'].includes(property.bk_property_type)
+        const isDateTime = property && ['date', 'time'].includes(property.bk_property_type)
+        
+        // 处理值
+        let processedValue = value
+        if (isEnumOrList || isDateTime) {
+          // 枚举、列表、日期时间类型，值应该是数组
+          if (Array.isArray(value)) {
+            processedValue = value
+          } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
+            processedValue = [value]
+          }
+        } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
+          // 其他类型
+          if (this.isInOperator(operator) && !isEnumOrList) {
+            processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
+          } else if (this.isRangeOperator(operator)) {
+            processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
+          }
+        }
+        
+        if (processedValue !== null && processedValue !== undefined && 
+            !(typeof processedValue === 'string' && processedValue.length === 0) &&
+            !(Array.isArray(processedValue) && processedValue.length === 0)) {
+          conditionMap[field] = {
+            operator,
+            value: processedValue
+          }
+        }
+      })
+      
+      // 使用 buildSearchParams 构建最终的 searchParams
+      return buildSearchParams(conditionMap, this.allProperties, {
+        page: this.table.pagination.current,
+        pageSize: this.table.pagination.limit,
+        sort: this.table.sort || '-id'
+      })
+    },
+    isInOperator(operator) {
+      return operator === '$in' || operator === '$nin'
+    },
+    isRangeOperator(operator) {
+      return operator === '$range' || operator === '$gte' || operator === '$lte'
     },
     handleCreate() {
       console.log('[DEBUG] handleCreate called - 新建按钮被点击')
