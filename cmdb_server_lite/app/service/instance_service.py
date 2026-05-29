@@ -90,8 +90,20 @@ class InstanceService:
         where_clauses = []
         
         # 处理 conditions（多条件组合）
-        if conditions and isinstance(conditions, list):
-            for cond in conditions:
+        # 支持两种格式：
+        # 1. 列表格式：[{"field": "...", "operator": "...", "value": "..."}]
+        # 2. 对象格式：{"condition": "AND", "rules": [...]}
+        if conditions:
+            rule_list = []
+            
+            if isinstance(conditions, list):
+                # 列表格式
+                rule_list = conditions
+            elif isinstance(conditions, dict):
+                # 对象格式，提取 rules
+                rule_list = conditions.get('rules', [])
+            
+            for cond in rule_list:
                 if not isinstance(cond, dict):
                     continue
                 
