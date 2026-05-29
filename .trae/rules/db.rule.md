@@ -2,24 +2,78 @@
 
 ## 概述
 
-本文档定义了 cmdb_server_lite 项目中数据库表的命名规则、字段规则，以及与原项目（蓝鲸 CMDB）的对应关系。
+本文档定义了 cmdb_server_lite 项目中数据库表的命名规则、字段规则、技术架构，以及与原项目（蓝鲸 CMDB）的对应关系。
 
 **文档版本**：
-- 基于：cmdb_server_lite（DuckDB 版本）
+- 基于：cmdb_server_lite（SQLAlchemy + 多数据库支持版本）
 - 规则变更历史：
   - v1.0 - 初始版本，表结构与原项目保持一致（cc_ 前缀）
   - v1.1 - 移除自定义 `relations` 表，回归原项目的 `cc_AsstDes` + `cc_ObjAsst` 结构
   - v1.2 - 实现动态模型表名，移除硬编码 `table_map`
+  - **v2.0** - 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持（SQLite/MySQL/PostgreSQL）
 
 ---
 
-## 一、表命名规则
+## 一、数据库技术架构
 
-### 1.1 命名前缀统一
+### 1.1 数据库技术栈
+
+| 组件 | 技术 | 版本 | 用途 |
+|------|------|------|------|
+| **连接池** | SQLAlchemy | >=2.0.35 | 数据库连接池管理 |
+| **方言处理** | sqlglot | 19.8.0 | 多数据库 SQL 方言转换 |
+| **驱动** | psycopg2-binary | 2.9.7 | PostgreSQL 驱动 |
+| **驱动** | pymysql | 1.1.0 | MySQL 驱动 |
+| **内置** | sqlite3 | Python 3.9 | SQLite 驱动 |
+
+### 1.2 支持的数据库类型
+
+```python
+class DatabaseType(Enum):
+    """支持的数据库类型"""
+    SQLITE = 'sqlite'       # 开发环境默认
+    POSTGRESQL = 'postgresql'  # 生产环境推荐
+    MYSQL = 'mysql'         # 生产环境可选
+    DUCKDB = 'duckdb'       # 兼容旧版本
+```
+
+### 1.3 数据库配置
+
+**开发环境配置**（默认）：
+```python
+DATABASE_TYPE = 'sqlite'
+DATABASE_NAME = 'cmdb_dev.db'
+SQLALCHEMY_ECHO = True  # SQL 日志开启
+```
+
+**生产环境配置**：
+```python
+DATABASE_TYPE = 'postgresql'
+DATABASE_USER = 'xxx'
+DATABASE_PASSWORD = 'xxx'
+DATABASE_HOST = 'localhost'
+DATABASE_PORT = '5432'
+DATABASE_NAME = 'cmdb_prod'
+```
+
+### 1.4 连接池配置
+
+```python
+SQLALCHEMY_POOL_SIZE = 5          # 连接池大小
+SQLALCHEMY_MAX_OVERFLOW = 10     # 最大溢出连接数
+SQLALCHEMY_POOL_RECYCLE = 3600    # 连接回收时间（秒）
+SQLALCHEMY_ECHO = False           # 是否输出 SQL 日志
+```
+
+---
+
+## 二、表命名规则
+
+### 2.1 命名前缀统一
 
 所有表名必须使用 `cc_` 前缀，与原项目蓝鲸 CMDB 保持一致。
 
-### 1.2 表分类规则
+### 2.2 表分类规则
 
 | 表类型 | 命名格式 | 示例 | 说明 |
 |--------|---------|------|------|
@@ -27,19 +81,19 @@
 | 属性定义 | `cc_ObjAttDes` | `cc_ObjAttDes` | 对象属性描述表（唯一） |
 | 关联类型 | `cc_AsstDes` | `cc_AsstDes` | 关联描述表（唯一） |
 | 对象关联 | `cc_ObjAsst` | `cc_ObjAsst` | 对象关联关系表（唯一） |
-| 实例关联 | `cc_InstAsst_{supplier}_pub` | `cc_InstAsst_0_pub` | 实例关联关系表（按供应商分表） |
-| 实例数据 | `cc_ObjectBase_{supplier}_pub_{obj_id}` | `cc_ObjectBase_0_pub_bk_host` | 各模型实例表（按模型分表） |
+| 实例关联 | `cc_InstAsst_0_pub` | `cc_InstAsst_0_pub` | 实例关联关系表（按供应商分表） |
+| 实例数据 | `cc_ObjectBase_0_pub_{obj_id}` | `cc_ObjectBase_0_pub_bk_host` | 各模型实例表（按模型分表） |
 
-### 1.3 分表规则
+### 2.3 分表规则
 
 1. **供应商分表**：`{supplier}` - 默认值为 `0`
 2. **模型分表**：`{obj_id}` - 模型ID，来自 `cc_ObjDes.bk_obj_id`
 
 ---
 
-## 二、表结构详解
+## 三、表结构详解
 
-### 2.1 cc_ObjDes - 对象/模型定义表
+### 3.1 cc_ObjDes - 对象/模型定义表
 
 **作用**：存放所有模型的元数据定义
 
@@ -62,11 +116,11 @@
 | `create_time` | TIMESTAMP | 否 | 创建时间（默认CURRENT_TIMESTAMP） |
 | `last_time` | TIMESTAMP | 否 | 最后修改时间（默认CURRENT_TIMESTAMP） |
 | `obj_sort_number` | INTEGER | 否 | 排序编号（默认0） |
-| bk_supplier_account | VARCHAR | 否 | 供应商账号（默认0） |
+| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） |
 
 ---
 
-### 2.2 cc_ObjAttDes - 对象属性定义表
+### 3.2 cc_ObjAttDes - 对象属性定义表
 
 **作用**：定义模型的属性字段
 
@@ -86,21 +140,25 @@
 | `bk_ishidden` | BOOLEAN | 否 | 是否隐藏（默认false） |
 | `isreadonly` | BOOLEAN | 否 | 是否只读（默认false） |
 | `bk_isapi` | BOOLEAN | 否 | 是否API字段（默认false） |
-| `option` | VARCHAR | 否 | 选项配置 |
+| `option` | VARCHAR | 否 | 选项配置（JSON序列化存储） |
+| `bk_property_option` | VARCHAR | 否 | 选项配置副本 |
 | `unit` | VARCHAR | 否 | 单位 |
 | `placeholder` | VARCHAR | 否 | 占位符 |
 | `editable` | BOOLEAN | 否 | 是否可编辑（默认true） |
 | `ispre` | BOOLEAN | 否 | 是否预置属性（默认false） |
 | `bk_property_index` | INTEGER | 否 | 属性排序索引 |
+| `bk_issystem` | BOOLEAN | 否 | 是否系统字段（默认false） |
 | `creator` | VARCHAR | 否 | 创建者（默认admin） |
 | `modifier` | VARCHAR | 否 | 修改者（默认admin） |
 | `create_time` | TIMESTAMP | 否 | 创建时间 |
 | `last_time` | TIMESTAMP | 否 | 最后修改时间 |
-| bk_supplier_account | VARCHAR | 否 | 供应商账号（默认0） |
+| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） |
+
+**注意**：`option` 字段在数据库中存储为 JSON 序列化字符串（如 `"[\"选项1\", \"选项2\"]"`），后端 API 会自动反序列化为数组返回给前端。
 
 ---
 
-### 2.3 cc_AsstDes - 关联类型定义表
+### 3.3 cc_AsstDes - 关联类型定义表
 
 **作用**：定义关联关系的类型
 
@@ -113,13 +171,13 @@
 | `bk_asst_name` | VARCHAR | 是 | 关联类型名称 |
 | `src_des` | VARCHAR | 否 | 源端描述 |
 | `dest_des` | VARCHAR | 否 | 目标端描述 |
-| direction | VARCHAR | 否 | 方向（forward） |
-| ispre | BOOLEAN | 否 | 是否预置（默认false） |
-| bk_supplier_account | VARCHAR | 否 | 供应商账号（默认0） |
+| `direction` | VARCHAR | 否 | 方向（forward） |
+| `ispre` | BOOLEAN | 否 | 是否预置（默认false） |
+| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） |
 
 ---
 
-### 2.4 cc_ObjAsst - 对象关联关系表
+### 3.4 cc_ObjAsst - 对象关联关系表
 
 **作用**：定义模型与模型之间的关联关系
 
@@ -134,14 +192,14 @@
 | `bk_asst_id` | VARCHAR | 是 | 关联类型ID（外键到cc_AsstDes） |
 | `bk_obj_asst_id` | VARCHAR | 是 | 对象关联ID（主键） |
 | `bk_obj_asst_name` | VARCHAR | 是 | 对象关联名称 |
-| `cardinality` | VARCHAR | 是 | 基数（1:1, 1:n, n:n） |
+| `cardinality` | VARCHAR | 否 | 基数（1:1, 1:n, n:n） |
 | `mapping` | VARCHAR | 否 | 映射规则 |
 | `on_delete` | VARCHAR | 否 | 删除策略 |
 | `creator` | VARCHAR | 否 | 创建者（默认admin） |
 | `modifier` | VARCHAR | 否 | 修改者（默认admin） |
 | `create_time` | TIMESTAMP | 否 | 创建时间 |
 | `last_time` | TIMESTAMP | 否 | 最后修改时间 |
-| bk_supplier_account | VARCHAR | 否 | 供应商账号（默认0） |
+| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） |
 
 **关联ID命名规则**：
 - 格式：`{bk_obj_id}_to_{target_obj_id}`
@@ -149,7 +207,7 @@
 
 ---
 
-### 2.5 cc_InstAsst_0_pub - 实例关联关系表
+### 3.5 cc_InstAsst_0_pub - 实例关联关系表
 
 **作用**：存储实例之间的具体关联数据
 
@@ -164,11 +222,11 @@
 | `bk_asst_obj_id` | VARCHAR | 是 | 目标模型ID |
 | `bk_asst_inst_id` | INTEGER | 是 | 目标实例ID |
 | `bk_obj_asst_id` | VARCHAR | 是 | 对象关联ID（外键到cc_ObjAsst） |
-| bk_relation_type_id | VARCHAR | 是 | 关联类型ID（外键到cc_AsstDes） |
+| `bk_relation_type_id` | VARCHAR | 是 | 关联类型ID（外键到cc_AsstDes） |
 
 ---
 
-### 2.6 cc_ObjectBase_0_pub_{obj_id} - 模型实例表
+### 3.6 cc_ObjectBase_0_pub_{obj_id} - 模型实例表
 
 **作用**：存储具体模型的实例数据，每个模型对应一个分表
 
@@ -193,23 +251,17 @@
 | `bk_obj_id` | VARCHAR | 是 | 所属模型ID |
 | `create_time` | TIMESTAMP | 否 | 创建时间 |
 | `last_time` | TIMESTAMP | 否 | 最后修改时间 |
-| bk_operate_time | TIMESTAMP | 否 | 操作时间 |
+| `bk_operate_time` | TIMESTAMP | 否 | 操作时间 |
 
-**示例表结构**（bk_host）：
-
-| 自定义字段 | 类型 | 说明 |
-|-----------|------|------|
-| `bk_host_name` | VARCHAR | 主机名 |
-| `bk_host_innerip` | VARCHAR | 内网IP |
-| `bk_cloud_id` | INTEGER | 云区域ID |
-| `bk_agent_id` | VARCHAR | Agent ID |
-| `bk_cloud_vendor` | VARCHAR | 云厂商 |
+**扩展字段**：
+- 除系统字段外，还包含业务自定义字段
+- 字段类型根据 `cc_ObjAttDes` 中的定义动态映射
 
 ---
 
-## 三、字段规则
+## 四、字段规则
 
-### 3.1 通用字段规则
+### 4.1 通用字段规则
 
 1. **必填字段**：
    - 所有表的主键字段必须存在
@@ -225,9 +277,9 @@
 
 4. **字符串字段**：
    - 使用 `VARCHAR` 类型
-   - 长度无严格限制（DuckDB 特性）
+   - 长度无严格限制
 
-### 3.2 bk_inst_id 和 bk_inst_name 特殊规则
+### 4.2 bk_inst_id 和 bk_inst_name 特殊规则
 
 #### 内置模型特殊映射
 
@@ -256,10 +308,41 @@
 
 ---
 
-## 四、与原项目对比
+## 五、数据类型映射
 
-| 原项目 (MongoDB) | Lite项目 (DuckDB) | 状态 |
-|------------------|-------------------|------|
+### 5.1 SQL 类型映射
+
+| 属性类型 | SQLite | PostgreSQL | MySQL |
+|---------|--------|-----------|-------|
+| `int` | INTEGER | INTEGER | INT |
+| `long` | BIGINT | BIGINT | BIGINT |
+| `string` | TEXT | TEXT | TEXT |
+| `char` | VARCHAR | VARCHAR | VARCHAR |
+| `float` | FLOAT | REAL | FLOAT |
+| `double` | DOUBLE | DOUBLE PRECISION | DOUBLE |
+| `date` | DATE | DATE | DATE |
+| `time` | TIME | TIME | TIME |
+| `datetime` | TIMESTAMP | TIMESTAMP | DATETIME |
+| `bool` | BOOLEAN | BOOLEAN | BOOLEAN |
+| `enum` | TEXT | TEXT | TEXT |
+| `list` | TEXT | TEXT | TEXT |
+
+### 5.2 方言转换处理
+
+使用 `sqlglot` 库处理多数据库方言转换：
+```python
+from sqlglot import parse_one, transpile
+
+# 将标准 SQL 转换为特定方言
+sql = transpile("SELECT * FROM table", read="sqlite", write="postgresql")
+```
+
+---
+
+## 六、与原项目对比
+
+| 原项目 (MongoDB) | Lite项目 (SQLAlchemy) | 状态 |
+|------------------|----------------------|------|
 | `cc_ObjDes` | `cc_ObjDes` | ✅ 完全一致 |
 | `cc_ObjAttDes` | `cc_ObjAttDes` | ✅ 完全一致 |
 | `cc_AsstDes` | `cc_AsstDes` | ✅ 完全一致 |
@@ -271,7 +354,7 @@
 
 ---
 
-## 五、新增模型标准步骤
+## 七、新增模型标准步骤
 
 ### 步骤 1: 在 cc_ObjDes 中添加模型定义
 
@@ -314,10 +397,12 @@ CREATE TABLE cc_ObjectBase_0_pub_bk_custom_model (
 
 ---
 
-## 六、参考文件
+## 八、参考文件
 
-- **数据库迁移脚本**：[migrate_data.py](file:///workspace/bk-cmdb/cmdb_server_lite/migrate_data.py)
-- **API服务主文件**：[main.py](file:///workspace/bk-cmdb/cmdb_server_lite/main.py)
+- **数据库引擎**：[engine.py](file:///workspace/cmdb_server_lite/app/db/engine.py)
+- **数据库配置**：[settings.py](file:///workspace/cmdb_server_lite/app/config/settings.py)
+- **数据库迁移工具**：[migrate.py](file:///workspace/cmdb_server_lite/app/migrate/migrate.py)
+- **API服务启动**：[run.py](file:///workspace/cmdb_server_lite/run.py)
 - **原项目表结构**：[tablenames.go](file:///workspace/bk-cmdb/src/common/tablenames.go)
 - **原项目UI常量**：[model-constants.js](file:///workspace/bk-cmdb/src/ui/src/dictionary/model-constants.js)
 - **原项目UI属性**：[property-constants.js](file:///workspace/bk-cmdb/src/ui/src/dictionary/property-constants.js)
@@ -325,3 +410,5 @@ CREATE TABLE cc_ObjectBase_0_pub_bk_custom_model (
 ---
 
 **文档维护**：本文档随代码更新，请保持同步。
+- **最后更新**：2026-05-29
+- **更新内容**：v2.0 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持
