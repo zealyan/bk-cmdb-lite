@@ -14,7 +14,8 @@ import coloredlogs
 import logging
 from sqlglot import parse_one, transpile
 from sqlalchemy import text
-from sqlalchemy import create_engine
+from app.db.engine import get_connection
+from app.config.settings import get_config
 
 
 # 配置日志
@@ -133,24 +134,27 @@ CLASSIFICATIONS = [
 
 
 class DatabaseMigrator:
-    def __init__(self, database_uri):
-        self.database_uri = database_uri
-        self.engine = create_engine(database_uri)
+    def __init__(self, config=None):
+        self.config = config or get_config()
         self.project_root = Path(__file__).parent.parent.parent
         self.workspace_root = self.project_root.parent
         
     def execute_sql(self, sql, params=None):
         """执行 SQL 语句"""
-        with self.engine.connect() as conn:
+        conn = get_connection()
+        try:
             if params:
                 conn.execute(text(sql), params)
             else:
                 conn.execute(text(sql))
             conn.commit()
+        finally:
+            conn.close()
     
     def execute_query(self, sql, params=None):
         """执行查询并返回结果"""
-        with self.engine.connect() as conn:
+        conn = get_connection()
+        try:
             if params:
                 result = conn.execute(text(sql), params)
             else:
@@ -158,6 +162,8 @@ class DatabaseMigrator:
             # 转换为字典列表
             columns = result.keys()
             return [dict(zip(columns, row)) for row in result]
+        finally:
+            conn.close()
     
     def migrate_classifications(self):
         """迁移分类数据"""
@@ -625,6 +631,5 @@ class DatabaseMigrator:
 
 if __name__ == "__main__":
     # 直接运行迁移
-    database_uri = "sqlite:///cmdb_dev.db"
-    migrator = DatabaseMigrator(database_uri)
+    migrator = DatabaseMigrator()
     migrator.migrate()

@@ -43,97 +43,97 @@ http.interceptors.response.use(
 export const modelAPI = {
   // 健康检查
   checkHealth () {
-    return http.get('/health')
+    return http.get('/api/v1/common/health')
   },
 
   // 获取所有分类
   listClassifications () {
-    return http.get('/api/classifications')
+    return http.get('/api/v1/classifications')
   },
   
   // 查询分类及其下属模型（对应原项目的 searchClassificationsObjects）
   searchClassificationsObjects () {
-    return http.post('/api/find/classificationobject')
+    return http.post('/api/v1/classifications/find/classificationobject')
   },
   
   // 获取所有模型
   listModels () {
-    return http.get('/api/models')
+    return http.get('/api/v1/models')
   },
   
   // 获取单个模型
   getModel (modelId) {
-    return http.get(`/api/models/${modelId}`)
+    return http.get(`/api/v1/models/${modelId}`)
   },
   
   // 获取模型属性
   getModelAttributes (modelId) {
-    return http.get(`/api/models/${modelId}/attributes`)
+    return http.get(`/api/v1/models/${modelId}/attributes`)
   },
   
   // 获取模型实例列表
   listInstances (modelId, params = {}) {
-    return http.get(`/api/models/${modelId}/instances`, { params })
+    return http.get(`/api/v1/models/${modelId}/instances`, { params })
   },
 
   // 搜索模型实例 (使用POST避免URL编码问题)
   searchInstances (modelId, params = {}) {
-    return http.post(`/api/models/${modelId}/instances/search`, params)
+    return http.post(`/api/v1/models/${modelId}/instances/search`, params)
   },
   
   // 获取单个实例
   getInstance (modelId, instanceId) {
-    return http.get(`/api/models/${modelId}/instances/${instanceId}`)
+    return http.get(`/api/v1/models/${modelId}/instances/${instanceId}`)
   },
   
   // 获取实例关联
   getInstanceAssociations (instanceId) {
-    return http.get(`/api/instances/${instanceId}/associations`)
+    return http.get(`/api/v1/instances/${instanceId}/associations`)
   },
   
   // 获取关联实例详情
   getRelatedInstances (instanceId, modelId) {
-    return http.get(`/api/instances/${instanceId}/related`, { params: { model_id: modelId } })
+    return http.get(`/api/v1/instances/${instanceId}/related`, { params: { model_id: modelId } })
   },
   
   // 获取所有关联关系
   listRelations () {
-    return http.get('/api/relations')
+    return http.get('/api/v1/relations')
   },
   
   // 获取统计信息
   getStatistics () {
-    return http.get('/api/statistics')
+    return http.get('/api/v1/common/statistics')
   },
 
   // 检查实例的关联关系数量
   checkInstanceAssociations (modelId, ids = []) {
-    return http.post(`/api/models/${modelId}/instances/check-associations`, { ids })
+    return http.post(`/api/v1/models/${modelId}/instances/check-associations`, { ids })
   },
 
   // 删除实例（支持批量）
   deleteInstances (modelId, ids = []) {
-    return http.delete(`/api/models/${modelId}/instances`, { data: { ids } })
+    return http.delete(`/api/v1/models/${modelId}/instances`, { data: { ids } })
   },
 
   // 创建新实例
   createInstance (modelId, data) {
-    return http.post(`/api/models/${modelId}/instances`, { data })
+    return http.post(`/api/v1/models/${modelId}/instances`, { data })
   },
 
   // 更新单个实例
   updateInstance (modelId, instanceId, data) {
-    return http.put(`/api/models/${modelId}/instances/${instanceId}`, data)
+    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, data)
   },
 
   // 批量更新实例（格式1：每个实例有不同数据）
   batchUpdateInstances (modelId, updates) {
-    return http.put(`/api/models/${modelId}/instances`, { update: updates })
+    return http.put(`/api/v1/models/${modelId}/instances`, { update: updates })
   },
 
   // 批量更新实例（格式2：多个实例使用相同数据）
   batchUpdateInstancesWithSameData (modelId, ids, data) {
-    return http.put(`/api/models/${modelId}/instances`, { ids, data })
+    return http.put(`/api/v1/models/${modelId}/instances`, { ids, data })
   }
 }
 

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
 
 const mimeTypes = {
   '.html': 'text/html',
@@ -36,7 +36,7 @@ function proxyToBackend(req, res) {
   req.on('end', () => {
     const options = {
       hostname: 'localhost',
-      port: 8000,
+      port: 5000,
       path: req.url,
       method: req.method,
       headers: {
