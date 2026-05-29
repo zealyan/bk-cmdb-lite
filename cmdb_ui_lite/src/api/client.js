@@ -6,6 +6,9 @@ const http = axios.create({
   baseURL,
   timeout: 10000,
   withCredentials: false,
+  headers: {
+    'Content-Type': 'application/json'
+  },
   paramsSerializer: (params) => {
     return Object.entries(params)
       .filter(([_, v]) => v !== undefined && v !== null && v !== '')
