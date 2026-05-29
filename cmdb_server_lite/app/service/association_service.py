@@ -7,7 +7,15 @@ class AssociationService:
     @staticmethod
     def get_association_types():
         """获取所有关联类型"""
-        return query_all('association/select_association_types.sql', {})
+        types = query_all('association/select_association_types.sql', {})
+        # 补充缺失的字段，避免前端显示 undefined
+        for t in types:
+            # 给每个类型补充合理的默认值
+            if 'src_des' not in t or t.get('src_des') is None:
+                t['src_des'] = t.get('bk_asst_name', '指向')
+            if 'dest_des' not in t or t.get('dest_des') is None:
+                t['dest_des'] = t.get('bk_asst_name', '指向')
+        return types
     
     @staticmethod
     def get_object_associations(conditions=None):
