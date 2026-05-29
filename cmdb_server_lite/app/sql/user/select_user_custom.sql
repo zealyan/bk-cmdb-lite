@@ -1,0 +1,1 @@
+SELECT config_key, config_value FROM user_custom WHERE user_name = :user_name

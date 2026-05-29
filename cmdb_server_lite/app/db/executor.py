@@ -6,6 +6,25 @@
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy import text
 from app.db.engine import get_engine, get_connection
+from app.db.sql_loader import sql_loader
+
+def _resolve_sql(sql_or_path: str) -> str:
+    """
+    解析 SQL 语句或文件路径
+    
+    Args:
+        sql_or_path: SQL 语句或 SQL 文件路径（如 classification/select_classifications.sql）
+        
+    Returns:
+        SQL 语句
+    """
+    # 判断是否为文件路径格式（包含 / 且以 .sql 结尾）
+    if '/' in sql_or_path and sql_or_path.endswith('.sql'):
+        parts = sql_or_path.rsplit('/', 1)
+        if len(parts) == 2:
+            module, filename = parts
+            return sql_loader.load(module, filename)
+    return sql_or_path
 
 class SQLExecutor:
     """SQL 执行器"""
@@ -179,16 +198,19 @@ class SQLExecutor:
 sql_executor = SQLExecutor()
 
 def execute(sql: str, params: Dict[str, Any] = None):
-    """执行 SQL"""
-    return sql_executor.execute(sql, params)
+    """执行 SQL（支持 SQL 语句或文件路径）"""
+    resolved_sql = _resolve_sql(sql)
+    return sql_executor.execute(resolved_sql, params)
 
 def query_all(sql: str, params: Dict[str, Any] = None) -> List[Dict[str, Any]]:
-    """查询所有"""
-    return sql_executor.query_all(sql, params)
+    """查询所有（支持 SQL 语句或文件路径）"""
+    resolved_sql = _resolve_sql(sql)
+    return sql_executor.query_all(resolved_sql, params)
 
 def query_one(sql: str, params: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
-    """查询一条"""
-    return sql_executor.query_one(sql, params)
+    """查询一条（支持 SQL 语句或文件路径）"""
+    resolved_sql = _resolve_sql(sql)
+    return sql_executor.query_one(resolved_sql, params)
 
 def insert(table: str, data: Dict[str, Any]) -> int:
     """插入数据"""
@@ -201,3 +223,8 @@ def update(table: str, data: Dict[str, Any], where: Dict[str, Any]) -> int:
 def delete(table: str, where: Dict[str, Any]) -> int:
     """删除数据"""
     return sql_executor.delete(table, where)
+
+def execute_many(sql: str, params_list: List[Dict[str, Any]]) -> None:
+    """批量执行 SQL（支持 SQL 语句或文件路径）"""
+    resolved_sql = _resolve_sql(sql)
+    sql_executor.execute_many(resolved_sql, params_list)

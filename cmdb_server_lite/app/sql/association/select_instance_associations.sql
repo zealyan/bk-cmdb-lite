@@ -1,0 +1,1 @@
+SELECT * FROM cc_InstAsst_0_pub

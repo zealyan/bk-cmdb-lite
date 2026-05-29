@@ -1,0 +1,1 @@
+SELECT * FROM cc_AsstDes

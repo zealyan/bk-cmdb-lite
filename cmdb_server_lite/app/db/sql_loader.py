@@ -6,7 +6,6 @@ SQL 文件加载器
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
-from app.db.executor import sql_executor
 
 class SQLLoader:
     """SQL 文件加载器"""
@@ -71,6 +70,7 @@ class SQLLoader:
             执行结果
         """
         sql = self.load(module, filename)
+        from app.db.executor import sql_executor
         return sql_executor.execute(sql, params)
     
     def load_all_in_module(self, module: str) -> Dict[str, str]:

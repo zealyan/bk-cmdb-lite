@@ -8,6 +8,7 @@ from app.db.engine import init_db
 from app.middlewares.cors import init_cors
 from app.utils.logger import setup_logger
 from app.utils.exceptions import APIException
+from app.api.v1 import register_v1_routes
 
 def create_app(config=None):
     """
@@ -35,9 +36,8 @@ def create_app(config=None):
     # 初始化数据库
     init_db(config)
     
-    # 注册蓝图
-    from app.api.v1.common import common_bp
-    app.register_blueprint(common_bp, url_prefix=f"{config.API_PREFIX}/common")
+    # 注册所有 v1 版本路由
+    register_v1_routes(app)
     
     # 全局错误处理
     @app.errorhandler(APIException)
@@ -46,11 +46,11 @@ def create_app(config=None):
     
     @app.errorhandler(404)
     def handle_not_found(e):
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({'detail': 'Not found'}), 404
     
     @app.errorhandler(500)
     def handle_server_error(e):
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'detail': 'Internal server error'}), 500
     
     # 根路径
     @app.route('/')
@@ -59,8 +59,11 @@ def create_app(config=None):
             'message': 'CMDB Server Lite API',
             'version': '1.0.0',
             'endpoints': {
-                'health': f'{config.API_PREFIX}/common/health',
-                'statistics': f'{config.API_PREFIX}/common/statistics'
+                'health': '/api/v1/common/health',
+                'statistics': '/api/v1/common/statistics',
+                'classifications': '/api/v1/classifications',
+                'models': '/api/v1/models',
+                'relations': '/api/v1/relations'
             }
         })
     

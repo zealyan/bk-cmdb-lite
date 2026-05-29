@@ -11,24 +11,19 @@ def init_cors(app: Flask, config=None):
     
     Args:
         app: Flask 应用实例
-        config: CORS 配置
+        config: 配置对象
     """
     if config is None:
         from app.config.settings import get_config
-        cfg = get_config()
-        config = {
-            'origins': cfg.CORS_ORIGINS,
-            'methods': cfg.CORS_METHODS,
-            'headers': cfg.CORS_HEADERS
-        }
+        config = get_config()
     
     CORS(
         app,
         resources={
             r"/api/*": {
-                "origins": config['origins'],
-                "methods": config['methods'],
-                "allow_headers": config['headers']
+                "origins": config.CORS_ORIGINS,
+                "methods": config.CORS_METHODS,
+                "allow_headers": config.CORS_HEADERS
             }
         },
         supports_credentials=True

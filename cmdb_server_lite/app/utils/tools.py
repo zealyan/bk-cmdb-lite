@@ -5,6 +5,16 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
+import uuid
+
+def generate_id() -> int:
+    """
+    生成唯一 ID
+    
+    Returns:
+        唯一整数 ID
+    """
+    return int(uuid.uuid4().int >> 64)
 
 def safe_get(data: dict, key: str, default: Any = None) -> Any:
     """
