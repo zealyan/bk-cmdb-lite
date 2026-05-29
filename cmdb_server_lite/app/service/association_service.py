@@ -89,15 +89,50 @@ class AssociationService:
     @staticmethod
     def find_instance_associations(bk_obj_id, conditions=None):
         """查询实例关联"""
-        base_sql = "SELECT * FROM cc_InstAsst_0_pub WHERE bk_obj_id = :bk_obj_id"
+        base_sql = """
+            SELECT ia.*, 
+                   oa.bk_obj_asst_name,
+                   oa.bk_obj_asst_id,
+                   ad.bk_asst_name,
+                   oa.target_obj_id,
+                   oa.target_obj_name
+            FROM cc_InstAsst_0_pub ia
+            JOIN cc_ObjAsst oa ON ia.bk_obj_asst_id = oa.bk_obj_asst_id
+            JOIN cc_AsstDes ad ON ia.bk_relation_type_id = ad.bk_asst_id
+            WHERE ia.bk_obj_id = :bk_obj_id
+        """
         params = {'bk_obj_id': bk_obj_id}
         
         if conditions and isinstance(conditions, dict):
             for field, value in conditions.items():
-                base_sql += f" AND {field} = :{field}"
+                base_sql += f" AND ia.{field} = :{field}"
                 params[field] = value
         
-        return query_all(base_sql, params)
+        results = query_all(base_sql, params)
+        
+        # 补充实例名称信息
+        from app.service.instance_service import InstanceService
+        for result in results:
+            try:
+                # 获取源实例名称
+                src_instance = InstanceService.get_instance(
+                    result.get('bk_obj_id'), 
+                    result.get('bk_inst_id')
+                )
+                if src_instance:
+                    result['bk_inst_name'] = src_instance.get('bk_inst_name') or src_instance.get('name')
+                
+                # 获取目标实例名称
+                dest_instance = InstanceService.get_instance(
+                    result.get('bk_asst_obj_id'), 
+                    result.get('bk_asst_inst_id')
+                )
+                if dest_instance:
+                    result['bk_asst_inst_name'] = dest_instance.get('bk_inst_name') or dest_instance.get('name')
+            except Exception:
+                pass
+        
+        return results
     
     @staticmethod
     def get_related_instances(instance_id, model_id=None):
