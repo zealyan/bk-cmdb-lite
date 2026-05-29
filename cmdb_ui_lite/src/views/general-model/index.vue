@@ -1097,20 +1097,28 @@ export default {
       this.advancedFilterConditions = conditionMap
       this.currentSearchParams = searchParams
       
-      if (rawConditions && rawConditions.length > 0) {
-        this.filterTags = rawConditions.map(c => {
-          const property = this.allProperties.find(p => p.bk_property_id === c.field)
-          return {
-            id: c.field,
-            property: property || {},
-            propertyName: property?.bk_property_name || c.field,
-            operator: c.operator,
-            value: c.value
-          }
-        })
-      } else {
-        this.filterTags = []
-      }
+      console.log('[handleAdvancedFilterSearch] rawConditions:', rawConditions)
+      console.log('[handleAdvancedFilterSearch] conditionMap:', conditionMap)
+      console.log('[handleAdvancedFilterSearch] allProperties:', this.allProperties)
+      
+      // 构建 filterTags - 基于 conditionMap 而不是 rawConditions
+      const tags = []
+      Object.keys(conditionMap).forEach(id => {
+        const { operator, value } = conditionMap[id]
+        const property = this.allProperties.find(p => p.bk_property_id === id)
+        if (property && value !== null && value !== undefined && String(value).length > 0) {
+          tags.push({
+            id: id,
+            property: property,
+            propertyName: property.bk_property_name || id,
+            operator: operator,
+            value: value
+          })
+        }
+      })
+      this.filterTags = tags
+      
+      console.log('[handleAdvancedFilterSearch] filterTags:', this.filterTags)
 
       this.table.pagination.current = 1
       
