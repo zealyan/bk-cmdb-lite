@@ -1,8 +1,8 @@
 <template>
-  <div class="instance-association">
-    <div class="association-options">
+  <div class="instance-association" v-bkloading="{ isLoading: loading }">
+    <div class="options clearfix">
       <div class="fl">
-        <bk-button theme="primary" @click="handleAddAssociation">
+        <bk-button theme="primary" class="options-button" @click="handleAddAssociation">
           新增关联
         </bk-button>
       </div>
@@ -121,6 +121,7 @@ export default {
       pageSize: 10,
       groupStates: {},
       showCreateDialog: false,
+      loading: false,
       loadedProperties: {} // 按需加载的属性缓存
     }
   },
@@ -129,8 +130,12 @@ export default {
     propertiesMap: {
       handler(newMap) {
         console.log('[InstanceAssociation] propertiesMap 变化:', Object.keys(newMap))
+        this.loading = true
         // 清空缓存，强制重新构建列
         this.loadedProperties = {}
+        this.$nextTick(() => {
+          this.loading = false
+        })
       },
       deep: true
     },
@@ -138,8 +143,12 @@ export default {
     associations: {
       handler() {
         console.log('[InstanceAssociation] associations 变化')
+        this.loading = true
         // 清空分组状态
         this.groupStates = {}
+        this.$nextTick(() => {
+          this.loading = false
+        })
       },
       deep: true
     }
@@ -404,13 +413,18 @@ export default {
 
 <style lang="scss" scoped>
 .instance-association {
-  padding: 20px;
+  height: 100%;
 }
 
-.association-options {
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
+.options {
+  padding: 15px 0;
+  font-size: 0;
+
+  .options-button {
+    height: 32px;
+    line-height: 30px;
+    font-size: 14px;
+  }
 }
 
 .association-list {
@@ -428,6 +442,7 @@ export default {
   border: 1px solid #e7e9ef;
   border-radius: 2px 2px 0 0;
   overflow: hidden;
+  margin-top: 0;
 
   .group-info {
     height: 42px;

@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 项目路径
-PROJECT_ROOT="/workspace/bk-cmdb"
+PROJECT_ROOT="/workspace"
 BACKEND_DIR="$PROJECT_ROOT/cmdb_server_lite"
 FRONTEND_DIR="$PROJECT_ROOT/cmdb_ui_lite"
 

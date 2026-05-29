@@ -81,12 +81,6 @@
                 :placeholder="filterPlaceholder"
                 @change="handleSearch">
               </cmdb-search-date>
-              <bk-button
-                class="search-btn"
-                :text="true"
-                @click="handleSearch">
-                <span class="bk-icon icon-search"></span>
-              </bk-button>
             </template>
             <template v-else-if="isTimeField">
               <cmdb-search-time
@@ -96,12 +90,6 @@
                 :placeholder="filterPlaceholder"
                 @change="handleSearch">
               </cmdb-search-time>
-              <bk-button
-                class="search-btn"
-                :text="true"
-                @click="handleSearch">
-                <span class="bk-icon icon-search"></span>
-              </bk-button>
             </template>
             <template v-else>
               <input
@@ -110,12 +98,6 @@
                 v-model="filter.value"
                 :placeholder="filterPlaceholder"
                 @keyup.enter="handleSearch">
-              <bk-button
-                class="search-btn"
-                :text="true"
-                @click="handleSearch">
-                <span class="bk-icon icon-search"></span>
-              </bk-button>
             </template>
           </div>
           <span v-else class="filter-placeholder">请先选择字段</span>
@@ -149,6 +131,7 @@
     <bk-table
       ref="tableRef"
       class="models-table"
+      v-bkloading="{ isLoading: table.loading }"
       :data="table.list"
       :pagination="table.pagination"
       :sort="tableSort"
@@ -632,6 +615,7 @@ export default {
   },
   methods: {
     async loadModelData(searchParams = null) {
+      this.table.loading = true
       try {
         const query = this.$route.query
         const currentField = query.field || this.filter.field
@@ -753,6 +737,8 @@ export default {
       } catch (error) {
         console.error('[ERROR] 加载数据失败:', error)
         this.$bkMessage({ message: '加载数据失败', theme: 'error' })
+      } finally {
+        this.table.loading = false
       }
     },
     setTableHeader() {
@@ -1560,16 +1546,15 @@ export default {
 
       .search-input {
         flex: 1;
-        height: 30px;
+        height: 32px;
         padding: 0 10px;
         border: 1px solid #c4c6cc;
-        border-right: none;
-        border-radius: 0;
+        border-radius: 2px;
         font-size: 14px;
         outline: none;
         min-width: 0;
         box-sizing: border-box;
-        line-height: 30px;
+        line-height: 32px;
 
         &:focus {
           border-color: #3a84ff;
@@ -1587,7 +1572,7 @@ export default {
 
           .enum-multi-input {
             width: 100%;
-            height: 30px;
+            height: 32px;
             padding: 0 32px 0 10px;
             border: 1px solid #c4c6cc;
             border-radius: 0;
@@ -1600,7 +1585,7 @@ export default {
             overflow: hidden;
             text-overflow: ellipsis;
             box-sizing: border-box;
-            line-height: 30px;
+            line-height: 32px;
 
             &:focus,
             &:hover {
@@ -1737,33 +1722,6 @@ export default {
           }
         }
       }
-
-      .search-btn {
-        flex-shrink: 0;
-        height: 32px;
-        padding: 0 12px;
-        border: 1px solid #c4c6cc;
-        border-left: none;
-        border-radius: 0 2px 2px 0;
-        background: #fff;
-        cursor: pointer;
-        transition: all 0.2s;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-
-        &:hover {
-          background: #f0f1f5;
-          border-color: #3a84ff;
-        }
-
-        .bk-icon {
-          font-size: 16px;
-          color: #63656e;
-          line-height: 1;
-        }
-      }
     }
   }
 
@@ -1856,12 +1814,6 @@ export default {
           &.is-open .enum-dropdown {
             transform: translateY(0);
           }
-        }
-
-        .search-btn {
-          width: 100%;
-          border-radius: 0 0 2px 2px;
-          border-top: none;
         }
       }
     }

@@ -6,9 +6,32 @@
 
 import json
 import duckdb
+import os
+from pathlib import Path
 
-UI_PROJECT = "../cmdb_ui_lite/src/assets/api"
-DB_PATH = "cmdb.duckdb"
+# 基于当前文件动态计算路径
+def get_project_root():
+    """获取项目根目录，支持从环境变量读取或自动计算"""
+    # 优先从环境变量读取 PROJECT_ROOT
+    project_root = os.environ.get("PROJECT_ROOT")
+    if project_root and os.path.exists(project_root):
+        return Path(project_root).resolve()
+    
+    # 自动计算：当前文件在 cmdb_server_lite 目录下，向上两级是项目根目录
+    current_file = Path(__file__).resolve()
+    # cmdb_server_lite/ -> 项目根目录
+    project_root = current_file.parent.parent
+    return project_root
+
+PROJECT_ROOT = get_project_root()
+
+# 基于项目根目录计算其他路径
+CMDB_UI_LITE = PROJECT_ROOT / "cmdb_ui_lite"
+CMDB_SERVER_LITE = PROJECT_ROOT / "cmdb_server_lite"
+BK_CMDB = PROJECT_ROOT / "bk-cmdb"
+
+UI_PROJECT = str(CMDB_UI_LITE / "src" / "assets" / "api" / "models")
+DB_PATH = str(CMDB_SERVER_LITE / "cmdb.duckdb")
 
 # 系统字段列表 - 与原项目保持一致
 # 参考原项目: /workspace/bk-cmdb/src/common/definitions.go
@@ -429,7 +452,7 @@ def migrate_classifications(db):
 
 def migrate_models(db):
     """迁移模型数据"""
-    with open(f"{UI_PROJECT}/index.json", "r", encoding="utf-8") as f:
+    with open(f"{UI_PROJECT}/../index.json", "r", encoding="utf-8") as f:
         data = json.load(f)
 
     for idx, model in enumerate(data["models"]):
@@ -453,7 +476,7 @@ def migrate_models(db):
 
 def migrate_attributes(db):
     """迁移属性数据 - 从单独的属性文件加载，包含系统属性"""
-    with open(f"{UI_PROJECT}/index.json", "r", encoding="utf-8") as f:
+    with open(f"{UI_PROJECT}/../index.json", "r", encoding="utf-8") as f:
         data = json.load(f)
 
     attr_id = 1
@@ -461,12 +484,7 @@ def migrate_attributes(db):
 
     for model in data["models"]:
         model_id = model.get("bk_obj_id")
-        attributes_file = model.get("attributes_file")
-
-        if not attributes_file:
-            continue
-
-        attr_file_path = f"{UI_PROJECT}/models/{attributes_file}"
+        attr_file_path = f"{UI_PROJECT}/attributes/{model_id}.json"
 
         try:
             with open(attr_file_path, "r", encoding="utf-8") as f:
@@ -573,18 +591,13 @@ def migrate_attributes(db):
 
 def migrate_instances(db):
     """迁移实例数据 - 从单独的实例文件加载"""
-    with open(f"{UI_PROJECT}/index.json", "r", encoding="utf-8") as f:
+    with open(f"{UI_PROJECT}/../index.json", "r", encoding="utf-8") as f:
         data = json.load(f)
 
     for model in data["models"]:
         model_id = model.get("bk_obj_id")
         table_name = f"cc_ObjectBase_0_pub_{model_id}"
-        instances_file = model.get("instances_file")
-
-        if not instances_file:
-            continue
-
-        inst_file_path = f"{UI_PROJECT}/models/{instances_file}"
+        inst_file_path = f"{UI_PROJECT}/instances/{model_id}.json"
 
         try:
             with open(inst_file_path, "r", encoding="utf-8") as f:
@@ -646,9 +659,9 @@ def migrate_instances(db):
 
 
 def migrate_relations(db):
-    """迁移模型关联关系"""
+    """迁移模型关联关系 - 从 index.json 的 associations 字段读取"""
     try:
-        with open(f"{UI_PROJECT}/models/relations/instance.json", "r", encoding="utf-8") as f:
+        with open(f"{UI_PROJECT}/../index.json", "r", encoding="utf-8") as f:
             data = json.load(f)
 
         model_name_map = {}
@@ -658,16 +671,34 @@ def migrate_relations(db):
 
         asst_des_id = 1
         inserted_asst_ids = set()
-        for rel in data["relations"]:
-            bk_asst_id = rel["bk_relation_type_id"]
+        all_associations = []
+        
+        # 收集所有关联
+        for model in data["models"]:
+            src_model = model.get("bk_obj_id")
+            associations = model.get("associations", [])
+            for assoc in associations:
+                all_associations.append({
+                    "src_model": src_model,
+                    "dst_model": assoc.get("target_obj_id"),
+                    "bk_asst_id": assoc.get("relation_type_id"),
+                    "bk_asst_name": assoc.get("relation_type_name"),
+                    "cardinality": assoc.get("cardinality", "1:n"),
+                    "direction": assoc.get("direction", "forward")
+                })
+
+        # 插入到 cc_AsstDes
+        for assoc in all_associations:
+            bk_asst_id = assoc["bk_asst_id"]
             if bk_asst_id in inserted_asst_ids:
                 continue
-            bk_asst_name = rel["bk_relation_type_name"]
-            src_model = rel["bk_src_model"]
-            dst_model = rel["bk_dst_model"]
-
-            src_des = rel.get("src_des", model_name_map.get(dst_model, dst_model))
-            dest_des = rel.get("dest_des", model_name_map.get(src_model, src_model))
+            
+            src_model = assoc["src_model"]
+            dst_model = assoc["dst_model"]
+            bk_asst_name = assoc["bk_asst_name"]
+            
+            src_des = model_name_map.get(dst_model, dst_model)
+            dest_des = model_name_map.get(src_model, src_model)
 
             db.execute("""
                 INSERT INTO cc_AsstDes
@@ -680,19 +711,21 @@ def migrate_relations(db):
                 bk_asst_name,
                 src_des,
                 dest_des,
-                rel.get("direction", "forward"),
+                assoc.get("direction", "forward"),
                 True,
                 "0"
             ])
             inserted_asst_ids.add(bk_asst_id)
             asst_des_id += 1
 
+        # 插入到 cc_ObjAsst
         obj_asst_id = 1
-        for rel in data["relations"]:
-            bk_asst_id = rel["bk_relation_type_id"]
-            bk_asst_name = rel["bk_relation_type_name"]
-            src_model = rel["bk_src_model"]
-            dst_model = rel["bk_dst_model"]
+        for assoc in all_associations:
+            src_model = assoc["src_model"]
+            dst_model = assoc["dst_model"]
+            bk_asst_id = assoc["bk_asst_id"]
+            bk_asst_name = assoc["bk_asst_name"]
+            cardinality = assoc.get("cardinality", "1:n")
 
             model_exists = db.execute("SELECT COUNT(*) FROM cc_ObjDes WHERE bk_obj_id = ?", [src_model]).fetchone()[0]
             target_exists = db.execute("SELECT COUNT(*) FROM cc_ObjDes WHERE bk_obj_id = ?", [dst_model]).fetchone()[0]
@@ -716,8 +749,8 @@ def migrate_relations(db):
                 bk_asst_id,
                 obj_asst_id_str,
                 bk_asst_name,
-                rel.get("cardinality", "1:n"),
-                rel.get("cardinality", "1:n"),
+                cardinality,
+                cardinality,
                 "none",
                 True,
                 "admin",
@@ -728,7 +761,7 @@ def migrate_relations(db):
             ])
             obj_asst_id += 1
 
-        print(f"迁移 {len(data['relations'])} 个关联类型")
+        print(f"迁移 {len(all_associations)} 个关联类型")
     except FileNotFoundError:
         print("未找到模型关联关系文件")
 

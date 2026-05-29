@@ -8,6 +8,7 @@ import json
 import re
 import duckdb
 from typing import Optional, Dict, List, Any, Tuple
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,7 +27,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "cmdb.duckdb")
+
+# 基于当前文件动态计算路径
+def get_project_root():
+    """获取项目根目录，支持从环境变量读取或自动计算"""
+    # 优先从环境变量读取 PROJECT_ROOT
+    project_root = os.environ.get("PROJECT_ROOT")
+    if project_root and os.path.exists(project_root):
+        return Path(project_root).resolve()
+    
+    # 自动计算：当前文件在 cmdb_server_lite 目录下，向上两级是项目根目录
+    current_file = Path(__file__).resolve()
+    # cmdb_server_lite/ -> 项目根目录
+    project_root = current_file.parent.parent
+    return project_root
+
+
+PROJECT_ROOT = get_project_root()
+CMDB_SERVER_LITE = PROJECT_ROOT / "cmdb_server_lite"
+DB_PATH = str(CMDB_SERVER_LITE / "cmdb.duckdb")
 
 
 def get_db():
