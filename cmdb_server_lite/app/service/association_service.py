@@ -89,6 +89,14 @@ class AssociationService:
     @staticmethod
     def find_instance_associations(bk_obj_id, conditions=None):
         """查询实例关联"""
+        # 有效的字段列表
+        valid_fields = [
+            '_id', 'id', 'bk_obj_id', 'bk_inst_id', 
+            'bk_asst_obj_id', 'bk_asst_inst_id', 
+            'bk_obj_asst_id', 'bk_relation_type_id', 
+            'bk_supplier_account'
+        ]
+        
         base_sql = """
             SELECT ia.*, 
                    oa.bk_obj_asst_name,
@@ -105,8 +113,9 @@ class AssociationService:
         
         if conditions and isinstance(conditions, dict):
             for field, value in conditions.items():
-                base_sql += f" AND ia.{field} = :{field}"
-                params[field] = value
+                if field in valid_fields:
+                    base_sql += f" AND ia.{field} = :{field}"
+                    params[field] = value
         
         results = query_all(base_sql, params)
         
