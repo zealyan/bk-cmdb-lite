@@ -12,6 +12,15 @@ class AssociationService:
     @staticmethod
     def get_object_associations(conditions=None):
         """查询对象关联"""
+        # 有效的字段列表
+        valid_fields = [
+            '_id', 'id', 'bk_obj_id', 'target_obj_id', 
+            'target_obj_name', 'bk_asst_id', 'bk_obj_asst_id', 
+            'bk_obj_asst_name', 'mapping', 'on_delete', 
+            'creator', 'modifier', 'create_time', 'last_time', 
+            'bk_supplier_account'
+        ]
+        
         base_sql = """
             SELECT 
                 oa.*,
@@ -24,8 +33,9 @@ class AssociationService:
             where_clauses = []
             params = {}
             for field, value in conditions.items():
-                where_clauses.append(f"oa.{field} = :{field}")
-                params[field] = value
+                if field in valid_fields:
+                    where_clauses.append(f"oa.{field} = :{field}")
+                    params[field] = value
             if where_clauses:
                 sql = base_sql + " WHERE " + " AND ".join(where_clauses)
             else:
