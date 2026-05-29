@@ -6,7 +6,9 @@ from app.utils.logger import get_logger
 
 logger = get_logger('api.model')
 model_bp = Blueprint('model', __name__)
+instance_bp = Blueprint('instance', __name__)
 
+# 模型相关路由 - /api/v1/models/...
 @model_bp.route('', methods=['GET'])
 def get_models():
     """获取所有模型列表"""
@@ -209,7 +211,8 @@ def check_associations(model_id):
         logger.error(f"Error checking associations: {e}")
         return jsonify({'detail': str(e)}), 500
 
-@model_bp.route('/instances/<instance_id>/associations', methods=['GET'])
+# 实例相关路由 - /api/v1/instances/...
+@instance_bp.route('/<instance_id>/associations', methods=['GET'])
 def get_instance_associations(instance_id):
     """获取单个实例的关联关系"""
     try:
@@ -219,7 +222,7 @@ def get_instance_associations(instance_id):
         logger.error(f"Error getting instance associations: {e}")
         return jsonify({'detail': str(e)}), 500
 
-@model_bp.route('/instances/<instance_id>/related', methods=['GET'])
+@instance_bp.route('/<instance_id>/related', methods=['GET'])
 def get_related_instances(instance_id):
     """获取实例的关联实例详情"""
     try:
