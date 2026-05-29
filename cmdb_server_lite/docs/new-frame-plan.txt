@@ -1,0 +1,64 @@
+Flask 框架、SQL 语句独立文件管理、sqlglot 处理多数据库方言、SQLAlchemy 仅做连接池 / 原生 SQL 执行（禁用 ORM Model）、兼容 PostgreSQL/MySQL/SQLite、分层解耦 API / 配置 / 业务
+Python 3.7 推荐、 Python 3.9备选
+
+目录结构示例
+cmdb_server_lite/
+├── .env                # 基础环境变量（本地开发）
+├── .env.prod           # 生产环境变量
+├── .env.test           # 测试环境变量
+├── requirements.txt    # 项目依赖清单
+├── README.md           # 项目说明、部署、运行文档
+├── run.py              # 项目统一启动入口
+├── app/                # 核心源码根目录（所有业务代码）
+│   ├── __init__.py     # Flask应用初始化、全局组件加载、蓝图注册
+│   ├── config/         # 配置中心（多环境、数据库、连接池、全局参数）
+│   │   ├── __init__.py
+│   │   ├── settings.py # 全局基础配置、数据库默认参数、方言枚举
+│   │   ├── dev.py      # 开发环境配置
+│   │   ├── test.py     # 测试环境配置
+│   │   └── prod.py     # 生产环境配置
+│   ├── api/            # API 路由层（按版本+业务拆分蓝图，RESTful接口）
+│   │   ├── __init__.py # 蓝图统一聚合注册
+│   │   └── v1/         # 接口版本控制（v1 为主版本，便于后续迭代）
+│   │       ├── __init__.py
+│   │       ├── user.py   # 用户模块接口
+│   │       ├── order.py  # 订单模块接口
+│   │       └── common.py # 公共接口
+│   ├── service/        # 业务逻辑层（解耦路由与数据操作，核心业务逻辑）
+│   │   ├── __init__.py
+│   │   ├── user_service.py
+│   │   └── order_service.py
+│   ├── migrate/             # 数据库迁移
+│   ├── db/             # 数据库核心层（SQLAlchemy引擎、连接池、sqlglot方言、SQL执行器）
+│   │   ├── __init__.py
+│   │   ├── engine.py   # SQLAlchemy引擎创建、连接池配置、多库引擎管理
+│   │   ├── sql_loader.py # 加载本地 .sql 文件工具
+│   │   ├── dialect.py  # sqlglot 方言转译、语法适配工具
+│   │   └── executor.py # 原生SQL执行器（查询/增删改/事务/参数化查询）
+│   ├── sql/            # 独立SQL文件目录（纯SQL模板，按业务模块拆分）
+│   │   ├── user/       # 用户模块SQL
+│   │   │   ├── select_user.sql
+│   │   │   ├── insert_user.sql
+│   │   │   └── update_user.sql
+│   │   ├── order/      # 订单模块SQL
+│   │   │   ├── select_order.sql
+│   │   │   └── insert_order.sql
+│   │   └── common/     # 公共通用SQL（分页、字典查询等）
+│   │       └── page_limit.sql
+│   ├── utils/          # 全局工具类（日志、异常、通用方法、参数校验）
+│   │   ├── __init__.py
+│   │   ├── logger.py   # 日志初始化
+│   │   ├── exceptions.py # 自定义业务异常
+│   │   └── tools.py    # 通用工具函数
+│   ├── middlewares/    # 中间件（跨域、请求拦截、签名、限流等）
+│   │   ├── __init__.py
+│   │   ├── cors.py     # 跨域中间件
+│   │   └── request_mw.py # 请求日志/入参校验中间件
+│   ├── static/         # 静态资源（纯API项目可空置）
+│   └── templates/      # 模板页面（纯API项目可空置）
+├── logs/               # 日志文件存储目录（运行日志、错误日志）
+├── tests/              # 单元测试、接口测试（pytest）
+│   ├── __init__.py
+│   ├── test_db.py      # 数据库执行测试
+│   └── test_api.py     # 接口测试
+└── docs/               # 项目文档（接口文档、数据库设计、SQL规范）

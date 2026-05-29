@@ -1,4 +1,6 @@
 cmdb_ui_lite/node_modules
+cmdb_ui_lite/dist
+
 
 bk-cmdb/src/bin/*
 bk-cmdb/src/*/*/cmdb_*
