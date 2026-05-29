@@ -11,7 +11,7 @@ def register_v1_routes(app):
     """注册 v1 版本的所有路由"""
     app.register_blueprint(common_bp, url_prefix='/api/v1/common')
     app.register_blueprint(classification_bp, url_prefix='/api/v1/classifications')
-    app.register_blueprint(model_bp, url_prefix='/api/v1/models')
+    app.register_blueprint(model_bp, url_prefix='/api/v1')  # 注册在 /api/v1 下，这样 /api/v1/models 和 /api/v1/instances 都能正常访问
     app.register_blueprint(relation_bp, url_prefix='/api/v1/relations')
     
     # 旧版 API 路径保持向后兼容

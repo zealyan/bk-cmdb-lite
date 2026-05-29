@@ -486,6 +486,36 @@ class InstanceService:
         execute(delete_instance_sql, ids)
         
         return len(ids)
+    
+    @staticmethod
+    def get_related_instances(instance_id, model_id=None):
+        """获取实例的关联实例详情"""
+        from app.service.association_service import AssociationService
+        
+        associations = AssociationService.get_instance_associations(instance_id)
+        related_instances = []
+        
+        for assoc in associations:
+            # 确定目标实例的模型和ID
+            if assoc.get('bk_obj_id') == model_id or model_id is None:
+                target_model_id = assoc.get('bk_asst_obj_id')
+                target_instance_id = assoc.get('bk_asst_inst_id')
+            elif assoc.get('bk_asst_obj_id') == model_id or model_id is None:
+                target_model_id = assoc.get('bk_obj_id')
+                target_instance_id = assoc.get('bk_inst_id')
+            else:
+                continue
+            
+            # 获取目标实例
+            try:
+                instance = InstanceService.get_instance(target_model_id, target_instance_id)
+                if instance:
+                    related_instances.append(instance)
+            except Exception:
+                # 如果实例不存在，跳过
+                continue
+        
+        return related_instances
 
 
 # 系统字段列表

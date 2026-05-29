@@ -208,3 +208,24 @@ def check_associations(model_id):
     except Exception as e:
         logger.error(f"Error checking associations: {e}")
         return jsonify({'detail': str(e)}), 500
+
+@model_bp.route('/instances/<instance_id>/associations', methods=['GET'])
+def get_instance_associations(instance_id):
+    """获取单个实例的关联关系"""
+    try:
+        associations = AssociationService.get_instance_associations(instance_id)
+        return jsonify({'associations': associations})
+    except Exception as e:
+        logger.error(f"Error getting instance associations: {e}")
+        return jsonify({'detail': str(e)}), 500
+
+@model_bp.route('/instances/<instance_id>/related', methods=['GET'])
+def get_related_instances(instance_id):
+    """获取实例的关联实例详情"""
+    try:
+        model_id = request.args.get('model_id')
+        related = InstanceService.get_related_instances(instance_id, model_id)
+        return jsonify({'related': related})
+    except Exception as e:
+        logger.error(f"Error getting related instances: {e}")
+        return jsonify({'detail': str(e)}), 500
