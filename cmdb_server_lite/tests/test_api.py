@@ -1,14 +1,39 @@
-import requests
-import json
+"""
+API 测试文件
+"""
 
-# 查询模型关联
-response = requests.post('http://localhost:8000/find/objectassociation', json={'condition': {'bk_obj_id': 'bk_slb'}})
-print("=== /find/objectassociation ===")
-print(f"Status: {response.status_code}")
-print(f"Response: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
+import pytest
+import sys
+import os
 
-# 查询关联类型
-response2 = requests.post('http://localhost:8000/find/associationtype', json={})
-print("\n=== /find/associationtype ===")
-print(f"Status: {response2.status_code}")
-print(f"Response: {json.dumps(response2.json(), indent=2, ensure_ascii=False)}")
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from app import create_app
+from app.config.settings import DevelopmentConfig
+
+@pytest.fixture
+def app():
+    app = create_app(DevelopmentConfig)
+    app.config['TESTING'] = True
+    return app
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+def test_health_check(client):
+    """测试健康检查"""
+    response = client.get('/api/v1/common/health')
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    assert 'status' in data
+    assert 'database' in data
+
+def test_statistics(client):
+    """测试统计接口"""
+    response = client.get('/api/v1/common/statistics')
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    assert 'total_models' in data

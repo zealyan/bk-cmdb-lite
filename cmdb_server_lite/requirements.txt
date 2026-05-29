@@ -1,4 +1,26 @@
-duckdb>=1.0.0
-fastapi>=0.100.0
-uvicorn>=0.23.0
-pydantic>=2.0.0
+# Flask Web Framework
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Database Connection Pool & SQL Execution
+SQLAlchemy>=2.0.35  # 建议使用 2.0.35+ 以支持 Python 3.14
+# Native DB drivers
+psycopg2-binary==2.9.7  # PostgreSQL
+pymysql==1.1.0  # MySQL
+# SQLite: 使用 Python 内置 sqlite3,无需额外安装
+
+# Multi-Database Dialect Processing
+sqlglot==19.8.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Logging
+coloredlogs==15.0.1
+
+# Development & Testing
+pytest==7.4.2
+pytest-flask==1.2.0
+
+# Utilities
+click==8.1.7
