@@ -430,7 +430,10 @@ export default {
     visibleFilterTags() {
       return this.filterTags.filter(tag => {
         const value = tag.value
-        return value !== null && value !== undefined && !!String(value).length
+        if (Array.isArray(value)) {
+          return value.length > 0
+        }
+        return value !== null && value !== undefined && String(value).trim().length > 0
       })
     },
     hasFilterCondition() {
@@ -1002,17 +1005,24 @@ export default {
             
             this.advancedFilterConditions = conditionMap
             
-            // 恢复 filterTags
-            this.filterTags = rawConditions.map(c => {
-              const property = this.allProperties.find(p => p.bk_property_id === c.field)
-              return {
-                id: c.field,
-                property: property || {},
-                propertyName: property?.bk_property_name || c.field,
-                operator: c.operator,
-                value: c.value
+            // 恢复 filterTags - 基于 conditionMap
+            const tags = []
+            Object.keys(conditionMap).forEach(id => {
+              const { operator, value } = conditionMap[id]
+              const property = this.allProperties.find(p => p.bk_property_id === id)
+              if (property && value !== null && value !== undefined) {
+                if (Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0) {
+                  tags.push({
+                    id: id,
+                    property: property,
+                    propertyName: property.bk_property_name || id,
+                    operator: operator,
+                    value: value
+                  })
+                }
               }
             })
+            this.filterTags = tags
             
             console.log('[restoreStateFromUrl] 高级筛选条件已恢复，filterTags:', this.filterTags)
           }
@@ -1106,14 +1116,17 @@ export default {
       Object.keys(conditionMap).forEach(id => {
         const { operator, value } = conditionMap[id]
         const property = this.allProperties.find(p => p.bk_property_id === id)
-        if (property && value !== null && value !== undefined && String(value).length > 0) {
-          tags.push({
-            id: id,
-            property: property,
-            propertyName: property.bk_property_name || id,
-            operator: operator,
-            value: value
-          })
+        if (property && value !== null && value !== undefined) {
+          const hasValue = Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0
+          if (hasValue) {
+            tags.push({
+              id: id,
+              property: property,
+              propertyName: property.bk_property_name || id,
+              operator: operator,
+              value: value
+            })
+          }
         }
       })
       this.filterTags = tags
