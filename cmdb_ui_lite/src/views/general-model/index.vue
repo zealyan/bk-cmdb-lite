@@ -1019,13 +1019,14 @@ export default {
         } catch (e) {
           console.error('[restoreStateFromUrl] 解析filter_adv失败:', e)
           this.advancedFilterConditions = null
-          this.filterTags = []
+          // 解析失败时，才使用简单搜索条件更新filterTags
+          this.updateFilterTagsFromQuery()
         }
       } else {
         this.advancedFilterConditions = null
+        // 没有高级筛选条件时，使用简单搜索条件更新filterTags
+        this.updateFilterTagsFromQuery()
       }
-
-      this.updateFilterTagsFromQuery()
 
       console.log('[restoreStateFromUrl] 恢复后的状态:', {
         field: this.filter.field,
@@ -1033,7 +1034,8 @@ export default {
         fuzzyQuery: this.filter.fuzzyQuery,
         page: this.table.pagination.current,
         sort: this.table.sort,
-        hasAdvancedFilter: !!this.advancedFilterConditions
+        hasAdvancedFilter: !!this.advancedFilterConditions,
+        filterTagsCount: this.filterTags.length
       })
     },
     syncStateToUrl(options = {}) {
@@ -1430,16 +1432,23 @@ export default {
     handleViewDetails(instance) {
       // 进入详情页前，确保URL中包含当前的高级筛选条件
       const query = this.$route.query
-      const filterAdv = query.filter_adv || (this.advancedFilterConditions ? QS.stringify(
-        Object.keys(this.advancedFilterConditions).reduce((acc, id) => {
-          const { operator, value } = this.advancedFilterConditions[id]
-          const key = `${id}.${operator.replace('$', '')}`
-          if (String(value).length) {
-            acc[key] = Array.isArray(value) ? value.join(',') : value
-          }
-          return acc
-        }, {}), { encode: false }
-      ) : null)
+      let filterAdv = null
+      
+      // 优先使用URL中的filter_adv，否则从advancedFilterConditions构建
+      if (query.filter_adv) {
+        filterAdv = query.filter_adv
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        filterAdv = QS.stringify(
+          Object.keys(this.advancedFilterConditions).reduce((acc, id) => {
+            const { operator, value } = this.advancedFilterConditions[id]
+            const key = `${id}.${operator.replace('$', '')}`
+            if (String(value).length) {
+              acc[key] = Array.isArray(value) ? value.join(',') : value
+            }
+            return acc
+          }, {}), { encode: false }
+        )
+      }
       
       const s = query.s || 'adv'
       
