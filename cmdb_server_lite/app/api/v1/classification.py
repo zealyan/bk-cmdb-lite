@@ -19,7 +19,12 @@ def get_classifications():
 def find_classification_objects():
     """查询分类及其下属模型"""
     try:
-        data = request.get_json() or {}
+        # 尝试获取 JSON 数据，如果失败则忽略（处理 Content-Type 问题）
+        try:
+            data = request.get_json()
+        except:
+            data = {}
+        
         classifications = ClassificationService.get_classifications_with_models()
         return jsonify(classifications)
     except Exception as e:
