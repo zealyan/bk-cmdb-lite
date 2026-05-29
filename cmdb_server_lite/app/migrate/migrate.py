@@ -169,16 +169,16 @@ class DatabaseMigrator:
         """迁移分类数据"""
         for cls in CLASSIFICATIONS:
             self.execute_sql("""
-                INSERT INTO cc_ObjClassification
+                INSERT OR REPLACE INTO cc_ObjClassification
                 (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, bk_supplier_account)
-                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, '0')
-            """, {
-                "id": cls["id"],
-                "bk_classification_id": cls["bk_classification_id"],
-                "bk_classification_name": cls["bk_classification_name"],
-                "bk_classification_icon": cls["bk_classification_icon"],
-                "ispre": cls["ispre"]
-            })
+                VALUES (?, ?, ?, ?, ?, '0')
+            """, (
+                cls["id"],
+                cls["bk_classification_id"],
+                cls["bk_classification_name"],
+                cls["bk_classification_icon"],
+                cls["ispre"]
+            ))
         logger.info(f"迁移 {len(CLASSIFICATIONS)} 个分类")
     
     def init_core_tables(self):
@@ -612,30 +612,138 @@ class DatabaseMigrator:
             except FileNotFoundError:
                 logger.warning(f"未找到实例文件 {inst_file_path}")
     
+    def migrate_associations(self):
+        """迁移关联关系数据"""
+        ui_project = self.workspace_root / "cmdb_ui_lite" / "src" / "assets" / "api"
+
+        # 1. 先添加关联类型到 cc_AsstDes
+        asst_types = [
+            {
+                "bk_asst_id": "slb_to_server",
+                "bk_asst_name": "指向",
+                "bk_supplier_account": "0",
+                "ispre": True
+            },
+            {
+                "bk_asst_id": "slb_to_listener",
+                "bk_asst_name": "指向",
+                "bk_supplier_account": "0",
+                "ispre": True
+            }
+        ]
+
+        for idx, asst_type in enumerate(asst_types, 1):
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_AsstDes 
+                (id, bk_asst_id, bk_asst_name, ispre, bk_supplier_account, creator, modifier)
+                VALUES (?, ?, ?, ?, ?, 'admin', 'admin')
+            """, (idx, asst_type["bk_asst_id"], asst_type["bk_asst_name"], 
+                  asst_type["ispre"], asst_type["bk_supplier_account"]))
+        
+        logger.info(f"迁移了 {len(asst_types)} 个关联类型")
+
+        # 2. 添加对象关联到 cc_ObjAsst
+        obj_associations = [
+            {
+                "bk_obj_id": "bk_slb",
+                "target_obj_id": "bk_slb_server",
+                "target_obj_name": "后端服务器",
+                "bk_asst_id": "slb_to_server",
+                "bk_obj_asst_id": "bk_slb_to_bk_slb_server",
+                "bk_obj_asst_name": "指向后端服务器",
+                "bk_supplier_account": "0",
+                "mapping": None,
+                "on_delete": None
+            },
+            {
+                "bk_obj_id": "bk_slb",
+                "target_obj_id": "bk_slb_listener",
+                "target_obj_name": "监听器",
+                "bk_asst_id": "slb_to_listener",
+                "bk_obj_asst_id": "bk_slb_to_bk_slb_listener",
+                "bk_obj_asst_name": "指向监听器",
+                "bk_supplier_account": "0",
+                "mapping": None,
+                "on_delete": None
+            }
+        ]
+
+        for idx, obj_asst in enumerate(obj_associations, 1):
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjAsst 
+                (id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id, 
+                 bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete, 
+                 creator, modifier, bk_supplier_account)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', 'admin', ?)
+            """, (idx, obj_asst["bk_obj_id"], obj_asst["target_obj_id"], 
+                  obj_asst["target_obj_name"], obj_asst["bk_asst_id"], 
+                  obj_asst["bk_obj_asst_id"], obj_asst["bk_obj_asst_name"],
+                  obj_asst["mapping"], obj_asst["on_delete"],
+                  obj_asst["bk_supplier_account"]))
+        
+        logger.info(f"迁移了 {len(obj_associations)} 个对象关联")
+
+        # 3. 迁移实例关联数据
+        inst_assoc_file = ui_project / "models" / "associations" / "index.json"
+        if inst_assoc_file.exists():
+            with open(inst_assoc_file, 'r', encoding='utf-8') as f:
+                inst_assoc_data = json.load(f)
+            
+            associations = inst_assoc_data.get("associations", [])
+            
+            for assoc in associations:
+                # 确定 bk_obj_asst_id
+                bk_obj_id = assoc.get("bk_obj_id")
+                bk_asst_obj_id = assoc.get("bk_asst_obj_id")
+                bk_obj_asst_id = f"{bk_obj_id}_to_{bk_asst_obj_id}"
+                
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_InstAsst_0_pub 
+                    (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
+                     bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    assoc.get("id"),
+                    bk_obj_id,
+                    assoc.get("bk_inst_id"),
+                    bk_asst_obj_id,
+                    assoc.get("bk_asst_inst_id"),
+                    bk_obj_asst_id,
+                    assoc.get("bk_relation_type_id"),
+                    "0"
+                ))
+            
+            logger.info(f"迁移了 {len(associations)} 个实例关联")
+        else:
+            logger.warning("未找到实例关联数据文件")
+
     def migrate(self):
         """执行完整的迁移"""
         logger.info("开始数据库初始化迁移...")
-        
+
         # 步骤1: 初始化核心表
         self.init_core_tables()
-        
+
         # 步骤2: 迁移分类
         self.migrate_classifications()
-        
+
         # 步骤3: 迁移模型
         self.migrate_models()
-        
+
         # 步骤4: 迁移属性
         self.migrate_attributes()
-        
+
         # 步骤5: 创建实例表
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
         for model in models:
             self.create_instance_table(model['bk_obj_id'])
-        
+
         # 步骤6: 迁移实例数据
         self.migrate_instances()
-        
+
+        # 步骤7: 迁移关联关系数据
+        self.migrate_associations()
+
         logger.info("数据库初始化迁移完成!")
 
 
