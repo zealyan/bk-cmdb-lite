@@ -74,17 +74,7 @@ def search_model_instances(model_id):
     """高级搜索模型实例"""
     try:
         data = request.get_json() or {}
-        page = data.get('page', 1)
-        page_size = data.get('page_size', 20)
-        
-        conditions = {}
-        search_field = data.get('search_field')
-        search_value = data.get('search_value')
-        
-        if search_field and search_value:
-            conditions[search_field] = search_value
-        
-        result = InstanceService.get_instances(model_id, page, page_size, conditions)
+        result = InstanceService.advanced_search(model_id, data)
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error searching model instances: {e}")
