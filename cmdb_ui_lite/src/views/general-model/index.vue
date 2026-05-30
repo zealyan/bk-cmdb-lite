@@ -479,7 +479,7 @@ export default {
       if (isFromDetails) {
         console.log('[Index.watch] 从详情页返回，优先恢复状态')
         this.restoreStateFromUrl()
-        this.updateFilterTagsFromQuery()
+        // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
         
         // 如果有高级筛选条件，使用高级筛选参数加载数据
         if (this.advancedFilterConditions) {
@@ -529,9 +529,13 @@ export default {
           this.table.pagination.limit = parseInt(query.limit || 10, 10)
         }
         if (fieldChanged || filterChanged || fuzzyChanged || sortChanged || filter_advChanged || sChanged) {
-          console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl和updateFilterTagsFromQuery')
+          console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl')
           this.restoreStateFromUrl()
-          this.updateFilterTagsFromQuery()
+          // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
+          // 只有在没有filter_adv的简单搜索情况下才需要调用
+          if (!filter_advChanged && !sChanged) {
+            this.updateFilterTagsFromQuery()
+          }
         }
 
         if (pageChanged || limitChanged || fieldChanged || filterChanged || fuzzyChanged || sortChanged || filter_advChanged || sChanged) {
@@ -1608,6 +1612,12 @@ export default {
       }
     },
     updateFilterTagsFromQuery() {
+      // 如果有高级筛选条件，不要更新filterTags（避免把高级筛选标签清空）
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        console.log('[updateFilterTagsFromQuery] 有高级筛选条件，跳过更新filterTags')
+        return
+      }
+
       const query = this.$route.query
       this.filterTags = []
       if (query.field && query.filter) {
