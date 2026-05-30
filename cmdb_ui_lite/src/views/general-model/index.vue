@@ -632,45 +632,70 @@ export default {
       handler(newInstanceId, oldInstanceId) {
         console.log('[Index.watch.instanceId] 实例ID变化:', { new: newInstanceId, old: oldInstanceId })
         if (!newInstanceId && oldInstanceId) {
-          console.log('[Index.watch.instanceId] 从详情页返回，执行restoreStateFromUrl和updateFilterTagsFromQuery')
+          console.log('[Index.watch.instanceId] 从详情页返回，执行restoreStateFromUrl')
           this.hasRestoredFromUrl = false
           this.restoreStateFromUrl()
-          this.updateFilterTagsFromQuery()
+          // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
           this.hasRestoredFromUrl = true
-          this.loadModelData()
+          // 如果有高级筛选条件，使用高级筛选参数加载数据
+          if (this.advancedFilterConditions) {
+            const rawConditions = []
+            Object.keys(this.advancedFilterConditions).forEach(field => {
+              const cond = this.advancedFilterConditions[field]
+              rawConditions.push({
+                field,
+                operator: cond.operator,
+                value: cond.value
+              })
+            })
+            const searchParams = this.buildAdvancedSearchParams(rawConditions)
+            console.log('[Index.watch.instanceId] 从详情页返回，使用高级筛选参数:', searchParams)
+            this.loadModelData(searchParams)
+          } else {
+            this.loadModelData()
+          }
         }
         this.prevInstanceId = newInstanceId
       }
     },
     allProperties: {
       handler(newProperties) {
-        if (newProperties && newProperties.length > 0 && !this.hasRestoredFromUrl) {
+        console.log('[Index.watch.allProperties] 属性加载完成，检查是否需要恢复 filterTags')
+        if (newProperties && newProperties.length > 0) {
           const query = this.$route.query
-          if (query && Object.keys(query).length > 0) {
-            if (query.field) {
-              const validField = newProperties.find(p => p.bk_property_id === query.field)
-              if (validField) {
-                this.filter.field = query.field
-                if (query.filter !== undefined && query.filter !== null) {
-                  this.filter.value = String(query.filter)
+          
+          // 如果有高级筛选条件，且filterTags为空，重新恢复filterTags
+          if (query.filter_adv && this.filterTags.length === 0) {
+            console.log('[Index.watch.allProperties] 检测到filter_adv且filterTags为空，重新恢复状态')
+            this.restoreStateFromUrl()
+          } else if (newProperties && newProperties.length > 0 && !this.hasRestoredFromUrl) {
+            // 简单搜索场景
+            if (query && Object.keys(query).length > 0) {
+              if (query.field) {
+                const validField = newProperties.find(p => p.bk_property_id === query.field)
+                if (validField) {
+                  this.filter.field = query.field
+                  if (query.filter !== undefined && query.filter !== null) {
+                    this.filter.value = String(query.filter)
+                  }
                 }
               }
+              if (query.fuzzy !== undefined) {
+                this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+              }
+              this.hasRestoredFromUrl = true
+              this.updateFilterTagsFromQuery()
+            } else if (!this.filter.field) {
+              const firstField = newProperties.find(p => p.bk_property_id !== 'id')
+              if (firstField) {
+                this.filter.field = firstField.bk_property_id
+              }
             }
-            if (query.fuzzy !== undefined) {
-              this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
-            }
-            this.hasRestoredFromUrl = true
-            this.updateFilterTagsFromQuery()
-          } else if (!this.filter.field) {
+          } else if (newProperties && newProperties.length > 0 && !this.filter.field) {
             const firstField = newProperties.find(p => p.bk_property_id !== 'id')
             if (firstField) {
               this.filter.field = firstField.bk_property_id
             }
-          }
-        } else if (newProperties && newProperties.length > 0 && !this.filter.field) {
-          const firstField = newProperties.find(p => p.bk_property_id !== 'id')
-          if (firstField) {
-            this.filter.field = firstField.bk_property_id
           }
         }
       }
