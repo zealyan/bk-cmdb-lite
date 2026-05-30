@@ -1143,7 +1143,7 @@ export default {
               tempQuery[key] = value
             }
           })
-          query.filter_adv = Qs.stringify(tempQuery, { encode: false })
+          query.filter_adv = QS.stringify(tempQuery, { encode: false })
         } catch (e) {
           console.error('[syncStateToUrl] 构建filter_adv失败:', e)
         }
