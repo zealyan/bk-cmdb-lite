@@ -1550,7 +1550,24 @@ export default {
       this.table.pagination.current = 1
       this.syncStateToUrl({ resetPage: true })
       this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      
+      // 如果有高级筛选条件，使用高级筛选参数加载数据
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        console.log('[handleSortChange] 使用高级筛选参数:', searchParams)
+        this.loadModelData(searchParams)
+      } else {
+        this.loadModelData()
+      }
     },
     updateTableSortState() {
       if (!this.table.sort) {
