@@ -66,6 +66,11 @@ class InstanceService:
     @staticmethod
     def advanced_search(model_id, search_data):
         """高级搜索模型实例"""
+        from app.utils.logger import get_logger
+        logger = get_logger('api.instance')
+        
+        logger.info(f'[advanced_search] model_id={model_id}, search_data={search_data}')
+        
         table_name = InstanceService._get_table_name(model_id)
         
         page = search_data.get('page', 1)
@@ -81,6 +86,8 @@ class InstanceService:
         conditions = search_data.get('conditions')
         search_start = search_data.get('search_start')
         search_end = search_data.get('search_end')
+        
+        logger.info(f'[advanced_search] conditions={conditions}, search_field={search_field}')
         
         offset = (page - 1) * page_size
         

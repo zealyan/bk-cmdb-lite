@@ -668,6 +668,22 @@ export default {
           if (query.filter_adv && this.filterTags.length === 0) {
             console.log('[Index.watch.allProperties] 检测到filter_adv且filterTags为空，重新恢复状态')
             this.restoreStateFromUrl()
+            
+            // 重新恢复状态后，使用高级筛选参数加载数据
+            if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+              const rawConditions = []
+              Object.keys(this.advancedFilterConditions).forEach(field => {
+                const cond = this.advancedFilterConditions[field]
+                rawConditions.push({
+                  field,
+                  operator: cond.operator,
+                  value: cond.value
+                })
+              })
+              const searchParams = this.buildAdvancedSearchParams(rawConditions)
+              console.log('[Index.watch.allProperties] 使用高级筛选参数:', searchParams)
+              this.loadModelData(searchParams)
+            }
           } else if (newProperties && newProperties.length > 0 && !this.hasRestoredFromUrl) {
             // 简单搜索场景
             if (query && Object.keys(query).length > 0) {
@@ -1032,7 +1048,12 @@ export default {
               }
             })
             
-            this.advancedFilterConditions = conditionMap
+            // 只有当 conditionMap 非空时才设置 advancedFilterConditions
+            if (Object.keys(conditionMap).length > 0) {
+              this.advancedFilterConditions = conditionMap
+            } else {
+              this.advancedFilterConditions = null
+            }
             
             // 恢复 filterTags - 基于 conditionMap
             const tags = []
@@ -1054,6 +1075,9 @@ export default {
             this.filterTags = tags
             
             console.log('[restoreStateFromUrl] 高级筛选条件已恢复，filterTags:', this.filterTags)
+          } else {
+            // advQuery 为空
+            this.advancedFilterConditions = null
           }
         } catch (e) {
           console.error('[restoreStateFromUrl] 解析filter_adv失败:', e)
