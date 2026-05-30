@@ -1124,11 +1124,36 @@ export default {
       }
 
       // 保持与原bk-cmdb项目一致的URL参数
+      // 优先使用传入的filter_adv和s，如果没有则检查当前状态
       if (filter_adv !== undefined) {
         query.filter_adv = filter_adv
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 如果没有显式传入，但有当前高级筛选条件，则从当前状态重新构建
+        try {
+          const tempQuery = {}
+          Object.keys(this.advancedFilterConditions).forEach(field => {
+            const cond = this.advancedFilterConditions[field]
+            const key = `${field}${cond.operator}`
+            let value = cond.value
+            
+            if (Array.isArray(value)) {
+              // 如果是数组，用逗号分隔
+              tempQuery[key] = value.join(',')
+            } else if (value !== null && value !== undefined) {
+              tempQuery[key] = value
+            }
+          })
+          query.filter_adv = Qs.stringify(tempQuery, { encode: false })
+        } catch (e) {
+          console.error('[syncStateToUrl] 构建filter_adv失败:', e)
+        }
       }
+      
       if (s !== undefined) {
         query.s = s
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 如果没有显式传入，但有高级筛选条件，则设置s为'adv'
+        query.s = 'adv'
       }
 
       this.isUrlUpdateTriggered = true
@@ -1328,59 +1353,6 @@ export default {
           this.$bkMessage({ message: '检查关联关系失败，请稍后重试', theme: 'error' })
           this.table.loading = false
         })
-    },
-    buildAdvancedSearchParams(rawConditions) {
-      // 从 rawConditions 构建 conditionMap
-      const conditionMap = {}
-      
-      rawConditions.forEach(cond => {
-        const { field, operator, value } = cond
-        
-        // 获取属性信息
-        const property = this.allProperties.find(p => p.bk_property_id === field)
-        const isEnumOrList = property && ['enum', 'list'].includes(property.bk_property_type)
-        const isDateTime = property && ['date', 'time'].includes(property.bk_property_type)
-        
-        // 处理值
-        let processedValue = value
-        if (isEnumOrList || isDateTime) {
-          // 枚举、列表、日期时间类型，值应该是数组
-          if (Array.isArray(value)) {
-            processedValue = value
-          } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
-            processedValue = [value]
-          }
-        } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
-          // 其他类型
-          if (this.isInOperator(operator) && !isEnumOrList) {
-            processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
-          } else if (this.isRangeOperator(operator)) {
-            processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
-          }
-        }
-        
-        if (processedValue !== null && processedValue !== undefined && 
-            !(typeof processedValue === 'string' && processedValue.length === 0) &&
-            !(Array.isArray(processedValue) && processedValue.length === 0)) {
-          conditionMap[field] = {
-            operator,
-            value: processedValue
-          }
-        }
-      })
-      
-      // 使用 buildSearchParams 构建最终的 searchParams
-      return buildSearchParams(conditionMap, this.allProperties, {
-        page: this.table.pagination.current,
-        pageSize: this.table.pagination.limit,
-        sort: this.table.sort || '-id'
-      })
-    },
-    isInOperator(operator) {
-      return operator === '$in' || operator === '$nin'
-    },
-    isRangeOperator(operator) {
-      return operator === '$range' || operator === '$gte' || operator === '$lte'
     },
     buildAdvancedSearchParams(rawConditions) {
       // 从 rawConditions 构建 conditionMap
