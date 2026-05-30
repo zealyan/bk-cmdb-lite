@@ -93,6 +93,7 @@ class InstanceService:
         # 支持两种格式：
         # 1. 列表格式：[{"field": "...", "operator": "...", "value": "..."}]
         # 2. 对象格式：{"condition": "AND", "rules": [...]}
+        param_counter = 0
         if conditions:
             rule_list = []
             
@@ -130,7 +131,7 @@ class InstanceService:
                 if is_fuzzy:
                     op = '$regex'
                 
-                where_clause = InstanceService._build_condition(field, op, value)
+                where_clause, param_counter = InstanceService._build_condition(field, op, value, params, param_counter)
                 if where_clause:
                     where_clauses.append(where_clause)
         
@@ -266,11 +267,11 @@ class InstanceService:
         }
     
     @staticmethod
-    def _build_condition(field, op, value):
-        """构建单个条件"""
+    def _build_condition(field, op, value, params, param_counter):
+        """构建单个条件（使用参数化查询）"""
         safe_field = field.strip()
         if not safe_field.replace('_', '').replace('-', '').isalnum():
-            return None
+            return None, param_counter
         
         # 解析多个值
         if isinstance(value, list):
@@ -281,44 +282,75 @@ class InstanceService:
             val_list = [str(value).strip()]
         
         if not val_list:
-            return None
+            return None, param_counter
         
         # 根据操作符构建条件
         if op == '$ne':
             if len(val_list) >= 1:
-                safe_val = val_list[0]
-                return f'"{safe_field}" != "{safe_val}"'
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                params[param_name] = val_list[0]
+                return f'"{safe_field}" != :{param_name}', param_counter
         elif op == '$nin':
-            in_vals = '", "'.join([v.replace('"', '""') for v in val_list])
-            return f'"{safe_field}" NOT IN ("{in_vals}")'
+            placeholders = []
+            for v in val_list:
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                placeholders.append(f':{param_name}')
+                params[param_name] = v
+            return f'"{safe_field}" NOT IN ({",".join(placeholders)})', param_counter
         elif op == '$in':
-            in_vals = '", "'.join([v.replace('"', '""') for v in val_list])
-            return f'"{safe_field}" IN ("{in_vals}")'
+            placeholders = []
+            for v in val_list:
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                placeholders.append(f':{param_name}')
+                params[param_name] = v
+            return f'"{safe_field}" IN ({",".join(placeholders)})', param_counter
         elif op == '$gt':
-            safe_val = val_list[0]
-            return f'"{safe_field}" > "{safe_val}"'
+            param_name = f'cond_{param_counter}'
+            param_counter += 1
+            params[param_name] = val_list[0]
+            return f'"{safe_field}" > :{param_name}', param_counter
         elif op == '$lt':
-            safe_val = val_list[0]
-            return f'"{safe_field}" < "{safe_val}"'
+            param_name = f'cond_{param_counter}'
+            param_counter += 1
+            params[param_name] = val_list[0]
+            return f'"{safe_field}" < :{param_name}', param_counter
         elif op == '$gte':
-            safe_val = val_list[0]
-            return f'"{safe_field}" >= "{safe_val}"'
+            param_name = f'cond_{param_counter}'
+            param_counter += 1
+            params[param_name] = val_list[0]
+            return f'"{safe_field}" >= :{param_name}', param_counter
         elif op == '$lte':
-            safe_val = val_list[0]
-            return f'"{safe_field}" <= "{safe_val}"'
+            param_name = f'cond_{param_counter}'
+            param_counter += 1
+            params[param_name] = val_list[0]
+            return f'"{safe_field}" <= :{param_name}', param_counter
         elif op == '$like' or op == '$regex':
-            like_parts = [f'LOWER(CAST("{safe_field}" AS TEXT)) LIKE LOWER("%{v.replace("%", "%%").replace("_", "%%_")}%")' 
-                         for v in val_list]
-            return '(' + ' OR '.join(like_parts) + ')'
+            like_parts = []
+            for v in val_list:
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                like_parts.append(f'LOWER(CAST("{safe_field}" AS TEXT)) LIKE LOWER(:{param_name})')
+                params[param_name] = f'%{v}%'
+            return '(' + ' OR '.join(like_parts) + ')', param_counter
         else:
             if len(val_list) == 1:
-                safe_val = val_list[0]
-                return f'"{safe_field}" = "{safe_val}"'
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                params[param_name] = val_list[0]
+                return f'"{safe_field}" = :{param_name}', param_counter
             else:
-                in_vals = '", "'.join([v.replace('"', '""') for v in val_list])
-                return f'"{safe_field}" IN ("{in_vals}")'
+                placeholders = []
+                for v in val_list:
+                    param_name = f'cond_{param_counter}'
+                    param_counter += 1
+                    placeholders.append(f':{param_name}')
+                    params[param_name] = v
+                return f'"{safe_field}" IN ({",".join(placeholders)})', param_counter
         
-        return None
+        return None, param_counter
     
     @staticmethod
     def _get_search_columns(model_id):
