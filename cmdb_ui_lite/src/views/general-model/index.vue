@@ -34,50 +34,88 @@
             </bk-option>
           </bk-select>
         </div>
-        <div class="filter-input" v-if="!isEnumField && !isBoolField && !isDateField && !isTimeField">
-          <bk-input
-            v-model="filter.value"
-            :placeholder="filterPlaceholder"
-            right-icon="bk-icon icon-search"
-            @enter="handleSearch"
-            @clear="handleClear">
-          </bk-input>
-        </div>
-        <div class="filter-input enum-select-wrapper" v-else-if="isEnumField || isBoolField">
-          <bk-input
-            v-model="enumSearchQuery"
-            :placeholder="filterPlaceholder"
-            @enter="handleSearch">
-          </bk-input>
-          <div class="enum-dropdown" v-if="enumDropdownVisible">
-            <div class="enum-option" v-for="opt in filteredEnumOptions" :key="opt.id" @click="handleEnumSelect(opt)">
-              {{ opt.name }}
+        <div class="filter-value">
+          <div v-if="filter.field && filter.field !== ''" class="search-input-wrapper">
+            <div v-if="isEnumField || isBoolField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
+              <div class="enum-input-container">
+                <input
+                  type="text"
+                  class="search-input enum-multi-input"
+                  :value="filter.values.join(', ')"
+                  :placeholder="filterPlaceholder"
+                  readonly
+                  @click.stop="toggleEnumDropdown">
+                <i :class="['bk-icon', 'icon-angle-down', 'bk-select-angle', { 'icon-flip': enumDropdownVisible }]" @click.stop="toggleEnumDropdown"></i>
+              </div>
+              <div class="enum-dropdown" @click.stop>
+                <div class="bk-select-search-wrapper" v-if="enumOptions.length > 3">
+                  <input
+                    type="text"
+                    class="bk-select-search-input"
+                    v-model="enumSearchQuery"
+                    placeholder="搜索..."
+                    @click.stop>
+                </div>
+                <div class="bk-select-options">
+                  <label
+                    v-for="option in filteredEnumOptions"
+                    :key="option.id"
+                    class="bk-select-option"
+                    :class="{ 'is-selected': filter.values.includes(option.id) }">
+                    <input
+                      type="checkbox"
+                      :value="option.id"
+                      :checked="filter.values.includes(option.id)"
+                      @click="handleEnumCheckbox(option.id, $event)">
+                    <span class="bk-select-option-name">{{ option.name }}</span>
+                    <i class="bk-icon bk-select-check icon-check" v-if="filter.values.includes(option.id)"></i>
+                  </label>
+                </div>
+              </div>
             </div>
+            <template v-else-if="isDateField">
+              <cmdb-search-date
+                class="search-date-picker"
+                v-model="filter.values"
+                :property="filterProperty"
+                :placeholder="filterPlaceholder"
+                @change="handleSearch">
+              </cmdb-search-date>
+            </template>
+            <template v-else-if="isTimeField">
+              <cmdb-search-time
+                class="search-time-picker"
+                v-model="filter.values"
+                :property="filterProperty"
+                :placeholder="filterPlaceholder"
+                @change="handleSearch">
+              </cmdb-search-time>
+            </template>
+            <template v-else>
+              <input
+                type="text"
+                class="search-input"
+                v-model="filter.value"
+                :placeholder="filterPlaceholder"
+                @keyup.enter="handleSearch">
+            </template>
           </div>
+          <span v-else class="filter-placeholder">请先选择字段</span>
         </div>
-        <div class="filter-input" v-else-if="isDateField">
-          <bk-date-picker
-            v-model="filter.values"
-            :placeholder="filterPlaceholder"
-            type="daterange"
-            @change="handleDateChange">
-          </bk-date-picker>
+        <div class="filter-exact" v-if="allowFuzzyQuery">
+          <bk-checkbox
+            size="small"
+            v-model="filter.fuzzyQuery">
+            模糊
+          </bk-checkbox>
         </div>
-        <div class="filter-input" v-else-if="isTimeField">
-          <cmdb-search-time
-            v-model="filter.values"
-            :property="filterProperty"
-            @change="handleTimeChange">
-          </cmdb-search-time>
-        </div>
-        <bk-button class="filter-button" theme="primary" @click="handleSearch">搜索</bk-button>
       </div>
     </div>
 
     <filter-tag
-      v-if="visibleFilterTags.length > 0"
-      :tags="visibleFilterTags"
-      :show-icon="false"
+      v-if="hasFilterCondition"
+      class="filter-tag-wrapper"
+      :filter-tags="filterTags"
       @remove="handleRemoveFilterTag"
       @clear-all="handleClearAllFilterTags">
     </filter-tag>
@@ -86,7 +124,6 @@
       :show.sync="advancedFilter.show"
       :properties="allProperties"
       :loaded-data="table.list"
-      :page-size="table.pagination.limit"
       @search="handleAdvancedFilterSearch"
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
@@ -97,43 +134,86 @@
       v-bkloading="{ isLoading: table.loading }"
       :data="table.list"
       :pagination="table.pagination"
-      :max-height="620"
+      :sort="tableSort"
+      :selected-data.sync="selectedIds"
+      :row-key="row => row.id"
+      @selection-change="handleSelectionChange"
       @page-change="handlePageChange"
-      @page-limit-change="handlePageLimitChange"
-      @select-all="handleSelectAll"
-      @row-click="handleRowClick"
+      @page-limit-change="handleLimitChange"
       @sort-change="handleSortChange">
-      <bk-table-column type="selection" width="60" fixed="left" :selectable="() => true"></bk-table-column>
-      <bk-table-column v-for="column in table.header" :key="column.bk_property_id" :label="column.bk_property_name" :prop="column.bk_property_id" :width="column.width || 150" sortable="custom">
-        <template slot-scope="{ row }">
-          <span v-if="column.bk_property_type === 'bool'">{{ row[column.bk_property_id] ? '是' : '否' }}</span>
-          <span v-else-if="column.bk_property_type === 'enum'">
-            <span class="enum-tag" v-for="(val, idx) in (row[column.bk_property_id] || '').split(',')" :key="idx">{{ val }}</span>
-          </span>
-          <span v-else>{{ row[column.bk_property_id] }}</span>
+      <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
+      <bk-table-column
+        v-for="column in table.header"
+        :key="column.id"
+        :prop="column.id"
+        :label="column.name"
+        :sortable="getColumnSortable(column.id)"
+        :show-overflow-tooltip="true">
+        <template v-if="column.id === 'id'" #default="{ row }">
+          <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+            {{ row[column.id] }}
+          </bk-button>
+        </template>
+        <template v-else #default="{ row }">
+          {{ formatCellValue(row[column.id], column) }}
+        </template>
+      </bk-table-column>
+      <bk-table-column label="操作" width="150" fixed="right">
+        <template #default="{ row }">
+          <bk-button :text="true" @click="handleViewDetails(row)">查看</bk-button>
+          <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
         </template>
       </bk-table-column>
     </bk-table>
 
     <bk-sideslider
+      :is-show.sync="columnsConfig.show"
+      :title="'列表显示属性配置'"
+      :width="sidesliderWidth"
+      :quick-close="true"
+      @hidden="handleSidesliderHidden">
+      <template #content>
+        <columns-config
+          v-if="columnsConfig.show"
+          :properties="allProperties"
+          :selected="columnsConfig.selected"
+          :disabled-columns="columnsConfig.disabledColumns"
+          :max="20"
+          @on-apply="handleApplyColumns"
+          @on-cancel="handleCancelColumns"
+          @on-reset="handleResetColumns">
+        </columns-config>
+      </template>
+    </bk-sideslider>
+
+    <!-- 新增实例弹窗 -->
+    <bk-sideslider
       :is-show.sync="createDialogVisible"
-      :title="'新建 ' + modelName"
+      :title="'新增实例'"
       :width="createSidesliderWidth"
       :fullscreen="createSidesliderFullscreen"
       :quick-close="true"
       @hidden="handleCreateDialogClose">
       <template #content>
-        <cmdb-form
-          ref="createFormRef"
-          :properties="allProperties"
-          :object-id="objId"
-          :is-edit-mode="false"
-          @cancel="handleCreateDialogClose"
-          @submit="handleCreateSubmit">
-        </cmdb-form>
+        <div class="create-form-wrapper">
+          <cmdb-form
+            ref="cmdbFormRef"
+            :properties="allProperties"
+            :values="createForm"
+            :type="'create'"
+            :show-options="true"
+            :submitting="createFormLoading"
+            :is-mobile="isMobileDevice"
+            submit-text="提交"
+            @update:values="createForm = $event"
+            @submit="handleCreateSubmit"
+            @cancel="handleCreateDialogClose">
+          </cmdb-form>
+        </div>
       </template>
     </bk-sideslider>
 
+    <!-- 批量更新弹窗 -->
     <bk-sideslider
       :is-show.sync="batchUpdateDialogVisible"
       :title="'批量更新'"
@@ -385,9 +465,6 @@ export default {
     },
     createSidesliderFullscreen() {
       return window.innerWidth < 480
-    },
-    modelIndex() {
-      return modelIndex || []
     }
   },
   created() {
@@ -402,7 +479,9 @@ export default {
       if (isFromDetails) {
         console.log('[Index.watch] 从详情页返回，优先恢复状态')
         this.restoreStateFromUrl()
+        // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
         
+        // 如果有高级筛选条件，使用高级筛选参数加载数据
         if (this.advancedFilterConditions) {
           const rawConditions = []
           Object.keys(this.advancedFilterConditions).forEach(field => {
@@ -414,7 +493,7 @@ export default {
             })
           })
           const searchParams = this.buildAdvancedSearchParams(rawConditions)
-          console.log('[Index.watch] 使用高级筛选参数:', searchParams)
+          console.log('[Index.watch] 从详情页返回，使用高级筛选参数:', searchParams)
           this.loadModelData(searchParams)
         } else {
           this.loadModelData()
@@ -422,34 +501,63 @@ export default {
         return
       }
 
-      const fieldChanged = query.field !== oldQuery.field
-      const filterChanged = query.filter !== oldQuery.filter
-      const fuzzyChanged = query.fuzzy !== oldQuery.fuzzy
-      const filter_advChanged = query.filter_adv !== oldQuery.filter_adv
-      const sChanged = query.s !== oldQuery.s
-      const sortChanged = query.sort !== oldQuery.sort
-      const pageChanged = query.page !== oldQuery.page
-      const limitChanged = query.limit !== oldQuery.limit
+      if (this.isUrlUpdateTriggered) {
+        console.log('[Index.watch] isUrlUpdateTriggered为true，跳过处理')
+        this.isUrlUpdateTriggered = false
+        return
+      }
 
-      if (fieldChanged || filterChanged || fuzzyChanged || filter_advChanged || sChanged || sortChanged || pageChanged || limitChanged) {
-        console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl')
-        this.restoreStateFromUrl()
-        
-        if (this.advancedFilterConditions) {
-          const rawConditions = []
-          Object.keys(this.advancedFilterConditions).forEach(field => {
-            const cond = this.advancedFilterConditions[field]
-            rawConditions.push({
-              field,
-              operator: cond.operator,
-              value: cond.value
+      const hasQuery = query && Object.keys(query).length > 0
+      const hadQuery = oldQuery && Object.keys(oldQuery).length > 0
+
+      console.log('[Index.watch] hasQuery:', hasQuery, 'hadQuery:', hadQuery)
+
+      if (hasQuery && hadQuery) {
+        const pageChanged = query.page !== oldQuery.page
+        const limitChanged = query.limit !== oldQuery.limit
+        const fieldChanged = query.field !== oldQuery.field
+        const filterChanged = query.filter !== oldQuery.filter
+        const fuzzyChanged = query.fuzzy !== oldQuery.fuzzy
+        const sortChanged = query.sort !== oldQuery.sort
+        const filter_advChanged = query.filter_adv !== oldQuery.filter_adv
+        const sChanged = query.s !== oldQuery.s
+
+        console.log('[Index.watch] 变化检测:', { pageChanged, limitChanged, fieldChanged, filterChanged, fuzzyChanged, sortChanged, filter_advChanged, sChanged })
+
+        if (pageChanged || limitChanged) {
+          this.table.pagination.current = parseInt(query.page || 1, 10)
+          this.table.pagination.limit = parseInt(query.limit || 10, 10)
+        }
+        if (fieldChanged || filterChanged || fuzzyChanged || sortChanged || filter_advChanged || sChanged) {
+          console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl')
+          this.restoreStateFromUrl()
+          // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
+          // 只有在没有filter_adv的简单搜索情况下才需要调用
+          if (!filter_advChanged && !sChanged) {
+            this.updateFilterTagsFromQuery()
+          }
+        }
+
+        if (pageChanged || limitChanged || fieldChanged || filterChanged || fuzzyChanged || sortChanged || filter_advChanged || sChanged) {
+          console.log('[Index.watch] 执行loadModelData')
+          
+          // 如果有高级筛选条件，使用高级筛选参数加载数据
+          if (this.advancedFilterConditions) {
+            const rawConditions = []
+            Object.keys(this.advancedFilterConditions).forEach(field => {
+              const cond = this.advancedFilterConditions[field]
+              rawConditions.push({
+                field,
+                operator: cond.operator,
+                value: cond.value
+              })
             })
-          })
-          const searchParams = this.buildAdvancedSearchParams(rawConditions)
-          console.log('[Index.watch] 使用高级筛选参数:', searchParams)
-          this.loadModelData(searchParams)
-        } else {
-          this.loadModelData()
+            const searchParams = this.buildAdvancedSearchParams(rawConditions)
+            console.log('[Index.watch] 使用高级筛选参数:', searchParams)
+            this.loadModelData(searchParams)
+          } else {
+            this.loadModelData()
+          }
         }
       }
     }, { throttle: 100 })
@@ -470,6 +578,7 @@ export default {
     document.addEventListener('click', this.clickOutsideHandler)
 
     setTimeout(() => {
+      // 如果有高级筛选条件，构建 searchParams 并传递给 loadModelData
       if (this.advancedFilterConditions) {
         const rawConditions = []
         Object.keys(this.advancedFilterConditions).forEach(field => {
@@ -481,6 +590,7 @@ export default {
           })
         })
         
+        // 构建高级筛选的 searchParams
         const searchParams = this.buildAdvancedSearchParams(rawConditions)
         console.log('[Index.mounted] 从URL恢复高级筛选参数:', searchParams)
         this.loadModelData(searchParams)
@@ -520,37 +630,32 @@ export default {
     },
     '$route.params.instanceId': {
       handler(newInstanceId, oldInstanceId) {
-        console.log('[Index.watch.instanceId] 变化:', { old: oldInstanceId, new: newInstanceId })
-        const isEnterDetails = !oldInstanceId && newInstanceId
-        const isLeaveDetails = oldInstanceId && !newInstanceId
-        
-        if (isEnterDetails) {
-          this.prevInstanceId = oldInstanceId
-        }
-        
-        if (isLeaveDetails) {
-          console.log('[Index.watch.instanceId] 从详情页返回，延迟恢复状态')
-          this.$nextTick(() => {
-            this.restoreStateFromUrl()
-            
-            if (this.advancedFilterConditions) {
-              const rawConditions = []
-              Object.keys(this.advancedFilterConditions).forEach(field => {
-                const cond = this.advancedFilterConditions[field]
-                rawConditions.push({
-                  field,
-                  operator: cond.operator,
-                  value: cond.value
-                })
+        console.log('[Index.watch.instanceId] 实例ID变化:', { new: newInstanceId, old: oldInstanceId })
+        if (!newInstanceId && oldInstanceId) {
+          console.log('[Index.watch.instanceId] 从详情页返回，执行restoreStateFromUrl')
+          this.hasRestoredFromUrl = false
+          this.restoreStateFromUrl()
+          // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
+          this.hasRestoredFromUrl = true
+          // 如果有高级筛选条件，使用高级筛选参数加载数据
+          if (this.advancedFilterConditions) {
+            const rawConditions = []
+            Object.keys(this.advancedFilterConditions).forEach(field => {
+              const cond = this.advancedFilterConditions[field]
+              rawConditions.push({
+                field,
+                operator: cond.operator,
+                value: cond.value
               })
-              const searchParams = this.buildAdvancedSearchParams(rawConditions)
-              console.log('[Index.watch.instanceId] 从详情页返回，使用高级筛选参数:', searchParams)
-              this.loadModelData(searchParams)
-            } else {
-              this.loadModelData()
-            }
-          })
+            })
+            const searchParams = this.buildAdvancedSearchParams(rawConditions)
+            console.log('[Index.watch.instanceId] 从详情页返回，使用高级筛选参数:', searchParams)
+            this.loadModelData(searchParams)
+          } else {
+            this.loadModelData()
+          }
         }
+        this.prevInstanceId = newInstanceId
       }
     },
     allProperties: {
@@ -559,10 +664,12 @@ export default {
         if (newProperties && newProperties.length > 0) {
           const query = this.$route.query
           
+          // 如果有高级筛选条件，且filterTags为空，重新恢复filterTags
           if (query.filter_adv && this.filterTags.length === 0) {
             console.log('[Index.watch.allProperties] 检测到filter_adv且filterTags为空，重新恢复状态')
             this.restoreStateFromUrl()
             
+            // 重新恢复状态后，使用高级筛选参数加载数据
             if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
               const rawConditions = []
               Object.keys(this.advancedFilterConditions).forEach(field => {
@@ -578,40 +685,95 @@ export default {
               this.loadModelData(searchParams)
             }
           } else if (newProperties && newProperties.length > 0 && !this.hasRestoredFromUrl) {
-            this.hasRestoredFromUrl = true
+            // 简单搜索场景
+            if (query && Object.keys(query).length > 0) {
+              if (query.field) {
+                const validField = newProperties.find(p => p.bk_property_id === query.field)
+                if (validField) {
+                  this.filter.field = query.field
+                  if (query.filter !== undefined && query.filter !== null) {
+                    this.filter.value = String(query.filter)
+                  }
+                }
+              }
+              if (query.fuzzy !== undefined) {
+                this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+              }
+              this.hasRestoredFromUrl = true
+              this.updateFilterTagsFromQuery()
+            } else if (!this.filter.field) {
+              const firstField = newProperties.find(p => p.bk_property_id !== 'id')
+              if (firstField) {
+                this.filter.field = firstField.bk_property_id
+              }
+            }
+          } else if (newProperties && newProperties.length > 0 && !this.filter.field) {
+            const firstField = newProperties.find(p => p.bk_property_id !== 'id')
+            if (firstField) {
+              this.filter.field = firstField.bk_property_id
+            }
           }
         }
-      }
-    },
-    'table.pagination.current': {
-      handler(newPage) {
-        console.log('[Index.watch.pagination.current] 页码变化:', newPage)
-        if (!this.isUrlUpdateTriggered) {
-          this.syncStateToUrl({ resetPage: false })
-        }
-        this.isUrlUpdateTriggered = false
       }
     }
   },
   methods: {
-    async loadModelData(searchParams) {
-      console.log('[Index.loadModelData] 开始加载数据')
+    async loadModelData(searchParams = null) {
       this.table.loading = true
-
       try {
-        const currentValue = this.filter.value
-        const currentFuzzy = this.filter.fuzzyQuery
-        const currentSort = this.table.sort
-        const currentPage = this.table.pagination.current
-        const currentLimit = this.table.pagination.limit
+        const query = this.$route.query
+        const currentField = query.field || this.filter.field
+        const currentValue = query.filter !== undefined ? String(query.filter) : this.filter.value
+        const currentFuzzy = query.fuzzy !== undefined ? (query.fuzzy === 'true' || query.fuzzy === '1') : this.filter.fuzzyQuery
+        const currentSort = query.sort || this.table.sort
+        const currentPage = query.page ? parseInt(query.page, 10) : this.table.pagination.current
+        const currentLimit = query.limit ? parseInt(query.limit, 10) : this.table.pagination.limit
 
-        if (!this.filter.field && this.allProperties.length > 0) {
+        console.log('[Index.loadModelData] 开始加载')
+        console.log('[Index.loadModelData] URL query:', query)
+        console.log('[Index.loadModelData] 搜索参数:', {
+          field: currentField,
+          value: currentValue,
+          fuzzy: currentFuzzy,
+          sort: currentSort,
+          page: currentPage,
+          limit: currentLimit,
+          advancedFilter: searchParams
+        })
+
+        const attrResult = await modelAPI.getModelAttributes(this.objId)
+
+        this.allProperties = attrResult.attributes || []
+        this.defaultColumns = attrResult.default_columns || []
+        console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns)
+
+        // Load saved columns config
+        try {
+          console.log('[Persistence] Calling getModelCustomColumns for objId:', this.objId)
+          const savedColumns = await userCustom.getModelCustomColumns(this.objId)
+          console.log('[Persistence] getModelCustomColumns result:', savedColumns)
+          if (savedColumns && savedColumns.columns && savedColumns.columns.length > 0) {
+            this.columnsConfig.selected = savedColumns.columns
+            console.log('[Persistence] Set columnsConfig.selected to:', this.columnsConfig.selected)
+          } else {
+            // 没有有效配置时，重置为空数组，使用默认规则
+            this.columnsConfig.selected = []
+            console.log('[Persistence] Reset columnsConfig.selected to empty array')
+          }
+        } catch (e) {
+          console.log('[Persistence] No saved columns config found or error:', e)
+          this.columnsConfig.selected = []
+        }
+
+        const validField = this.allProperties.find(p => p.bk_property_id === currentField)
+        if (!validField && this.allProperties.length > 0) {
           const firstField = this.allProperties.find(p => p.bk_property_id !== 'id')
           if (firstField) {
             this.filter.field = firstField.bk_property_id
           }
         }
 
+        // 只有在非多选场景下才设置 filter.value，避免与 filter.values 冲突
         if (!(this.isEnumField || this.isBoolField) || this.filter.values.length === 0) {
           this.filter.value = currentValue
         }
@@ -624,6 +786,7 @@ export default {
 
         let instResult
 
+        // 如果有高级筛选参数，使用新的API调用方式
         if (searchParams) {
           console.log('[Index.loadModelData] 使用高级筛选参数:', searchParams)
           
@@ -631,6 +794,7 @@ export default {
             ...searchParams
           })
         } else {
+          // 否则使用原有的简单搜索方式
           const isMultiSelectEnum = this.isEnumField || this.isBoolField
           const isDateTimeField = this.isDateField || this.isTimeField
           const searchValues = (isMultiSelectEnum || isDateTimeField) && this.filter.values.length > 0
@@ -646,6 +810,7 @@ export default {
           }
 
           if (isDateTimeField && searchValues.length > 0) {
+            // 日期时间范围搜索
             searchParams.search_start = searchValues[0]
             if (searchValues.length > 1) {
               searchParams.search_end = searchValues[1]
@@ -688,6 +853,7 @@ export default {
       const maxDefaultColumns = 8
       let selectedIds = null
       
+      // 检查是否有有效的用户配置
       if (this.columnsConfig.selected && Array.isArray(this.columnsConfig.selected) && this.columnsConfig.selected.length > 0) {
         selectedIds = this.columnsConfig.selected
         console.log('[Debug] Use user config:', selectedIds)
@@ -696,285 +862,132 @@ export default {
       }
 
       if (!selectedIds) {
+        // 从属性中获取排序后的默认列
         selectedIds = this.allProperties
           .filter(p => p.bk_property_index >= 0)
           .sort((a, b) => a.bk_property_index - b.bk_property_index)
           .slice(0, maxDefaultColumns)
           .map(p => p.bk_property_id)
 
+        // 确保 id 始终在第一位
         selectedIds = ['id', ...selectedIds.filter(id => id !== 'id')]
         console.log('[Debug] Default selectedIds:', selectedIds)
+      } else if (!selectedIds.includes('id')) {
+        // 确保 id 在自定义配置中
+        selectedIds = ['id', ...selectedIds]
       }
 
-      const selected = this.allProperties.filter(p => selectedIds.includes(p.bk_property_id))
-      console.log('[Debug] selectedProperties:', selected.length)
+      const selectedProperties = this.allProperties
+        .filter(p => selectedIds.includes(p.bk_property_id))
+        .sort((a, b) => {
+          // 强制 id 在第一位
+          if (a.bk_property_id === 'id') return -1
+          if (b.bk_property_id === 'id') return 1
+          // 其他按 selectedIds 顺序排列
+          const indexA = selectedIds.indexOf(a.bk_property_id)
+          const indexB = selectedIds.indexOf(b.bk_property_id)
+          return indexA - indexB
+        })
 
-      selected.sort((a, b) => {
-        const indexA = selectedIds.indexOf(a.bk_property_id)
-        const indexB = selectedIds.indexOf(b.bk_property_id)
-        return indexA - indexB
-      })
-
-      this.table.header = selected
+      console.log('[Debug] selectedProperties:', selectedProperties.length)
+      
+      this.table.header = selectedProperties.map(property => ({
+        id: property.bk_property_id,
+        name: property.bk_property_name,
+        property
+      }))
+      
       console.log('[Debug] table.header:', this.table.header.length)
     },
-    async handleFieldChange(field) {
-      console.log('[DEBUG] handleFieldChange:', field)
+    formatCellValue(value, column) {
+      if (value === null || value === undefined || value === '') {
+        return '-'
+      }
+      return String(value)
+    },
+    handleFieldChange() {
       this.filter.value = ''
       this.filter.values = []
-      this.enumSearchQuery = ''
+      this.filter.fuzzyQuery = false
     },
-    handleSearch() {
-      this.table.pagination.current = 1
-      this.currentSearchParams = null
-      this.advancedFilterConditions = null
-      this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
-    },
-    handleRefresh() {
-      this.isUrlUpdateTriggered = true
-      routerQuery.refresh()
-      this.loadModelData()
-      this.$bkMessage({ message: '刷新成功', theme: 'success' })
-    },
-    handleAdvancedFilter() {
-      this.advancedFilter.show = true
-    },
-    handleAdvancedFilterSearch(payload) {
-      console.log('[DEBUG] handleAdvancedFilterSearch:', payload)
-      const { conditionMap, rawConditions } = payload
-      
-      this.table.pagination.current = 1
-      this.advancedFilterConditions = conditionMap
-      this.filterTags = []
-      
-      Object.keys(conditionMap).forEach(id => {
-        const { operator, value } = conditionMap[id]
-        const property = this.allProperties.find(p => p.bk_property_id === id)
-        if (property) {
-          this.filterTags.push({
-            id: id,
-            propertyName: property.bk_property_name || id,
-            operator: operator,
-            value: value,
-            property: property
-          })
-        }
-      })
-      
-      const searchParams = this.buildAdvancedSearchParams(rawConditions)
-      console.log('[DEBUG] handleAdvancedFilterSearch searchParams:', searchParams)
-      
-      this.syncStateToUrl({
-        filter_adv: routerQuery.get('filter_adv'),
-        s: 'adv',
-        resetPage: true
-      })
-      this.isUrlUpdateTriggered = true
-      
-      this.loadModelData(searchParams)
-    },
-    handleAdvancedFilterReset() {
-      console.log('[DEBUG] handleAdvancedFilterReset')
-      this.table.pagination.current = 1
-      this.advancedFilterConditions = null
-      this.filterTags = []
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
-    },
-    handlePageChange(page) {
-      console.log('[DEBUG] handlePageChange:', page)
-      this.table.pagination.current = page
-      this.syncStateToUrl({ resetPage: false })
-      this.isUrlUpdateTriggered = true
-      
-      if (this.advancedFilterConditions) {
-        const rawConditions = []
-        Object.keys(this.advancedFilterConditions).forEach(field => {
-          const cond = this.advancedFilterConditions[field]
-          rawConditions.push({
-            field,
-            operator: cond.operator,
-            value: cond.value
-          })
-        })
-        const searchParams = this.buildAdvancedSearchParams(rawConditions)
-        this.loadModelData(searchParams)
-      } else {
-        this.loadModelData()
-      }
-    },
-    handlePageLimitChange(limit) {
-      console.log('[DEBUG] handlePageLimitChange:', limit)
-      this.table.pagination.current = 1
-      this.table.pagination.limit = limit
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      
-      if (this.advancedFilterConditions) {
-        const rawConditions = []
-        Object.keys(this.advancedFilterConditions).forEach(field => {
-          const cond = this.advancedFilterConditions[field]
-          rawConditions.push({
-            field,
-            operator: cond.operator,
-            value: cond.value
-          })
-        })
-        const searchParams = this.buildAdvancedSearchParams(rawConditions)
-        this.loadModelData(searchParams)
-      } else {
-        this.loadModelData()
-      }
-    },
-    handleClear() {
-      this.filter.value = ''
-      this.filter.values = []
-      this.filter.fuzzyQuery = true
-    },
-    handleEnumSelect(opt) {
-      console.log('[DEBUG] handleEnumSelect:', opt)
-      if (!this.filter.values.includes(opt.id)) {
-        this.filter.values.push(opt.id)
-        this.filter.value = this.filter.values.join(',')
-      }
-      this.enumSearchQuery = ''
-      this.enumDropdownVisible = false
-    },
-    handleDateChange(dates) {
-      console.log('[DEBUG] handleDateChange:', dates)
-      if (dates && dates.length === 2) {
-        this.filter.values = dates
-        this.filter.value = dates.join(',')
-      }
-    },
-    handleTimeChange(values) {
-      console.log('[DEBUG] handleTimeChange:', values)
-      if (values && values.length > 0) {
-        this.filter.values = values
+    handleEnumSelect(event) {
+      const selected = event.target.selectedOptions
+      const values = Array.from(selected).map(opt => opt.value)
+      this.filter.values = values
+      if (values.length > 0) {
         this.filter.value = values.join(',')
-      }
-    },
-    handleSelectAll(selection) {
-      this.selectedIds = selection.map(item => item.id)
-    },
-    handleRowClick({ row }) {
-      this.$router.push({
-        name: 'generalModelDetail',
-        params: {
-          objId: this.objId,
-          instanceId: row.id
-        }
-      })
-    },
-    updateFilterTags() {
-      if (this.filter.field && this.filter.value) {
-        const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
-        if (property) {
-          this.filterTags = [{
-            id: this.filter.field,
-            propertyName: property.bk_property_name,
-            operator: this.filter.fuzzyQuery ? '$regex' : '$eq',
-            value: this.filter.value,
-            property: property
-          }]
-        }
-      } else {
-        this.filterTags = []
-      }
-    },
-    updateFilterTagsFromQuery() {
-      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
-        console.log('[updateFilterTagsFromQuery] 有高级筛选条件，跳过更新filterTags')
-        return
-      }
-
-      const query = this.$route.query
-      this.filterTags = []
-      if (query.field && query.filter) {
-        const property = this.allProperties.find(p => p.bk_property_id === query.field)
-        if (property) {
-          this.filterTags.push({
-            id: property.bk_property_id,
-            propertyName: property.bk_property_name,
-            operator: query.fuzzy === 'true' || query.fuzzy === '1' ? '$regex' : '$eq',
-            value: String(query.filter),
-            property
-          })
-        }
-      }
-    },
-    handleRemoveFilterTag(tag) {
-      console.log('[DEBUG] handleRemoveFilterTag:', tag)
-      if (tag.operator && tag.operator !== '$eq' && tag.operator !== '$regex') {
-        const property = tag.property
-        if (property) {
-          const opType = this.getOperatorType(property.bk_property_type)
-          tag.value = this.getDefaultValue(opType)
-        }
-        return
-      }
-      
-      if (this.advancedFilterConditions && this.advancedFilterConditions[tag.id]) {
-        delete this.advancedFilterConditions[tag.id]
-        
-        if (Object.keys(this.advancedFilterConditions).length === 0) {
-          this.advancedFilterConditions = null
-          this.filterTags = []
-          this.syncStateToUrl({ resetPage: true })
-          this.isUrlUpdateTriggered = true
-          this.loadModelData()
-        } else {
-          this.filterTags = this.filterTags.filter(t => t.id !== tag.id)
-          const rawConditions = Object.keys(this.advancedFilterConditions).map(id => ({
-            field: id,
-            ...this.advancedFilterConditions[id]
-          }))
-          const searchParams = this.buildAdvancedSearchParams(rawConditions)
-          this.syncStateToUrl({
-            filter_adv: routerQuery.get('filter_adv'),
-            s: 'adv',
-            resetPage: true
-          })
-          this.isUrlUpdateTriggered = true
-          this.loadModelData(searchParams)
-        }
-      } else {
-        this.filter.field = ''
-        this.filter.value = ''
-        this.filterTags = []
+        this.table.pagination.current = 1
+        this.updateFilterTags()
         this.syncStateToUrl({ resetPage: true })
         this.isUrlUpdateTriggered = true
         this.loadModelData()
       }
     },
-    handleClearAllFilterTags() {
-      console.log('[DEBUG] handleClearAllFilterTags')
-      this.advancedFilterConditions = null
-      this.filterTags = []
-      this.filter.field = ''
-      this.filter.value = ''
-      this.filter.values = []
+    toggleEnumDropdown() {
+      this.enumDropdownVisible = !this.enumDropdownVisible
+    },
+    handleEnumOptionChange() {
+      if (this.filter.values.length > 0) {
+        this.filter.value = this.filter.values.join(',')
+        this.table.pagination.current = 1
+        this.updateFilterTags()
+        this.syncStateToUrl({ resetPage: true })
+        this.isUrlUpdateTriggered = true
+        this.loadModelData()
+      } else {
+        this.filter.value = ''
+        this.table.pagination.current = 1
+        this.syncStateToUrl({ resetPage: true })
+        this.isUrlUpdateTriggered = true
+        this.loadModelData()
+      }
+    },
+    handleEnumCheckbox(optionId, event) {
+      console.log('[handleEnumCheckbox]', { optionId, checked: event.target.checked, currentValues: this.filter.values })
+      
+      // 使用 $set 确保 Vue 能正确追踪数组变化
+      if (event.target.checked) {
+        if (!this.filter.values.includes(optionId)) {
+          this.$set(this.filter.values, this.filter.values.length, optionId)
+        }
+      } else {
+        const index = this.filter.values.indexOf(optionId)
+        if (index > -1) {
+          this.filter.values.splice(index, 1)
+        }
+      }
+      
+      console.log('[handleEnumCheckbox] after change:', this.filter.values)
+      this.filter.value = this.filter.values.join(',')
+      this.table.pagination.current = 1
+      this.updateFilterTags()
+      this.syncStateToUrl({ resetPage: true })
+      this.isUrlUpdateTriggered = true
+      
+      // 延迟搜索，让用户可以快速多选多个选项
+      if (this.searchTimeout) {
+        clearTimeout(this.searchTimeout)
+      }
+      this.searchTimeout = setTimeout(() => {
+        this.loadModelData()
+      }, 300)
+    },
+    handleEnumSelectSingle(selected) {
+      this.filter.value = selected
+      this.filter.values = selected ? [selected] : []
+      this.table.pagination.current = 1
+      this.updateFilterTags()
       this.syncStateToUrl({ resetPage: true })
       this.isUrlUpdateTriggered = true
       this.loadModelData()
     },
-    getOperatorType(propertyType) {
-      if (propertyType === 'enum' || propertyType === 'list') return 'multiple'
-      if (propertyType === 'bool') return 'boolean'
-      if (propertyType === 'int' || propertyType === 'float') return 'range'
-      return 'single'
-    },
-    getDefaultValue(opType) {
-      switch (opType) {
-        case 'multiple': return []
-        case 'boolean': return null
-        case 'range': return { start: '', end: '' }
-        default: return ''
-      }
+    handleEnumClear() {
+      this.filter.values = []
+      this.filter.value = ''
+      this.table.pagination.current = 1
+      this.syncStateToUrl({ resetPage: true })
+      this.isUrlUpdateTriggered = true
+      this.loadModelData()
     },
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
@@ -1002,6 +1015,7 @@ export default {
         this.table.sort = query.sort
       }
 
+      // 从filter_adv参数中恢复高级筛选条件，保持与原bk-cmdb项目一致
       if (query.filter_adv) {
         try {
           const advQuery = QS.parse(query.filter_adv)
@@ -1016,6 +1030,7 @@ export default {
               const value = advQuery[key]
               
               if (id && operator) {
+                // 将值转换为数组（如果是逗号分隔的字符串）
                 let processedValue = value
                 if (typeof processedValue === 'string' && processedValue.includes(',')) {
                   processedValue = processedValue.split(',')
@@ -1033,12 +1048,14 @@ export default {
               }
             })
             
+            // 只有当 conditionMap 非空时才设置 advancedFilterConditions
             if (Object.keys(conditionMap).length > 0) {
               this.advancedFilterConditions = conditionMap
             } else {
               this.advancedFilterConditions = null
             }
             
+            // 恢复 filterTags - 基于 conditionMap
             const tags = []
             Object.keys(conditionMap).forEach(id => {
               const { operator, value } = conditionMap[id]
@@ -1059,15 +1076,18 @@ export default {
             
             console.log('[restoreStateFromUrl] 高级筛选条件已恢复，filterTags:', this.filterTags)
           } else {
+            // advQuery 为空
             this.advancedFilterConditions = null
           }
         } catch (e) {
           console.error('[restoreStateFromUrl] 解析filter_adv失败:', e)
           this.advancedFilterConditions = null
+          // 解析失败时，才使用简单搜索条件更新filterTags
           this.updateFilterTagsFromQuery()
         }
       } else {
         this.advancedFilterConditions = null
+        // 没有高级筛选条件时，使用简单搜索条件更新filterTags
         this.updateFilterTagsFromQuery()
       }
 
@@ -1103,9 +1123,12 @@ export default {
         query.sort = this.table.sort
       }
 
+      // 保持与原bk-cmdb项目一致的URL参数
+      // 优先使用传入的filter_adv和s，如果没有则检查当前状态
       if (filter_adv !== undefined) {
         query.filter_adv = filter_adv
       } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 如果没有显式传入，但有当前高级筛选条件，则从当前状态重新构建
         try {
           const tempQuery = {}
           Object.keys(this.advancedFilterConditions).forEach(field => {
@@ -1114,6 +1137,7 @@ export default {
             let value = cond.value
             
             if (Array.isArray(value)) {
+              // 如果是数组，用逗号分隔
               tempQuery[key] = value.join(',')
             } else if (value !== null && value !== undefined) {
               tempQuery[key] = value
@@ -1128,6 +1152,7 @@ export default {
       if (s !== undefined) {
         query.s = s
       } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 如果没有显式传入，但有高级筛选条件，则设置s为'adv'
         query.s = 'adv'
       }
 
@@ -1152,25 +1177,153 @@ export default {
     handleAdvancedFilter() {
       this.advancedFilter.show = true
     },
+    handleAdvancedFilterSearch(searchResult) {
+      console.log('[handleAdvancedFilterSearch] 高级筛选条件:', searchResult)
+      
+      const { conditionMap, transformedCondition, searchParams, rawConditions } = searchResult
+
+      this.advancedFilterConditions = conditionMap
+      this.currentSearchParams = searchParams
+      
+      console.log('[handleAdvancedFilterSearch] rawConditions:', rawConditions)
+      console.log('[handleAdvancedFilterSearch] conditionMap:', conditionMap)
+      console.log('[handleAdvancedFilterSearch] allProperties:', this.allProperties)
+      
+      // 构建 filterTags - 基于 conditionMap 而不是 rawConditions
+      const tags = []
+      Object.keys(conditionMap).forEach(id => {
+        const { operator, value } = conditionMap[id]
+        const property = this.allProperties.find(p => p.bk_property_id === id)
+        if (property && value !== null && value !== undefined) {
+          const hasValue = Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0
+          if (hasValue) {
+            tags.push({
+              id: id,
+              property: property,
+              propertyName: property.bk_property_name || id,
+              operator: operator,
+              value: value
+            })
+          }
+        }
+      })
+      this.filterTags = tags
+      
+      console.log('[handleAdvancedFilterSearch] filterTags:', this.filterTags)
+
+      this.table.pagination.current = 1
+      
+      // 按照原bk-cmdb项目格式，保存到filter_adv参数中
+      const advQuery = {}
+      Object.keys(conditionMap).forEach((id) => {
+        const { operator, value } = conditionMap[id]
+        const key = `${id}.${operator.replace('$', '')}`
+        if (String(value).length) {
+          advQuery[key] = Array.isArray(value) ? value.join(',') : value
+        }
+      })
+      
+      this.syncStateToUrl({ 
+        resetPage: true, 
+        filter_adv: QS.stringify(advQuery, { encode: false }),
+        s: 'adv'
+      })
+      
+      this.loadModelData(searchParams)
+    },
+    handleAdvancedFilterReset() {
+      this.table.pagination.current = 1
+      this.currentSearchParams = null
+      this.advancedFilterConditions = null
+      this.filterTags = []
+      // 清除快速搜索输入框
+      this.filter.value = ''
+      this.filter.values = []
+      this.filter.fuzzyQuery = false
+      this.isUrlUpdateTriggered = true
+      // 清除URL中的filter_adv和s参数，保持与原项目一致
+      const query = {
+        page: 1,
+        limit: this.table.pagination.limit,
+        filter_adv: '',
+        s: ''
+      }
+      routerQuery.setAll(query)
+      this.loadModelData()
+    },
+    handleImport() {
+      this.$bkMessage({ message: '导入功能开发中', theme: 'info' })
+    },
+    handleExport() {
+      this.$bkMessage({ message: '导出功能开发中', theme: 'info' })
+    },
+    handleBatchEdit() {
+      if (this.selectedIds.length === 0) {
+        this.$bkMessage({ message: '请先选择要更新的实例', theme: 'warning' })
+        return
+      }
+      this.batchUpdateDialogVisible = true
+    },
+    handleBatchUpdateSubmit(data) {
+      this.doBatchUpdate(data)
+    },
+    async doBatchUpdate(data) {
+      this.batchUpdateFormLoading = true
+      try {
+        const result = await modelAPI.batchUpdateInstancesWithSameData(this.objId, this.selectedIds, data)
+        if (result.success) {
+          this.$bkMessage({ message: `成功更新 ${this.selectedIds.length} 个实例`, theme: 'success' })
+          this.handleBatchUpdateDialogClose()
+          this.selectedIds = []
+          await this.loadModelData(this.currentSearchParams)
+        } else {
+          this.$bkMessage({ message: result.message || '更新失败', theme: 'error' })
+        }
+      } catch (error) {
+        console.error('Batch update error:', error)
+        this.$bkMessage({ message: '更新失败，请稍后重试', theme: 'error' })
+      } finally {
+        this.batchUpdateFormLoading = false
+      }
+    },
+    handleBatchUpdateDialogClose() {
+      this.batchUpdateDialogVisible = false
+      if (this.$refs.formMultipleRef) {
+        this.$refs.formMultipleRef.reset()
+      }
+    },
+    handleSelectionChange(selection) {
+      this.selectedIds = selection.map(row => row.id)
+    },
+    handleDeleteSingle(row) {
+      this.handleDelete([row.id])
+    },
     handleBatchDelete() {
       if (this.selectedIds.length === 0) {
         this.$bkMessage({ message: '请先选择要删除的实例', theme: 'warning' })
         return
       }
+      this.handleDelete(this.selectedIds)
+    },
+    handleDelete(ids) {
+      this.table.loading = true
       
-      const ids = this.selectedIds
-      const total = ids.length
-      
-      modelAPI.getInstanceAssociations(this.objId, ids)
-        .then(result => {
-          let total_associations = 0
-          if (result && result.associations) {
-            total_associations = result.associations.length
-          }
+      // 先检查关联实例数量
+      modelAPI.checkInstanceAssociations(this.objId, ids)
+        .then(associationData => {
+          const { total_associations, source_associations, target_associations } = associationData
           
-          const subTitle = total_associations > 0
-            ? `将同时删除 ${total_associations} 条关联关系`
-            : ''
+          let subTitle = `您确定要删除选中的 ${ids.length} 个实例吗？此操作不可撤销。`
+          
+          if (total_associations > 0) {
+            subTitle += `\n\n⚠️ 检测到 ${total_associations} 条关联关系将同时被删除：`
+            if (source_associations > 0) {
+              subTitle += `\n- ${source_associations} 条作为源的关联`
+            }
+            if (target_associations > 0) {
+              subTitle += `\n- ${target_associations} 条作为目标的关联`
+            }
+          }
           
           this.$bkInfo({
             title: '确认删除',
@@ -1202,23 +1355,28 @@ export default {
         })
     },
     buildAdvancedSearchParams(rawConditions) {
+      // 从 rawConditions 构建 conditionMap
       const conditionMap = {}
       
       rawConditions.forEach(cond => {
         const { field, operator, value } = cond
         
+        // 获取属性信息
         const property = this.allProperties.find(p => p.bk_property_id === field)
         const isEnumOrList = property && ['enum', 'list'].includes(property.bk_property_type)
         const isDateTime = property && ['date', 'time'].includes(property.bk_property_type)
         
+        // 处理值
         let processedValue = value
         if (isEnumOrList || isDateTime) {
+          // 枚举、列表、日期时间类型，值应该是数组
           if (Array.isArray(value)) {
             processedValue = value
           } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
             processedValue = [value]
           }
         } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
+          // 其他类型
           if (this.isInOperator(operator) && !isEnumOrList) {
             processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
           } else if (this.isRangeOperator(operator)) {
@@ -1236,6 +1394,7 @@ export default {
         }
       })
       
+      // 使用 buildSearchParams 构建最终的 searchParams
       return buildSearchParams(conditionMap, this.allProperties, {
         page: this.table.pagination.current,
         pageSize: this.table.pagination.limit,
@@ -1260,6 +1419,7 @@ export default {
       this.createForm = {}
       this.createDialogVisible = true
       
+      // 初始化表单默认值
       this.allProperties.forEach(attr => {
         if (attr.default !== null && attr.default !== undefined) {
           this.$set(this.createForm, attr.bk_property_id, attr.default)
@@ -1282,54 +1442,102 @@ export default {
         if (result.success) {
           this.$bkMessage({ message: '实例创建成功', theme: 'success' })
           this.handleCreateDialogClose()
+          // 刷新列表
           await this.loadModelData(this.currentSearchParams)
         } else {
           this.$bkMessage({ message: result.message || '创建失败', theme: 'error' })
         }
       } catch (error) {
         console.error('Create instance error:', error)
-        this.$bkMessage({ message: '创建失败', theme: 'error' })
+        let errorMsg = '创建失败，请稍后重试'
+        
+        if (error.response && error.response.status === 400) {
+          const errorData = error.response.data
+          if (errorData && errorData.detail && errorData.detail.errors) {
+            errorMsg = errorData.detail.errors.join('; ')
+          } else if (errorData && errorData.detail) {
+            errorMsg = errorData.detail
+          }
+        }
+        
+        this.$bkMessage({ message: errorMsg, theme: 'error' })
       } finally {
         this.createFormLoading = false
       }
     },
-    handleBatchEdit() {
-      if (this.selectedIds.length === 0) {
-        this.$bkMessage({ message: '请先选择要更新的实例', theme: 'warning' })
-        return
-      }
-      this.batchUpdateDialogVisible = true
-    },
-    handleBatchUpdateSubmit(data) {
-      this.doBatchUpdate(data)
-    },
-    async doBatchUpdate(data) {
-      this.batchUpdateFormLoading = true
+    parseOptions(option) {
+      if (!option) return []
+      if (Array.isArray(option)) return option
       try {
-        const result = await modelAPI.batchUpdateInstancesWithSameData(this.objId, this.selectedIds, data)
-        if (result.success) {
-          this.$bkMessage({ message: `成功更新 ${this.selectedIds.length} 个实例`, theme: 'success' })
-          this.handleBatchUpdateDialogClose()
-          this.selectedIds = []
-          await this.loadModelData(this.currentSearchParams)
-        } else {
-          this.$bkMessage({ message: result.message || '更新失败', theme: 'error' })
-        }
-      } catch (error) {
-        console.error('Batch update error:', error)
-        this.$bkMessage({ message: '更新失败', theme: 'error' })
-      } finally {
-        this.batchUpdateFormLoading = false
+        const parsed = JSON.parse(option)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
       }
     },
-    handleBatchUpdateDialogClose() {
-      this.batchUpdateDialogVisible = false
+    handleViewDetails(instance) {
+      // 进入详情页前，确保URL中包含当前的高级筛选条件
+      const query = this.$route.query
+      let filterAdv = null
+      
+      // 优先使用URL中的filter_adv，否则从advancedFilterConditions构建
+      if (query.filter_adv) {
+        filterAdv = query.filter_adv
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        filterAdv = QS.stringify(
+          Object.keys(this.advancedFilterConditions).reduce((acc, id) => {
+            const { operator, value } = this.advancedFilterConditions[id]
+            const key = `${id}.${operator.replace('$', '')}`
+            if (String(value).length) {
+              acc[key] = Array.isArray(value) ? value.join(',') : value
+            }
+            return acc
+          }, {}), { encode: false }
+        )
+      }
+      
+      const s = query.s || 'adv'
+      
+      this.syncStateToUrl({ 
+        filter_adv: filterAdv,
+        s: filterAdv ? s : undefined
+      })
+      this.prevInstanceId = instance.id
+      this.$router.push({
+        name: 'ResourceInstanceDetails',
+        params: { objId: this.objId, instId: instance.id }
+      })
     },
-    handleImport() {
-      this.$bkMessage({ message: '导入功能开发中', theme: 'info' })
+    handlePageChange(page) {
+      this.table.pagination.current = page
+      this.syncStateToUrl({ keepSort: false, resetPage: true })
+      this.isUrlUpdateTriggered = true
+      
+      // 如果有当前搜索参数，更新页码并使用（使用当前分页限制）
+      if (this.currentSearchParams) {
+        const newParams = {
+          ...this.currentSearchParams,
+          page,
+          page_size: this.table.pagination.limit
+        }
+        this.loadModelData(newParams)
+      } else {
+        this.loadModelData()
+      }
     },
-    handleExport() {
-      this.$bkMessage({ message: '导出功能开发中', theme: 'info' })
+    handleLimitChange(limit) {
+      this.table.pagination.limit = limit
+      this.table.pagination.current = 1
+      this.syncStateToUrl({ keepSort: false, resetPage: true })
+      this.isUrlUpdateTriggered = true
+      
+      // 如果有当前搜索参数，更新限制和页码并使用
+      if (this.currentSearchParams) {
+        const newParams = { ...this.currentSearchParams, page: 1, page_size: limit }
+        this.loadModelData(newParams)
+      } else {
+        this.loadModelData()
+      }
     },
     handleSortChange(sort) {
       if (!sort.order) {
@@ -1343,6 +1551,7 @@ export default {
       this.syncStateToUrl({ resetPage: true })
       this.isUrlUpdateTriggered = true
       
+      // 如果有高级筛选条件，使用高级筛选参数加载数据
       if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
         const rawConditions = []
         Object.keys(this.advancedFilterConditions).forEach(field => {
@@ -1375,86 +1584,891 @@ export default {
             return
           }
 
-          const targetTh = Array.from(allThs).find(th => {
-            const propName = th.getAttribute('data-prop')
-            return propName === prop
+          allThs.forEach(th => {
+            th.classList.remove('ascending', 'descending')
           })
 
-          if (targetTh) {
-            const sortIcon = targetTh.querySelector('.caret-wrapper')
-            if (sortIcon) {
-              sortIcon.classList.remove('ascending', 'descending')
-              sortIcon.classList.add(orderClass)
+          let targetLabel = prop
+          if (this.table.header && this.table.header.length > 0) {
+            const col = this.table.header.find(c => c.id === prop)
+            if (col) {
+              targetLabel = col.name
             }
+          }
+
+          let targetTh = null
+          for (let i = 0; i < allThs.length; i++) {
+            const th = allThs[i]
+            const labelEl = th.querySelector('.bk-table-header-label')
+            if (labelEl && labelEl.textContent.trim() === targetLabel.trim()) {
+              targetTh = th
+              break
+            }
+          }
+
+          if (targetTh) {
+            targetTh.classList.add(orderClass)
           }
         })
       })
+    },
+    updateFilterTags() {
+      const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
+      if (!property) return
+
+      const existingIndex = this.filterTags.findIndex(tag => tag.id === this.filter.field)
+
+      if (this.filter.values && this.filter.values.length > 0) {
+        const tagData = {
+          id: property.bk_property_id,
+          propertyName: property.bk_property_name,
+          operator: (this.isEnumField || this.isBoolField) ? '$in' : ((this.isDateField || this.isTimeField) ? '$range' : (this.filter.fuzzyQuery ? '$regex' : '$eq')),
+          value: [...this.filter.values],
+          values: [...this.filter.values],
+          property
+        }
+        if (existingIndex >= 0) {
+          this.filterTags.splice(existingIndex, 1, tagData)
+        } else {
+          this.filterTags.push(tagData)
+        }
+      } else if (this.filter.value) {
+        const tagData = {
+          id: property.bk_property_id,
+          propertyName: property.bk_property_name,
+          operator: this.filter.fuzzyQuery ? '$regex' : '$eq',
+          value: this.filter.value,
+          property
+        }
+        if (existingIndex >= 0) {
+          this.filterTags.splice(existingIndex, 1, tagData)
+        } else {
+          this.filterTags.push(tagData)
+        }
+      } else if (existingIndex >= 0) {
+        this.filterTags.splice(existingIndex, 1)
+      }
+    },
+    updateFilterTagsFromQuery() {
+      // 如果有高级筛选条件，不要更新filterTags（避免把高级筛选标签清空）
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        console.log('[updateFilterTagsFromQuery] 有高级筛选条件，跳过更新filterTags')
+        return
+      }
+
+      const query = this.$route.query
+      this.filterTags = []
+      if (query.field && query.filter) {
+        const property = this.allProperties.find(p => p.bk_property_id === query.field)
+        if (property) {
+          this.filterTags.push({
+            id: property.bk_property_id,
+            propertyName: property.bk_property_name,
+            operator: query.fuzzy === 'true' || query.fuzzy === '1' ? '$regex' : '$eq',
+            value: String(query.filter),
+            property
+          })
+        }
+      }
+    },
+    handleRemoveFilterTag(tag) {
+      const tagIndex = this.filterTags.findIndex(t => t.id === tag.id)
+      if (tagIndex >= 0) {
+        this.filterTags.splice(tagIndex, 1)
+      }
+      // 如果移除的tag与快速搜索字段相同，清除快速搜索
+      if (tag.id === this.filter.field) {
+        this.filter.value = ''
+        this.filter.values = []
+        this.filter.fuzzyQuery = false
+      }
+      this.table.pagination.current = 1
+      this.currentSearchParams = null
+      this.advancedFilterConditions = null
+      this.syncStateToUrl({ resetPage: true })
+      this.loadModelData()
+    },
+    handleClearAllFilterTags() {
+      this.filterTags = []
+      // 清除快速搜索输入框
+      this.filter.value = ''
+      this.filter.values = []
+      this.filter.fuzzyQuery = false
+      this.table.pagination.current = 1
+      this.currentSearchParams = null
+      this.advancedFilterConditions = null
+      this.syncStateToUrl({ resetPage: true })
+      this.loadModelData()
+    },
+    getColumnSortable(columnId) {
+      const sortableTypes = ['int', 'float', 'date', 'time', 'enum', 'singlechar', 'longchar']
+      const property = this.allProperties.find(p => p.bk_property_id === columnId)
+      if (!property) return false
+      return sortableTypes.includes(property.bk_property_type)
+    },
+    async handleApplyColumns(properties) {
+      console.log('[Persistence] handleApplyColumns called, properties:', properties)
+      this.columnsConfig.selected = properties.map(p => p.bk_property_id)
+      console.log('[Persistence] columnsConfig.selected updated to:', this.columnsConfig.selected)
+      this.columnsConfig.show = false
+      this.setTableHeader()
+      console.log('[Persistence] setTableHeader called after apply')
+      
+      // Save to both API and Vuex store for sharing
+      try {
+        console.log('[Persistence] Calling saveModelCustomColumns for objId:', this.objId, 'columns:', this.columnsConfig.selected)
+        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.columnsConfig.selected)
+        console.log('[Persistence] saveModelCustomColumns result:', saveResult)
+        
+        // Sync to Vuex store for sharing with association list
+        const configKey = `${this.objId}_custom_table_columns`
+        this.$store.dispatch('saveUsercustom', { [configKey]: this.columnsConfig.selected })
+        console.log('[Persistence] Synced to Vuex store:', configKey)
+      } catch (e) {
+        console.error('[Persistence] Failed to save columns config:', e)
+      }
+      this.$bkMessage({ message: '配置已应用', theme: 'success' })
+    },
+    handleCancelColumns() {
+      console.log('[Persistence] handleCancelColumns called')
+      this.columnsConfig.show = false
+    },
+    async handleResetColumns() {
+      console.log('[Persistence] handleResetColumns called, defaultColumns:', this.defaultColumns)
+      this.columnsConfig.selected = [...this.defaultColumns]
+      console.log('[Persistence] columnsConfig.selected reset to:', this.columnsConfig.selected)
+      this.columnsConfig.show = false
+      this.setTableHeader()
+      console.log('[Persistence] setTableHeader called after reset')
+      
+      // Save to both API and Vuex store for sharing
+      try {
+        console.log('[Persistence] Calling saveModelCustomColumns (reset) for objId:', this.objId, 'columns:', this.columnsConfig.selected)
+        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.columnsConfig.selected)
+        console.log('[Persistence] saveModelCustomColumns (reset) result:', saveResult)
+        
+        // Sync to Vuex store for sharing with association list
+        const configKey = `${this.objId}_custom_table_columns`
+        this.$store.dispatch('saveUsercustom', { [configKey]: this.columnsConfig.selected })
+        console.log('[Persistence] Synced reset to Vuex store:', configKey)
+      } catch (e) {
+        console.error('[Persistence] Failed to save columns config (reset):', e)
+      }
+      this.$bkMessage({ message: '已还原默认配置', theme: 'success' })
+    },
+    handleSidesliderHidden() {
+      this.columnsConfig.show = false
+    },
+    goBackToResource() {
+      console.log('[Persistence] goBackToResource called, navigating to /resource')
+      this.$router.push({ name: 'Resource' })
     }
   }
 }
 </script>
 
-<style lang="scss" scoped>
+<style lang="scss">
 .general-model-layout {
-  padding: 20px;
-  .models-options {
-    margin-bottom: 16px;
-    .options-button {
-      .models-button {
-        margin-left: 8px;
-      }
-      .button-delete {
-        color: #ff4949;
-      }
-    }
-    .options-filter {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      .filter-selector {
-        width: 150px;
-      }
-      .filter-input {
-        width: 200px;
-      }
-      .filter-button {
-        margin-left: 4px;
-      }
+  padding: 15px 20px 0;
+}
+
+.models-options {
+  .options-button {
+    display: inline-block;
+    position: relative;
+    &:hover {
+      z-index: 1;
     }
   }
-  .enum-select-wrapper {
-    position: relative;
-    .enum-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      width: 100%;
-      max-height: 200px;
-      overflow-y: auto;
-      background: #fff;
-      border: 1px solid #dcdee5;
-      border-radius: 2px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-      z-index: 100;
-      .enum-option {
-        padding: 8px 12px;
-        cursor: pointer;
-        &:hover {
-          background: #eaf3ff;
+
+  .models-button {
+    margin-left: 10px;
+    &:first-child {
+      margin-left: 0;
+    }
+  }
+
+  .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    line-height: 30px;
+    padding: 0;
+    font-size: 0;
+    cursor: pointer;
+    border-radius: 2px;
+    border: 1px solid #c4c6cc;
+    background: #fff;
+    transition: all 0.2s;
+    vertical-align: middle;
+
+    &:hover {
+      border-color: #3a84ff;
+      color: #3a84ff;
+    }
+
+    i {
+      font-size: 14px;
+    }
+  }
+
+  .option-filter {
+    &:hover,
+    &.active {
+      border-color: #3a84ff;
+      color: #3a84ff;
+    }
+  }
+
+  .ml5 {
+    margin-left: 5px;
+  }
+
+  .ml10 {
+    margin-left: 10px;
+  }
+
+  .fl {
+    float: left;
+  }
+
+  .fr {
+    float: right;
+  }
+}
+
+.options-filter {
+  position: relative;
+  margin-right: 5px;
+  display: flex;
+  align-items: flex-start;
+  width: 430px;
+
+  .filter-selector {
+    width: 120px;
+    border-radius: 2px 0 0 2px;
+    margin-right: -1px;
+
+    :deep(.bk-select) {
+      height: 32px;
+      min-height: 32px;
+      box-sizing: border-box;
+      
+      .bk-select-name {
+        font-size: 12px;
+        height: 30px;
+        line-height: 30px;
+      }
+
+      .bk-select-trigger {
+        height: 32px;
+        min-height: 32px;
+        box-sizing: border-box;
+
+        .bk-select-name {
+          height: 30px;
+          line-height: 30px;
         }
       }
     }
   }
-  .models-table {
-    margin-top: 16px;
-    .enum-tag {
-      display: inline-block;
-      padding: 2px 8px;
-      margin: 2px;
-      background: #eaf3ff;
-      border-radius: 2px;
-      font-size: 12px;
+
+  .filter-value {
+    flex: 1;
+    width: 320px;
+    border-radius: 0 2px 2px 0;
+
+    :deep(.bk-form-input) {
+      line-height: 32px;
     }
+
+    .search-input-wrapper {
+      display: flex;
+      align-items: center;
+      width: 100%;
+
+      .search-input {
+        flex: 1;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid #c4c6cc;
+        border-radius: 2px;
+        font-size: 14px;
+        outline: none;
+        min-width: 0;
+        box-sizing: border-box;
+        line-height: 32px;
+
+        &:focus {
+          border-color: #3a84ff;
+        }
+      }
+
+      .enum-select-wrapper {
+        flex: 1;
+        position: relative;
+        min-width: 0;
+
+        .enum-input-container {
+          position: relative;
+          width: 100%;
+
+          .enum-multi-input {
+            width: 100%;
+            height: 32px;
+            padding: 0 32px 0 10px;
+            border: 1px solid #c4c6cc;
+            border-radius: 0;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            background: #fff;
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-sizing: border-box;
+            line-height: 32px;
+
+            &:focus,
+            &:hover {
+              border-color: #3a84ff;
+            }
+          }
+
+          .bk-select-angle {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            line-height: 1;
+            color: #979ba5;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: transform 0.2s ease;
+
+            &.icon-flip {
+              transform: translateY(-50%) rotate(180deg);
+              color: #3a84ff;
+            }
+          }
+        }
+
+        .enum-dropdown {
+          position: absolute;
+          top: calc(100% + 4px);
+          left: 0;
+          right: 0;
+          min-width: 200px;
+          max-width: 400px;
+          background: #fff;
+          border: 1px solid #dcdee5;
+          border-radius: 2px;
+          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+          z-index: 1000;
+          max-height: 280px;
+          overflow-y: auto;
+          padding: 0;
+          opacity: 0;
+          visibility: hidden;
+          transform: translateY(-10px);
+          transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+
+          &::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: 16px;
+            width: 10px;
+            height: 10px;
+            background: #fff;
+            border-left: 1px solid #dcdee5;
+            border-top: 1px solid #dcdee5;
+            transform: rotate(45deg);
+          }
+
+          .bk-select-search-wrapper {
+            padding: 8px;
+            border-bottom: 1px solid #f0f1f5;
+
+            .bk-select-search-input {
+              width: 100%;
+              height: 32px;
+              padding: 0 10px;
+              border: 1px solid #c4c6cc;
+              border-radius: 2px;
+              font-size: 14px;
+              outline: none;
+              box-sizing: border-box;
+              line-height: 32px;
+
+              &:focus {
+                border-color: #3a84ff;
+              }
+            }
+          }
+
+          .bk-select-options {
+            padding: 6px 0;
+          }
+
+          .bk-select-option {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #63656e;
+            transition: background-color 0.15s;
+
+            &:hover {
+              background: #f0f1f5;
+            }
+
+            &.is-selected {
+              color: #3a84ff;
+              background: #f0f1f5;
+            }
+
+            input[type="checkbox"] {
+              width: 16px;
+              height: 16px;
+              margin-right: 8px;
+              cursor: pointer;
+              accent-color: #3a84ff;
+            }
+
+            .bk-select-option-name {
+              flex: 1;
+            }
+
+            .bk-select-check {
+              margin-left: auto;
+              color: #3a84ff;
+              font-size: 14px;
+            }
+          }
+        }
+
+        &.is-open {
+          .enum-input-container {
+            .enum-multi-input {
+              border-color: #3a84ff;
+            }
+          }
+
+          .enum-dropdown {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+          }
+        }
+      }
+    }
+  }
+
+  .filter-exact {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 5px;
+    height: 32px;
+    border: 1px solid #c4c6cc;
+    border-radius: 0 2px 2px 0;
+    border-left: none;
+    flex-shrink: 0;
+    white-space: nowrap;
+    background: #fff;
+    box-sizing: border-box;
+  }
+
+  @media screen and (max-width: 768px) {
+    max-width: 100%;
+    width: 100% !important;
+    margin-right: 0;
+    margin-top: 10px;
+
+    .filter-selector {
+      width: 100px;
+    }
+
+    .filter-value {
+      .search-input-wrapper {
+        .enum-select-wrapper {
+          .enum-dropdown {
+            max-width: 100%;
+            left: 0;
+            right: 0;
+          }
+        }
+      }
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    flex-wrap: wrap;
+    gap: 8px;
+
+    .filter-selector {
+      flex: 1 1 calc(50% - 4px);
+      min-width: unset;
+      width: auto;
+
+      :deep(.bk-select) {
+        width: 100%;
+      }
+    }
+
+    .filter-value {
+      flex: 1 1 calc(50% - 4px);
+      min-width: unset;
+
+      .search-input-wrapper {
+        flex-direction: column;
+
+        .search-input,
+        .enum-select-wrapper .enum-multi-input {
+          width: 100%;
+          border-radius: 2px;
+          border-right: 1px solid #c4c6cc;
+        }
+
+        .enum-select-wrapper {
+          width: 100%;
+
+          .enum-dropdown {
+            position: fixed;
+            top: auto;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            max-width: 100%;
+            max-height: 60vh;
+            border-radius: 12px 12px 0 0;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 9999;
+
+            &::before {
+              display: none;
+            }
+          }
+
+          &.is-open .enum-dropdown {
+            transform: translateY(0);
+          }
+        }
+      }
+    }
+
+    .filter-exact {
+      flex: 1 1 100%;
+      justify-content: center;
+      border-radius: 2px;
+      border-left: 1px solid #c4c6cc;
+      margin-top: 4px;
+    }
+  }
+}
+
+.models-table {
+  margin-top: 14px;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 0;
+  background: #fff;
+  border: 1px solid #c4c6cc;
+  border-radius: 2px;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: all 0.2s;
+
+  .bk-icon {
+    font-size: 14px;
+    line-height: 1;
+    color: #63656e;
+  }
+
+  &:hover {
+    border-color: #3a84ff;
+    .bk-icon {
+      color: #3a84ff;
+    }
+  }
+}
+
+.filter-placeholder {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  height: 32px;
+  color: #999;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #c4c6cc;
+  border-radius: 0 2px 2px 0;
+  border-left: none;
+  box-sizing: border-box;
+}
+
+.clearfix::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+.filter-tag-wrapper {
+  margin-top: 10px;
+}
+
+.filter-tag-wrapper ~ .models-table {
+  margin-top: 0;
+}
+
+@media screen and (max-width: 768px) {
+  .mobile-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    
+    .mobile-dialog {
+      background: #fff;
+      border-radius: 8px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      
+      .mobile-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 15px 20px;
+        border-bottom: 1px solid #e6e6e6;
+        
+        .mobile-dialog-title {
+          font-size: 16px;
+          font-weight: 500;
+          color: #303133;
+        }
+        
+        .mobile-dialog-close {
+          font-size: 24px;
+          color: #909399;
+          cursor: pointer;
+          line-height: 1;
+          
+          &:hover {
+            color: #303133;
+          }
+        }
+      }
+      
+      .mobile-dialog-content {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        
+        .bk-form {
+          .bk-form-item {
+            margin-bottom: 15px;
+            
+            .bk-form-label {
+              width: 100px;
+              padding-right: 10px;
+              font-size: 14px;
+            }
+            
+            .bk-form-content {
+              margin-left: 100px;
+            }
+          }
+        }
+      }
+      
+      .mobile-dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 15px 20px;
+        border-top: 1px solid #e6e6e6;
+      }
+    }
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .mobile-dialog-overlay {
+    padding: 10px;
+    
+    .mobile-dialog {
+      width: 100%;
+      max-height: 95vh;
+      border-radius: 4px;
+      
+      .mobile-dialog-header {
+        padding: 12px 15px;
+        
+        .mobile-dialog-title {
+          font-size: 15px;
+        }
+        
+        .mobile-dialog-close {
+          font-size: 20px;
+        }
+      }
+      
+      .mobile-dialog-content {
+        padding: 15px;
+        
+        .bk-form {
+          .bk-form-item {
+            margin-bottom: 12px;
+            
+            .bk-form-label {
+              width: 80px;
+              font-size: 13px;
+            }
+            
+            .bk-form-content {
+              margin-left: 80px;
+              
+              .bk-form-input,
+              .bk-select,
+              .bk-textarea {
+                width: 100%;
+              }
+            }
+          }
+        }
+      }
+      
+      .mobile-dialog-footer {
+        padding: 12px 15px;
+        
+        .bk-button {
+          min-width: 70px;
+          height: 30px;
+          line-height: 30px;
+          font-size: 13px;
+        }
+      }
+    }
+  }
+}
+
+@media screen and (min-width: 769px) {
+  .mobile-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    .mobile-dialog {
+      background: #fff;
+      border-radius: 8px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      
+      .mobile-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 15px 20px;
+        border-bottom: 1px solid #e6e6e6;
+        
+        .mobile-dialog-title {
+          font-size: 16px;
+          font-weight: 500;
+          color: #303133;
+        }
+        
+        .mobile-dialog-close {
+          font-size: 24px;
+          color: #909399;
+          cursor: pointer;
+          line-height: 1;
+          
+          &:hover {
+            color: #303133;
+          }
+        }
+      }
+      
+      .mobile-dialog-content {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+      }
+      
+      .mobile-dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 15px 20px;
+        border-top: 1px solid #e6e6e6;
+      }
+    }
+  }
+}
+
+.batch-update-form-wrapper {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-update-info {
+  padding: 16px 24px;
+  background: #f0f9ff;
+  border-bottom: 1px solid #dcdee5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #63656e;
+
+  i {
+    font-size: 16px;
+    color: #3a84ff;
+  }
+
+  strong {
+    color: #303133;
+    font-weight: 500;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .batch-update-info {
+    padding: 12px 16px;
   }
 }
 </style>

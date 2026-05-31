@@ -168,10 +168,6 @@ export default {
     loadedData: {
       type: Array,
       default: () => []
-    },
-    pageSize: {
-      type: Number,
-      default: 10
     }
   },
   data() {
@@ -483,7 +479,7 @@ export default {
       const transformedCondition = transformGeneralModelCondition(conditionMap, this.properties)
       const searchParams = buildSearchParams(conditionMap, this.properties, {
         page: 1,
-        pageSize: this.pageSize,
+        pageSize: 20,
         sort: '-id'
       })
 
