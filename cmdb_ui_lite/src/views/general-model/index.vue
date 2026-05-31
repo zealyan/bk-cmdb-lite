@@ -392,9 +392,7 @@ export default {
   },
   created() {
     this.objId = this.$route.params.objId || 'bk_switch'
-    
-    this.loadModelAttributes()
-    
+
     this.stopRouteQueryWatch = routerQuery.watch('*', (query, oldQuery) => {
       console.log('[Index.watch] URL变化被触发', { query, oldQuery })
 
@@ -515,8 +513,6 @@ export default {
       handler(newObjId) {
         if (newObjId !== this.objId) {
           this.objId = newObjId || 'bk_switch'
-          this.allProperties = []
-          this.loadModelAttributes()
           this.restoreStateFromUrl()
           this.loadModelData()
         }
@@ -598,24 +594,6 @@ export default {
     }
   },
   methods: {
-    async loadModelAttributes() {
-      console.log('[Index.loadModelAttributes] 开始加载模型属性')
-      try {
-        const response = await modelAPI.getModelAttributes(this.objId)
-        console.log('[Index.loadModelAttributes] 属性数据:', response)
-        
-        if (response && response.attributes) {
-          this.allProperties = response.attributes
-          console.log('[Index.loadModelAttributes] 加载完成，属性数量:', this.allProperties.length)
-        } else {
-          console.warn('[Index.loadModelAttributes] 属性数据格式错误:', response)
-          this.allProperties = []
-        }
-      } catch (error) {
-        console.error('[Index.loadModelAttributes] 加载属性失败:', error)
-        this.$bkMessage({ message: '加载模型属性失败', theme: 'error' })
-      }
-    },
     async loadModelData(searchParams) {
       console.log('[Index.loadModelData] 开始加载数据')
       this.table.loading = true
