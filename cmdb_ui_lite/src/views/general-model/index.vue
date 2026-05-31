@@ -170,7 +170,7 @@ import GeneralModelFilter from '@/components/filter/general-model-filter.vue'
 import FormMultiple from '@/components/ui/form/form-multiple.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
-import apiData from '@/assets/api/index.json'
+import modelIndex from '@/assets/api/index.json'
 import { modelAPI, userCustom } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
@@ -387,7 +387,7 @@ export default {
       return window.innerWidth < 480
     },
     modelIndex() {
-      return apiData.models || []
+      return modelIndex || []
     }
   },
   created() {
