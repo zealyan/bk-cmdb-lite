@@ -121,6 +121,7 @@
     </filter-tag>
 
     <general-model-filter
+      ref="generalModelFilterRef"
       :show.sync="advancedFilter.show"
       :properties="allProperties"
       :loaded-data="table.list"
@@ -1703,6 +1704,18 @@ export default {
         this.advancedFilterConditions = Object.keys(newConditions).length > 0 ? newConditions : null
       }
       
+      // 同步更新高级筛选侧边抽屉的条件组件
+      if (this.$refs.generalModelFilterRef) {
+        // 如果抽屉是打开的，更新条件；如果抽屉是关闭的，下次打开时会从 conditionMap 恢复
+        if (this.advancedFilter.show) {
+          if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+            this.$refs.generalModelFilterRef.updateConditionsFromMap(this.advancedFilterConditions)
+          } else {
+            this.$refs.generalModelFilterRef.clearAllConditions()
+          }
+        }
+      }
+      
       this.syncStateToUrl({ resetPage: true })
       
       // 如果有剩余的高级筛选条件，使用高级筛选参数加载数据
@@ -1732,6 +1745,12 @@ export default {
       this.table.pagination.current = 1
       this.currentSearchParams = null
       this.advancedFilterConditions = null
+      
+      // 同步更新高级筛选侧边抽屉的条件组件
+      if (this.$refs.generalModelFilterRef && this.advancedFilter.show) {
+        this.$refs.generalModelFilterRef.clearAllConditions()
+      }
+      
       this.syncStateToUrl({ resetPage: true })
       this.loadModelData()
     },

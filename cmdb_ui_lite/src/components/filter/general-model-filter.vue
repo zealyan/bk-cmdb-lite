@@ -594,10 +594,87 @@ export default {
     },
     handleHidden() {
       this.isShow = false
+    },
+    clearAllConditions() {
+      console.log('[GeneralModelFilter] clearAllConditions 被调用')
+      this.filterItems = []
+      this.initDefaultItem()
+    },
+    removeConditionByPropertyId(propertyId) {
+      console.log('[GeneralModelFilter] removeConditionByPropertyId:', propertyId)
+      const index = this.filterItems.findIndex(item => item.property.bk_property_id === propertyId)
+      if (index >= 0) {
+        this.filterItems.splice(index, 1)
+        if (this.filterItems.length === 0) {
+          this.initDefaultItem()
+        }
+      }
+    },
+    updateConditionsFromMap(newConditionMap) {
+      console.log('[GeneralModelFilter] updateConditionsFromMap:', newConditionMap)
+      if (!newConditionMap || Object.keys(newConditionMap).length === 0) {
+        this.clearAllConditions()
+        return
+      }
+      
+      const existingPropertyIds = this.filterItems.map(item => item.property.bk_property_id)
+      const newPropertyIds = Object.keys(newConditionMap)
+      
+      const idsToRemove = existingPropertyIds.filter(id => !newPropertyIds.includes(id))
+      idsToRemove.forEach(id => {
+        const index = this.filterItems.findIndex(item => item.property.bk_property_id === id)
+        if (index >= 0) {
+          this.filterItems.splice(index, 1)
+        }
+      })
+      
+      newPropertyIds.forEach(fieldId => {
+        const existingIndex = this.filterItems.findIndex(item => item.property.bk_property_id === fieldId)
+        const property = this.properties.find(p => p.bk_property_id === fieldId)
+        
+        if (!property) return
+        
+        const condition = newConditionMap[fieldId]
+        const { operator, value } = condition
+        
+        const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
+        const isDateTime = ['date', 'time'].includes(property.bk_property_type)
+        
+        let valueText = ''
+        let valueRange = ''
+        
+        if (isEnumOrList || isDateTime) {
+          const isInOp = this.isInOperator(operator)
+          if (isInOp && typeof value === 'string') {
+            valueText = value.split(',').map(v => v.trim()).filter(v => v)
+          } else {
+            valueText = Array.isArray(value) ? [...value] : []
+          }
+        } else if (this.isRangeOperator(operator)) {
+          valueRange = Array.isArray(value) ? value.join('\n') : value
+        } else if (this.isInOperator(operator)) {
+          if (Array.isArray(value)) {
+            valueText = value.join('\n')
+          } else {
+            valueText = String(value)
+          }
+        } else {
+          valueText = Array.isArray(value) ? value.join(',') : value
+        }
+        
+        if (existingIndex >= 0) {
+          this.filterItems[existingIndex].operator = operator
+          this.filterItems[existingIndex].valueText = valueText
+          this.filterItems[existingIndex].valueRange = valueRange
+        }
+      })
+      
+      if (this.filterItems.length === 0) {
+        this.initDefaultItem()
+      }
     }
   }
-}
-</script>
+}</script>
 
 <style lang="scss" scoped>
 .general-model-filter-sideslider {
