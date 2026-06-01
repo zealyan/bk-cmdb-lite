@@ -162,7 +162,6 @@
       </bk-table-column>
       <bk-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <bk-button :text="true" @click="handleViewDetails(row)">查看</bk-button>
           <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
         </template>
       </bk-table-column>
