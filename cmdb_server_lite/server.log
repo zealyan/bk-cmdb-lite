@@ -17,3 +17,60 @@ Database: sqlite - cmdb_dev.db
 2026-06-01 05:38:24,665 INFO sqlalchemy.engine.Engine [generated in 0.00038s] ()
 2026-06-01 05:38:24,666 INFO sqlalchemy.engine.Engine ROLLBACK
 127.0.0.1 - - [01/Jun/2026 05:38:24] "GET /api/v1/common/health HTTP/1.1" 200 -
+2026-06-01 05:41:48,195 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:48] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-06-01 05:41:48,246 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:48,246 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjClassification ORDER BY id
+2026-06-01 05:41:48,246 INFO sqlalchemy.engine.Engine [generated in 0.00044s] ()
+2026-06-01 05:41:48,247 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:48,248 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:48,248 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-06-01 05:41:48,248 INFO sqlalchemy.engine.Engine [generated in 0.00029s] ('bk_network',)
+2026-06-01 05:41:48,249 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:48,249 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:48,249 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-06-01 05:41:48,250 INFO sqlalchemy.engine.Engine [cached since 0.001674s ago] ('bk_host_manage',)
+2026-06-01 05:41:48,250 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:48,250 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:48,252 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-06-01 05:41:48,252 INFO sqlalchemy.engine.Engine [cached since 0.004165s ago] ('bk_loadbalance',)
+2026-06-01 05:41:48,252 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:48] "POST /api/v1/classifications/find/classificationobject HTTP/1.1" 200 -
+2026-06-01 05:41:54,651 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:54] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-06-01 05:41:54,679 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:54,679 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjClassification ORDER BY id
+2026-06-01 05:41:54,679 INFO sqlalchemy.engine.Engine [cached since 6.434s ago] ()
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine [cached since 6.432s ago] ('bk_network',)
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-06-01 05:41:54,680 INFO sqlalchemy.engine.Engine [cached since 6.433s ago] ('bk_host_manage',)
+2026-06-01 05:41:54,681 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:54,681 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:54,681 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-06-01 05:41:54,681 INFO sqlalchemy.engine.Engine [cached since 6.433s ago] ('bk_loadbalance',)
+2026-06-01 05:41:54,681 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:54] "POST /api/v1/classifications/find/classificationobject HTTP/1.1" 200 -
+2026-06-01 05:41:57,280 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:57,280 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-06-01 05:41:57,280 INFO sqlalchemy.engine.Engine [generated in 0.00036s] ('bk_slb_server',)
+2026-06-01 05:41:57,281 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:57] "GET /api/v1/models/bk_slb_server/attributes HTTP/1.1" 200 -
+2026-06-01 05:41:57,341 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:57,341 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ? AND config_key = ?
+2026-06-01 05:41:57,341 INFO sqlalchemy.engine.Engine [generated in 0.00033s] ('admin', 'columns_bk_slb_server')
+2026-06-01 05:41:57,342 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:57] "GET /api/usercustom/model/bk_slb_server HTTP/1.1" 200 -
+2026-06-01 05:41:57,395 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:57,395 INFO sqlalchemy.engine.Engine SELECT * FROM "cc_ObjectBase_0_pub_bk_slb_server" ORDER BY id LIMIT ? OFFSET ?
+2026-06-01 05:41:57,395 INFO sqlalchemy.engine.Engine [generated in 0.00033s] (10, 0)
+2026-06-01 05:41:57,395 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-06-01 05:41:57,396 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-01 05:41:57,396 INFO sqlalchemy.engine.Engine SELECT COUNT(*) as total FROM "cc_ObjectBase_0_pub_bk_slb_server"
+2026-06-01 05:41:57,396 INFO sqlalchemy.engine.Engine [generated in 0.00022s] ()
+2026-06-01 05:41:57,396 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [01/Jun/2026 05:41:57] "POST /api/v1/models/bk_slb_server/instances/search HTTP/1.1" 200 -
