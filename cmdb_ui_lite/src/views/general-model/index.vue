@@ -911,6 +911,8 @@ export default {
       this.filter.value = ''
       this.filter.values = []
       this.filter.fuzzyQuery = false
+      this.advancedFilterConditions = null
+      this.updateFilterTags()
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
@@ -918,11 +920,7 @@ export default {
       this.filter.values = values
       if (values.length > 0) {
         this.filter.value = values.join(',')
-        this.table.pagination.current = 1
-        this.updateFilterTags()
-        this.syncStateToUrl({ resetPage: true })
-        this.isUrlUpdateTriggered = true
-        this.loadModelData()
+        this.handleSearch()
       }
     },
     toggleEnumDropdown() {
@@ -931,18 +929,10 @@ export default {
     handleEnumOptionChange() {
       if (this.filter.values.length > 0) {
         this.filter.value = this.filter.values.join(',')
-        this.table.pagination.current = 1
-        this.updateFilterTags()
-        this.syncStateToUrl({ resetPage: true })
-        this.isUrlUpdateTriggered = true
-        this.loadModelData()
       } else {
         this.filter.value = ''
-        this.table.pagination.current = 1
-        this.syncStateToUrl({ resetPage: true })
-        this.isUrlUpdateTriggered = true
-        this.loadModelData()
       }
+      this.handleSearch()
     },
     handleEnumCheckbox(optionId, event) {
       console.log('[handleEnumCheckbox]', { optionId, checked: event.target.checked, currentValues: this.filter.values })
@@ -961,35 +951,24 @@ export default {
       
       console.log('[handleEnumCheckbox] after change:', this.filter.values)
       this.filter.value = this.filter.values.join(',')
-      this.table.pagination.current = 1
-      this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
       
       // 延迟搜索，让用户可以快速多选多个选项
       if (this.searchTimeout) {
         clearTimeout(this.searchTimeout)
       }
       this.searchTimeout = setTimeout(() => {
-        this.loadModelData()
+        this.handleSearch()
       }, 300)
     },
     handleEnumSelectSingle(selected) {
       this.filter.value = selected
       this.filter.values = selected ? [selected] : []
-      this.table.pagination.current = 1
-      this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      this.handleSearch()
     },
     handleEnumClear() {
       this.filter.values = []
       this.filter.value = ''
-      this.table.pagination.current = 1
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      this.handleSearch()
     },
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
