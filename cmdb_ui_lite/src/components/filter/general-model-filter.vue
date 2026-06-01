@@ -263,12 +263,18 @@ export default {
     isShow(val) {
       this.$emit('update:show', val)
     },
-    // 监听 conditionMap 变化，当从详情页返回时，确保恢复条件
+    // 监听 conditionMap 变化，当从详情页返回或删除标签时，确保同步更新条件
     conditionMap: {
       deep: true,
       handler(val) {
         console.log('[GeneralModelFilter] conditionMap 变化:', val)
-        if (this.isShow && val && Object.keys(val).length > 0) {
+        if (!val || Object.keys(val).length === 0) {
+          // 条件为空时，清空所有条件
+          console.log('[GeneralModelFilter] conditionMap 为空，清空条件')
+          this.clearAllConditions()
+        } else {
+          // 无论抽屉是否打开，都更新条件（因为抽屉可能在条件变化后打开）
+          console.log('[GeneralModelFilter] 恢复/更新条件')
           this.restoreItemsFromConditionMap()
         }
       }
