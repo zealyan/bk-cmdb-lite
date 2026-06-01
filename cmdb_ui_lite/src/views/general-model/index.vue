@@ -1684,9 +1684,42 @@ export default {
       }
       this.table.pagination.current = 1
       this.currentSearchParams = null
-      this.advancedFilterConditions = null
+      
+      // 修复：同步更新 advancedFilterConditions，只删除被点击的标签对应的条件
+      if (this.filterTags.length === 0) {
+        // 如果没有剩余标签，清除所有高级筛选条件
+        this.advancedFilterConditions = null
+      } else {
+        // 如果还有剩余标签，只保留剩余标签对应的条件
+        const newConditions = {}
+        this.filterTags.forEach(t => {
+          const cond = this.advancedFilterConditions ? this.advancedFilterConditions[t.id] : null
+          if (cond) {
+            newConditions[t.id] = cond
+          }
+        })
+        this.advancedFilterConditions = Object.keys(newConditions).length > 0 ? newConditions : null
+      }
+      
       this.syncStateToUrl({ resetPage: true })
-      this.loadModelData()
+      
+      // 如果有剩余的高级筛选条件，使用高级筛选参数加载数据
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        console.log('[handleRemoveFilterTag] 使用剩余高级筛选参数:', searchParams)
+        this.loadModelData(searchParams)
+      } else {
+        this.loadModelData()
+      }
     },
     handleClearAllFilterTags() {
       this.filterTags = []
