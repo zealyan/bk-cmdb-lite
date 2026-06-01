@@ -301,14 +301,29 @@ export default {
         const { operator, value } = condition
         
         // 添加项
-        const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
-        const isDateTime = ['date', 'time'].includes(property.bk_property_type)
+        const propType = property.bk_property_type
+        const isEnum = propType === 'enum'
+        const isBool = propType === 'bool'
+        const isList = propType === 'list'
+        const isEnumOrList = isEnum || isList || isBool
+        const isDateTime = ['date', 'time'].includes(propType)
         
         let valueText = ''
         let valueRange = ''
         
-        if (isEnumOrList || isDateTime) {
-          // 如果是 $in 操作符，且值是字符串，需要转换为数组
+        if (isDateTime) {
+          // 对于日期时间类型，$range 或 $in 操作符都需要处理
+          if (this.isRangeOperator(operator)) {
+            // 范围操作符使用 valueRange
+            valueRange = Array.isArray(value) ? [...value] : []
+          } else if (this.isInOperator(operator)) {
+            // in 操作符使用 valueText
+            valueText = Array.isArray(value) ? [...value] : []
+          } else {
+            valueText = Array.isArray(value) ? [...value] : []
+          }
+        } else if (isEnumOrList) {
+          // 枚举、布尔、列表类型使用 $in 操作符，值为数组
           const isInOp = this.isInOperator(operator)
           if (isInOp && typeof value === 'string') {
             valueText = value.split(',').map(v => v.trim()).filter(v => v)
@@ -341,21 +356,35 @@ export default {
         property: item.property.bk_property_id,
         operator: item.operator,
         valueText: item.valueText,
+        valueRange: item.valueRange,
         type: item.property.bk_property_type
       })))
     },
     getItemValue(item) {
+      const propType = item.property.bk_property_type
+      const isEnum = propType === 'enum'
+      const isBool = propType === 'bool'
+      const isList = propType === 'list'
+      const isEnumOrList = isEnum || isList || isBool
+      const isDateTime = ['date', 'time'].includes(propType)
+      
       if (this.isRangeOperator(item.operator)) {
+        // 范围操作符返回 valueRange
+        if (isDateTime) {
+          // 对于日期时间类型，直接返回数组
+          return item.valueRange || []
+        }
         return item.valueRange || ''
       }
-      const isEnumOrList = ['enum', 'list'].includes(item.property.bk_property_type)
-      const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
+      
       if (isEnumOrList || isDateTime) {
         return item.valueText || []
       }
+      
       if (this.isInOperator(item.operator)) {
         return item.valueText || ''
       }
+      
       return item.valueText || ''
     },
     initDefaultItem() {
@@ -484,7 +513,10 @@ export default {
       const operators = this.getOperators(property)
       const operator = operators.length > 0 ? operators.find(op => op.id === defaultOperator)?.id || operators[0].id : defaultOperator
 
-      const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
+      const isEnum = property.bk_property_type === 'enum'
+      const isBool = property.bk_property_type === 'bool'
+      const isList = property.bk_property_type === 'list'
+      const isEnumOrList = isEnum || isList || isBool
       const isDateTime = ['date', 'time'].includes(property.bk_property_type)
       this.filterItems.push({
         id: this.nextItemId++,
@@ -535,7 +567,10 @@ export default {
       this.initDefaultItem()
     },
     handleOperatorChange(item) {
-      const isEnumOrList = ['enum', 'list'].includes(item.property.bk_property_type)
+      const isEnum = item.property.bk_property_type === 'enum'
+      const isBool = item.property.bk_property_type === 'bool'
+      const isList = item.property.bk_property_type === 'list'
+      const isEnumOrList = isEnum || isList || isBool
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
@@ -545,8 +580,12 @@ export default {
 
       this.filterItems.forEach(item => {
         const value = this.getItemValue(item)
-        const isEnumOrList = ['enum', 'list'].includes(item.property.bk_property_type)
-        const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
+        const propType = item.property.bk_property_type
+        const isEnum = propType === 'enum'
+        const isBool = propType === 'bool'
+        const isList = propType === 'list'
+        const isEnumOrList = isEnum || isList || isBool
+        const isDateTime = ['date', 'time'].includes(propType)
 
         if (isEnumOrList || isDateTime) {
           if (Array.isArray(value) && value.length > 0) {

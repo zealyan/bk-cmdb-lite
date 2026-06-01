@@ -1170,19 +1170,32 @@ export default {
       if (this.filter.field && (this.filter.value || (this.filter.values && this.filter.values.length > 0))) {
         const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
         if (property) {
-          const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
-          const isDateTime = ['date', 'time'].includes(property.bk_property_type)
+          const propType = property.bk_property_type
+          const isEnum = propType === 'enum'
+          const isBool = propType === 'bool'
+          const isList = propType === 'list'
+          const isDate = propType === 'date'
+          const isTime = propType === 'time'
+          const isDateTime = isDate || isTime
+          const isEnumOrListOrBool = isEnum || isList || isBool
           
           let operator = '$eq'
           let value = ''
           
-          if (isEnumOrList || isDateTime) {
+          if (isDateTime) {
+            // 日期和时间使用 $range 操作符，同高级筛选保持一致
+            operator = '$range'
+            value = this.filter.values && this.filter.values.length > 0 
+              ? [...this.filter.values] 
+              : (this.filter.value ? [this.filter.value] : [])
+          } else if (isEnumOrListOrBool) {
+            // 枚举、布尔、列表使用 $in 操作符
             operator = '$in'
             value = this.filter.values && this.filter.values.length > 0 
               ? [...this.filter.values] 
               : (this.filter.value ? [this.filter.value] : [])
           } else {
-            // 对于模糊搜索使用 $regex，对于精确搜索使用 $eq
+            // 其他类型根据模糊查询设置使用 $regex 或 $eq
             operator = this.filter.fuzzyQuery ? '$regex' : '$eq'
             value = this.filter.value
           }
@@ -1198,6 +1211,7 @@ export default {
           console.log('[handleSearch] 快速搜索同步到高级筛选:', {
             field: this.filter.field,
             propertyName: property.bk_property_name,
+            propType,
             operator,
             value
           })
