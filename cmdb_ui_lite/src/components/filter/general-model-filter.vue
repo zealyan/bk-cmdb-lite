@@ -244,11 +244,17 @@ export default {
       handler(val) {
         this.isShow = val
         if (val) {
+          console.log('[GeneralModelFilter] 抽屉打开, conditionMap:', JSON.stringify(this.conditionMap))
           if (this.conditionMap && Object.keys(this.conditionMap).length > 0) {
+            console.log('[GeneralModelFilter] 开始恢复条件，properties 数量:', this.properties.length)
             // 如果有条件，从 conditionMap 恢复
             this.restoreItemsFromConditionMap()
+            console.log('[GeneralModelFilter] 恢复后 filterItems:', JSON.stringify(this.filterItems.map(item => ({
+              id: item.id, propertyId: item.property.bk_property_id, operator: item.operator, valueText: item.valueText
+            }))))
           } else if (this.filterItems.length === 0) {
             // 没有条件时，初始化默认项
+            console.log('[GeneralModelFilter] 初始化默认项')
             this.initDefaultItem()
           }
         }
