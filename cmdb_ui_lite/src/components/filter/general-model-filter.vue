@@ -312,23 +312,15 @@ export default {
         let valueRange = ''
         
         if (isDateTime) {
-          // 对于日期时间类型，$range 或 $in 操作符都需要处理
-          if (this.isRangeOperator(operator)) {
-            // 范围操作符使用 valueRange
-            valueRange = Array.isArray(value) ? [...value] : []
-          } else if (this.isInOperator(operator)) {
-            // in 操作符使用 valueText
-            valueText = Array.isArray(value) ? [...value] : []
-          } else {
-            valueText = Array.isArray(value) ? [...value] : []
-          }
+          // 对于日期时间类型，cmdb-search-date 和 cmdb-search-time 组件绑定的是 valueText
+          valueText = Array.isArray(value) ? [...value] : (value ? [value] : [])
         } else if (isEnumOrList) {
           // 枚举、布尔、列表类型使用 $in 操作符，值为数组
           const isInOp = this.isInOperator(operator)
           if (isInOp && typeof value === 'string') {
             valueText = value.split(',').map(v => v.trim()).filter(v => v)
           } else {
-            valueText = Array.isArray(value) ? [...value] : []
+            valueText = Array.isArray(value) ? [...value] : (value ? [value] : [])
           }
         } else if (this.isRangeOperator(operator)) {
           valueRange = Array.isArray(value) ? value.join('\n') : value
@@ -370,10 +362,6 @@ export default {
       
       if (this.isRangeOperator(item.operator)) {
         // 范围操作符返回 valueRange
-        if (isDateTime) {
-          // 对于日期时间类型，直接返回数组
-          return item.valueRange || []
-        }
         return item.valueRange || ''
       }
       

@@ -1183,8 +1183,8 @@ export default {
           let value = ''
           
           if (isDateTime) {
-            // 日期和时间使用 $range 操作符，同高级筛选保持一致
-            operator = '$range'
+            // 日期和时间类型使用 $in 操作符，与 cmdb-search-date 组件的数组格式匹配
+            operator = '$in'
             value = this.filter.values && this.filter.values.length > 0 
               ? [...this.filter.values] 
               : (this.filter.value ? [this.filter.value] : [])
