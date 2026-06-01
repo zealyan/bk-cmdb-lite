@@ -1,5 +1,5 @@
 Flask 框架、SQL 语句独立文件管理、sqlglot 处理多数据库方言、SQLAlchemy 仅做连接池 / 原生 SQL 执行（禁用 ORM Model）、兼容 PostgreSQL/MySQL/SQLite、分层解耦 API / 配置 / 业务
-Python 3.7 推荐、 Python 3.9备选
+Python 3.9.20
 
 目录结构示例
 cmdb_server_lite/

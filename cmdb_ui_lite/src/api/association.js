@@ -27,7 +27,7 @@ export default {
   },
 
   async getModelAssociations(modelId) {
-    const res = await client.get(`/api/models/${modelId}/associations`)
+    const res = await client.get(`/api/v1/models/${modelId}/associations`)
     return res?.associations || []
   },
 
@@ -57,8 +57,8 @@ export default {
 
   async getRelatedInstances(instanceId, modelId = null) {
     const url = modelId 
-      ? `/api/instances/${instanceId}/related?model_id=${modelId}`
-      : `/api/instances/${instanceId}/related`
+      ? `/api/v1/instances/${instanceId}/related?model_id=${modelId}`
+      : `/api/v1/instances/${instanceId}/related`
     const res = await client.get(url)
     return res?.related || []
   }

@@ -262,14 +262,18 @@ export default {
         
         let labelPart1
         if (isSource) {
-          if (type) {
+          if (type && type.src_des) {
             labelPart1 = type.src_des
+          } else if (type && type.bk_asst_name) {
+            labelPart1 = type.bk_asst_name
           } else {
             labelPart1 = dstObjId
           }
         } else {
-          if (type) {
+          if (type && type.dest_des) {
             labelPart1 = type.dest_des
+          } else if (type && type.bk_asst_name) {
+            labelPart1 = type.bk_asst_name
           } else {
             if (model) {
               labelPart1 = model.bk_obj_name

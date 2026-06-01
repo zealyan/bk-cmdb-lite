@@ -1,0 +1,1 @@
+SELECT * FROM cc_ObjDes WHERE bk_obj_id = :model_id

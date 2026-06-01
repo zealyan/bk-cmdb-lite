@@ -1,0 +1,1 @@
+DELETE FROM cc_InstAsst_0_pub WHERE id = :association_id

@@ -253,6 +253,8 @@ import TimeSearch from '@/components/search/time.vue'
 import modelIndex from '@/assets/api/index.json'
 import { modelAPI, userCustom } from '@/api/client'
 import routerQuery from '@/utils/router-query'
+import QS from 'qs'
+import { buildSearchParams } from '@/utils/query-builder'
 
 export default {
   name: 'GeneralModel',
@@ -428,7 +430,10 @@ export default {
     visibleFilterTags() {
       return this.filterTags.filter(tag => {
         const value = tag.value
-        return value !== null && value !== undefined && !!String(value).length
+        if (Array.isArray(value)) {
+          return value.length > 0
+        }
+        return value !== null && value !== undefined && String(value).trim().length > 0
       })
     },
     hasFilterCondition() {
@@ -474,8 +479,25 @@ export default {
       if (isFromDetails) {
         console.log('[Index.watch] 从详情页返回，优先恢复状态')
         this.restoreStateFromUrl()
-        this.updateFilterTagsFromQuery()
-        this.loadModelData()
+        // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
+        
+        // 如果有高级筛选条件，使用高级筛选参数加载数据
+        if (this.advancedFilterConditions) {
+          const rawConditions = []
+          Object.keys(this.advancedFilterConditions).forEach(field => {
+            const cond = this.advancedFilterConditions[field]
+            rawConditions.push({
+              field,
+              operator: cond.operator,
+              value: cond.value
+            })
+          })
+          const searchParams = this.buildAdvancedSearchParams(rawConditions)
+          console.log('[Index.watch] 从详情页返回，使用高级筛选参数:', searchParams)
+          this.loadModelData(searchParams)
+        } else {
+          this.loadModelData()
+        }
         return
       }
 
@@ -497,22 +519,45 @@ export default {
         const filterChanged = query.filter !== oldQuery.filter
         const fuzzyChanged = query.fuzzy !== oldQuery.fuzzy
         const sortChanged = query.sort !== oldQuery.sort
+        const filter_advChanged = query.filter_adv !== oldQuery.filter_adv
+        const sChanged = query.s !== oldQuery.s
 
-        console.log('[Index.watch] 变化检测:', { pageChanged, limitChanged, fieldChanged, filterChanged, fuzzyChanged, sortChanged })
+        console.log('[Index.watch] 变化检测:', { pageChanged, limitChanged, fieldChanged, filterChanged, fuzzyChanged, sortChanged, filter_advChanged, sChanged })
 
         if (pageChanged || limitChanged) {
           this.table.pagination.current = parseInt(query.page || 1, 10)
           this.table.pagination.limit = parseInt(query.limit || 10, 10)
         }
-        if (fieldChanged || filterChanged || fuzzyChanged || sortChanged) {
-          console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl和updateFilterTagsFromQuery')
+        if (fieldChanged || filterChanged || fuzzyChanged || sortChanged || filter_advChanged || sChanged) {
+          console.log('[Index.watch] 搜索条件变化，执行restoreStateFromUrl')
           this.restoreStateFromUrl()
-          this.updateFilterTagsFromQuery()
+          // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
+          // 只有在没有filter_adv的简单搜索情况下才需要调用
+          if (!filter_advChanged && !sChanged) {
+            this.updateFilterTagsFromQuery()
+          }
         }
 
-        if (pageChanged || limitChanged || fieldChanged || filterChanged || fuzzyChanged || sortChanged) {
+        if (pageChanged || limitChanged || fieldChanged || filterChanged || fuzzyChanged || sortChanged || filter_advChanged || sChanged) {
           console.log('[Index.watch] 执行loadModelData')
-          this.loadModelData()
+          
+          // 如果有高级筛选条件，使用高级筛选参数加载数据
+          if (this.advancedFilterConditions) {
+            const rawConditions = []
+            Object.keys(this.advancedFilterConditions).forEach(field => {
+              const cond = this.advancedFilterConditions[field]
+              rawConditions.push({
+                field,
+                operator: cond.operator,
+                value: cond.value
+              })
+            })
+            const searchParams = this.buildAdvancedSearchParams(rawConditions)
+            console.log('[Index.watch] 使用高级筛选参数:', searchParams)
+            this.loadModelData(searchParams)
+          } else {
+            this.loadModelData()
+          }
         }
       }
     }, { throttle: 100 })
@@ -533,7 +578,25 @@ export default {
     document.addEventListener('click', this.clickOutsideHandler)
 
     setTimeout(() => {
-      this.loadModelData()
+      // 如果有高级筛选条件，构建 searchParams 并传递给 loadModelData
+      if (this.advancedFilterConditions) {
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        
+        // 构建高级筛选的 searchParams
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        console.log('[Index.mounted] 从URL恢复高级筛选参数:', searchParams)
+        this.loadModelData(searchParams)
+      } else {
+        this.loadModelData()
+      }
     }, 0)
   },
   beforeDestroy() {
@@ -569,45 +632,86 @@ export default {
       handler(newInstanceId, oldInstanceId) {
         console.log('[Index.watch.instanceId] 实例ID变化:', { new: newInstanceId, old: oldInstanceId })
         if (!newInstanceId && oldInstanceId) {
-          console.log('[Index.watch.instanceId] 从详情页返回，执行restoreStateFromUrl和updateFilterTagsFromQuery')
+          console.log('[Index.watch.instanceId] 从详情页返回，执行restoreStateFromUrl')
           this.hasRestoredFromUrl = false
           this.restoreStateFromUrl()
-          this.updateFilterTagsFromQuery()
+          // restoreStateFromUrl已经处理了filterTags，不需要再调用updateFilterTagsFromQuery
           this.hasRestoredFromUrl = true
-          this.loadModelData()
+          // 如果有高级筛选条件，使用高级筛选参数加载数据
+          if (this.advancedFilterConditions) {
+            const rawConditions = []
+            Object.keys(this.advancedFilterConditions).forEach(field => {
+              const cond = this.advancedFilterConditions[field]
+              rawConditions.push({
+                field,
+                operator: cond.operator,
+                value: cond.value
+              })
+            })
+            const searchParams = this.buildAdvancedSearchParams(rawConditions)
+            console.log('[Index.watch.instanceId] 从详情页返回，使用高级筛选参数:', searchParams)
+            this.loadModelData(searchParams)
+          } else {
+            this.loadModelData()
+          }
         }
         this.prevInstanceId = newInstanceId
       }
     },
     allProperties: {
       handler(newProperties) {
-        if (newProperties && newProperties.length > 0 && !this.hasRestoredFromUrl) {
+        console.log('[Index.watch.allProperties] 属性加载完成，检查是否需要恢复 filterTags')
+        if (newProperties && newProperties.length > 0) {
           const query = this.$route.query
-          if (query && Object.keys(query).length > 0) {
-            if (query.field) {
-              const validField = newProperties.find(p => p.bk_property_id === query.field)
-              if (validField) {
-                this.filter.field = query.field
-                if (query.filter !== undefined && query.filter !== null) {
-                  this.filter.value = String(query.filter)
+          
+          // 如果有高级筛选条件，且filterTags为空，重新恢复filterTags
+          if (query.filter_adv && this.filterTags.length === 0) {
+            console.log('[Index.watch.allProperties] 检测到filter_adv且filterTags为空，重新恢复状态')
+            this.restoreStateFromUrl()
+            
+            // 重新恢复状态后，使用高级筛选参数加载数据
+            if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+              const rawConditions = []
+              Object.keys(this.advancedFilterConditions).forEach(field => {
+                const cond = this.advancedFilterConditions[field]
+                rawConditions.push({
+                  field,
+                  operator: cond.operator,
+                  value: cond.value
+                })
+              })
+              const searchParams = this.buildAdvancedSearchParams(rawConditions)
+              console.log('[Index.watch.allProperties] 使用高级筛选参数:', searchParams)
+              this.loadModelData(searchParams)
+            }
+          } else if (newProperties && newProperties.length > 0 && !this.hasRestoredFromUrl) {
+            // 简单搜索场景
+            if (query && Object.keys(query).length > 0) {
+              if (query.field) {
+                const validField = newProperties.find(p => p.bk_property_id === query.field)
+                if (validField) {
+                  this.filter.field = query.field
+                  if (query.filter !== undefined && query.filter !== null) {
+                    this.filter.value = String(query.filter)
+                  }
                 }
               }
+              if (query.fuzzy !== undefined) {
+                this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+              }
+              this.hasRestoredFromUrl = true
+              this.updateFilterTagsFromQuery()
+            } else if (!this.filter.field) {
+              const firstField = newProperties.find(p => p.bk_property_id !== 'id')
+              if (firstField) {
+                this.filter.field = firstField.bk_property_id
+              }
             }
-            if (query.fuzzy !== undefined) {
-              this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
-            }
-            this.hasRestoredFromUrl = true
-            this.updateFilterTagsFromQuery()
-          } else if (!this.filter.field) {
+          } else if (newProperties && newProperties.length > 0 && !this.filter.field) {
             const firstField = newProperties.find(p => p.bk_property_id !== 'id')
             if (firstField) {
               this.filter.field = firstField.bk_property_id
             }
-          }
-        } else if (newProperties && newProperties.length > 0 && !this.filter.field) {
-          const firstField = newProperties.find(p => p.bk_property_id !== 'id')
-          if (firstField) {
-            this.filter.field = firstField.bk_property_id
           }
         }
       }
@@ -911,18 +1015,94 @@ export default {
         this.table.sort = query.sort
       }
 
-      this.updateFilterTagsFromQuery()
+      // 从filter_adv参数中恢复高级筛选条件，保持与原bk-cmdb项目一致
+      if (query.filter_adv) {
+        try {
+          const advQuery = QS.parse(query.filter_adv)
+          console.log('[restoreStateFromUrl] 解析filter_adv:', advQuery)
+          
+          if (advQuery && Object.keys(advQuery).length > 0) {
+            const rawConditions = []
+            const conditionMap = {}
+            
+            Object.keys(advQuery).forEach((key) => {
+              const [id, operator] = key.split('.')
+              const value = advQuery[key]
+              
+              if (id && operator) {
+                // 将值转换为数组（如果是逗号分隔的字符串）
+                let processedValue = value
+                if (typeof processedValue === 'string' && processedValue.includes(',')) {
+                  processedValue = processedValue.split(',')
+                }
+                
+                rawConditions.push({
+                  field: id,
+                  operator: `$${operator}`,
+                  value: processedValue
+                })
+                conditionMap[id] = {
+                  operator: `$${operator}`,
+                  value: processedValue
+                }
+              }
+            })
+            
+            // 只有当 conditionMap 非空时才设置 advancedFilterConditions
+            if (Object.keys(conditionMap).length > 0) {
+              this.advancedFilterConditions = conditionMap
+            } else {
+              this.advancedFilterConditions = null
+            }
+            
+            // 恢复 filterTags - 基于 conditionMap
+            const tags = []
+            Object.keys(conditionMap).forEach(id => {
+              const { operator, value } = conditionMap[id]
+              const property = this.allProperties.find(p => p.bk_property_id === id)
+              if (property && value !== null && value !== undefined) {
+                if (Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0) {
+                  tags.push({
+                    id: id,
+                    property: property,
+                    propertyName: property.bk_property_name || id,
+                    operator: operator,
+                    value: value
+                  })
+                }
+              }
+            })
+            this.filterTags = tags
+            
+            console.log('[restoreStateFromUrl] 高级筛选条件已恢复，filterTags:', this.filterTags)
+          } else {
+            // advQuery 为空
+            this.advancedFilterConditions = null
+          }
+        } catch (e) {
+          console.error('[restoreStateFromUrl] 解析filter_adv失败:', e)
+          this.advancedFilterConditions = null
+          // 解析失败时，才使用简单搜索条件更新filterTags
+          this.updateFilterTagsFromQuery()
+        }
+      } else {
+        this.advancedFilterConditions = null
+        // 没有高级筛选条件时，使用简单搜索条件更新filterTags
+        this.updateFilterTagsFromQuery()
+      }
 
       console.log('[restoreStateFromUrl] 恢复后的状态:', {
         field: this.filter.field,
         value: this.filter.value,
         fuzzyQuery: this.filter.fuzzyQuery,
         page: this.table.pagination.current,
-        sort: this.table.sort
+        sort: this.table.sort,
+        hasAdvancedFilter: !!this.advancedFilterConditions,
+        filterTagsCount: this.filterTags.length
       })
     },
     syncStateToUrl(options = {}) {
-      const { keepSort = true, resetPage = false } = options
+      const { keepSort = true, resetPage = false, filter_adv, s } = options
       const query = {}
 
       if (!resetPage) {
@@ -937,10 +1117,43 @@ export default {
         query.filter = this.filter.value
       }
       if (this.filter.fuzzyQuery !== false) {
-        query.fuzzy = this.filter.fuzzyQuery ? 'true' : 'false'
+        query.fuzzy = this.filter.fuzzyQuery ? '1' : '0'
       }
       if (keepSort && this.table.sort) {
         query.sort = this.table.sort
+      }
+
+      // 保持与原bk-cmdb项目一致的URL参数
+      // 优先使用传入的filter_adv和s，如果没有则检查当前状态
+      if (filter_adv !== undefined) {
+        query.filter_adv = filter_adv
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 如果没有显式传入，但有当前高级筛选条件，则从当前状态重新构建
+        try {
+          const tempQuery = {}
+          Object.keys(this.advancedFilterConditions).forEach(field => {
+            const cond = this.advancedFilterConditions[field]
+            const key = `${field}${cond.operator}`
+            let value = cond.value
+            
+            if (Array.isArray(value)) {
+              // 如果是数组，用逗号分隔
+              tempQuery[key] = value.join(',')
+            } else if (value !== null && value !== undefined) {
+              tempQuery[key] = value
+            }
+          })
+          query.filter_adv = QS.stringify(tempQuery, { encode: false })
+        } catch (e) {
+          console.error('[syncStateToUrl] 构建filter_adv失败:', e)
+        }
+      }
+      
+      if (s !== undefined) {
+        query.s = s
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 如果没有显式传入，但有高级筛选条件，则设置s为'adv'
+        query.s = 'adv'
       }
 
       this.isUrlUpdateTriggered = true
@@ -972,22 +1185,49 @@ export default {
       this.advancedFilterConditions = conditionMap
       this.currentSearchParams = searchParams
       
-      if (rawConditions && rawConditions.length > 0) {
-        this.filterTags = rawConditions.map(c => {
-          const property = this.allProperties.find(p => p.bk_property_id === c.field)
-          return {
-            id: c.field,
-            property: property || {},
-            propertyName: property?.bk_property_name || c.field,
-            operator: c.operator,
-            value: c.value
+      console.log('[handleAdvancedFilterSearch] rawConditions:', rawConditions)
+      console.log('[handleAdvancedFilterSearch] conditionMap:', conditionMap)
+      console.log('[handleAdvancedFilterSearch] allProperties:', this.allProperties)
+      
+      // 构建 filterTags - 基于 conditionMap 而不是 rawConditions
+      const tags = []
+      Object.keys(conditionMap).forEach(id => {
+        const { operator, value } = conditionMap[id]
+        const property = this.allProperties.find(p => p.bk_property_id === id)
+        if (property && value !== null && value !== undefined) {
+          const hasValue = Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0
+          if (hasValue) {
+            tags.push({
+              id: id,
+              property: property,
+              propertyName: property.bk_property_name || id,
+              operator: operator,
+              value: value
+            })
           }
-        })
-      } else {
-        this.filterTags = []
-      }
+        }
+      })
+      this.filterTags = tags
+      
+      console.log('[handleAdvancedFilterSearch] filterTags:', this.filterTags)
 
       this.table.pagination.current = 1
+      
+      // 按照原bk-cmdb项目格式，保存到filter_adv参数中
+      const advQuery = {}
+      Object.keys(conditionMap).forEach((id) => {
+        const { operator, value } = conditionMap[id]
+        const key = `${id}.${operator.replace('$', '')}`
+        if (String(value).length) {
+          advQuery[key] = Array.isArray(value) ? value.join(',') : value
+        }
+      })
+      
+      this.syncStateToUrl({ 
+        resetPage: true, 
+        filter_adv: QS.stringify(advQuery, { encode: false }),
+        s: 'adv'
+      })
       
       this.loadModelData(searchParams)
     },
@@ -1001,10 +1241,14 @@ export default {
       this.filter.values = []
       this.filter.fuzzyQuery = false
       this.isUrlUpdateTriggered = true
-      routerQuery.setAll({
+      // 清除URL中的filter_adv和s参数，保持与原项目一致
+      const query = {
         page: 1,
-        limit: this.table.pagination.limit
-      })
+        limit: this.table.pagination.limit,
+        filter_adv: '',
+        s: ''
+      }
+      routerQuery.setAll(query)
       this.loadModelData()
     },
     handleImport() {
@@ -1110,6 +1354,59 @@ export default {
           this.table.loading = false
         })
     },
+    buildAdvancedSearchParams(rawConditions) {
+      // 从 rawConditions 构建 conditionMap
+      const conditionMap = {}
+      
+      rawConditions.forEach(cond => {
+        const { field, operator, value } = cond
+        
+        // 获取属性信息
+        const property = this.allProperties.find(p => p.bk_property_id === field)
+        const isEnumOrList = property && ['enum', 'list'].includes(property.bk_property_type)
+        const isDateTime = property && ['date', 'time'].includes(property.bk_property_type)
+        
+        // 处理值
+        let processedValue = value
+        if (isEnumOrList || isDateTime) {
+          // 枚举、列表、日期时间类型，值应该是数组
+          if (Array.isArray(value)) {
+            processedValue = value
+          } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
+            processedValue = [value]
+          }
+        } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
+          // 其他类型
+          if (this.isInOperator(operator) && !isEnumOrList) {
+            processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
+          } else if (this.isRangeOperator(operator)) {
+            processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
+          }
+        }
+        
+        if (processedValue !== null && processedValue !== undefined && 
+            !(typeof processedValue === 'string' && processedValue.length === 0) &&
+            !(Array.isArray(processedValue) && processedValue.length === 0)) {
+          conditionMap[field] = {
+            operator,
+            value: processedValue
+          }
+        }
+      })
+      
+      // 使用 buildSearchParams 构建最终的 searchParams
+      return buildSearchParams(conditionMap, this.allProperties, {
+        page: this.table.pagination.current,
+        pageSize: this.table.pagination.limit,
+        sort: this.table.sort || '-id'
+      })
+    },
+    isInOperator(operator) {
+      return operator === '$in' || operator === '$nin'
+    },
+    isRangeOperator(operator) {
+      return operator === '$range' || operator === '$gte' || operator === '$lte'
+    },
     handleCreate() {
       console.log('[DEBUG] handleCreate called - 新建按钮被点击')
       console.log('[DEBUG] 当前对象ID:', this.objId)
@@ -1179,7 +1476,32 @@ export default {
       }
     },
     handleViewDetails(instance) {
-      this.syncStateToUrl()
+      // 进入详情页前，确保URL中包含当前的高级筛选条件
+      const query = this.$route.query
+      let filterAdv = null
+      
+      // 优先使用URL中的filter_adv，否则从advancedFilterConditions构建
+      if (query.filter_adv) {
+        filterAdv = query.filter_adv
+      } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        filterAdv = QS.stringify(
+          Object.keys(this.advancedFilterConditions).reduce((acc, id) => {
+            const { operator, value } = this.advancedFilterConditions[id]
+            const key = `${id}.${operator.replace('$', '')}`
+            if (String(value).length) {
+              acc[key] = Array.isArray(value) ? value.join(',') : value
+            }
+            return acc
+          }, {}), { encode: false }
+        )
+      }
+      
+      const s = query.s || 'adv'
+      
+      this.syncStateToUrl({ 
+        filter_adv: filterAdv,
+        s: filterAdv ? s : undefined
+      })
       this.prevInstanceId = instance.id
       this.$router.push({
         name: 'ResourceInstanceDetails',
@@ -1228,7 +1550,24 @@ export default {
       this.table.pagination.current = 1
       this.syncStateToUrl({ resetPage: true })
       this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      
+      // 如果有高级筛选条件，使用高级筛选参数加载数据
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        console.log('[handleSortChange] 使用高级筛选参数:', searchParams)
+        this.loadModelData(searchParams)
+      } else {
+        this.loadModelData()
+      }
     },
     updateTableSortState() {
       if (!this.table.sort) {
@@ -1311,6 +1650,12 @@ export default {
       }
     },
     updateFilterTagsFromQuery() {
+      // 如果有高级筛选条件，不要更新filterTags（避免把高级筛选标签清空）
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        console.log('[updateFilterTagsFromQuery] 有高级筛选条件，跳过更新filterTags')
+        return
+      }
+
       const query = this.$route.query
       this.filterTags = []
       if (query.field && query.filter) {

@@ -1,0 +1,1 @@
+SELECT * FROM cc_ObjDes WHERE bk_classification_id = :classification_id ORDER BY obj_sort_number

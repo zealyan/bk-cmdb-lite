@@ -97,7 +97,7 @@ export function parseSearchQueryFromUrl() {
 }
 
 export function buildSearchParams(condition, properties, options = {}) {
-    const { page = 1, pageSize = 20, sort = '-id' } = options
+    const { page = 1, pageSize = 10, sort = '-id' } = options
 
     const params = {
         page: page,

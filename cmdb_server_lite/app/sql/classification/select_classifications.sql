@@ -1,0 +1,1 @@
+SELECT * FROM cc_ObjClassification ORDER BY id
