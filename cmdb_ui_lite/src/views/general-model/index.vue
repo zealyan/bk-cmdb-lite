@@ -124,6 +124,7 @@
       :show.sync="advancedFilter.show"
       :properties="allProperties"
       :loaded-data="table.list"
+      :condition-map="advancedFilterConditions"
       @search="handleAdvancedFilterSearch"
       @reset="handleAdvancedFilterReset">
     </general-model-filter>

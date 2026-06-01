@@ -168,6 +168,10 @@ export default {
     loadedData: {
       type: Array,
       default: () => []
+    },
+    conditionMap: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -239,8 +243,14 @@ export default {
       immediate: true,
       handler(val) {
         this.isShow = val
-        if (val && this.filterItems.length === 0) {
-          this.initDefaultItem()
+        if (val) {
+          if (this.conditionMap && Object.keys(this.conditionMap).length > 0) {
+            // 如果有条件，从 conditionMap 恢复
+            this.restoreItemsFromConditionMap()
+          } else if (this.filterItems.length === 0) {
+            // 没有条件时，初始化默认项
+            this.initDefaultItem()
+          }
         }
       }
     },
@@ -249,6 +259,49 @@ export default {
     }
   },
   methods: {
+    restoreItemsFromConditionMap() {
+      if (!this.conditionMap || Object.keys(this.conditionMap).length === 0) {
+        return
+      }
+
+      this.filterItems = []
+      const conditionKeys = Object.keys(this.conditionMap)
+      
+      conditionKeys.forEach(fieldId => {
+        const property = this.properties.find(p => p.bk_property_id === fieldId)
+        if (!property) {
+          return
+        }
+        
+        const condition = this.conditionMap[fieldId]
+        const { operator, value } = condition
+        
+        // 添加项
+        const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
+        const isDateTime = ['date', 'time'].includes(property.bk_property_type)
+        
+        let valueText = ''
+        let valueRange = ''
+        
+        if (isEnumOrList || isDateTime) {
+          valueText = Array.isArray(value) ? value : []
+        } else if (this.isRangeOperator(operator)) {
+          valueRange = Array.isArray(value) ? value.join('\n') : value
+        } else if (this.isInOperator(operator)) {
+          valueText = Array.isArray(value) ? value.join('\n') : value
+        } else {
+          valueText = Array.isArray(value) ? value.join(',') : value
+        }
+        
+        this.filterItems.push({
+          id: this.nextItemId++,
+          property,
+          operator,
+          valueText,
+          valueRange
+        })
+      })
+    },
     getItemValue(item) {
       if (this.isRangeOperator(item.operator)) {
         return item.valueRange || ''
