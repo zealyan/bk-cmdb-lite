@@ -1165,7 +1165,51 @@ export default {
     handleSearch() {
       this.table.pagination.current = 1
       this.currentSearchParams = null
-      this.advancedFilterConditions = null
+      
+      // 构建快速搜索条件并同步到高级筛选
+      if (this.filter.field && (this.filter.value || (this.filter.values && this.filter.values.length > 0))) {
+        const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
+        if (property) {
+          const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
+          const isDateTime = ['date', 'time'].includes(property.bk_property_type)
+          
+          let operator = '$eq'
+          let value = ''
+          
+          if (isEnumOrList || isDateTime) {
+            operator = '$in'
+            value = this.filter.values && this.filter.values.length > 0 
+              ? [...this.filter.values] 
+              : (this.filter.value ? [this.filter.value] : [])
+          } else {
+            // 对于模糊搜索使用 $regex，对于精确搜索使用 $eq
+            operator = this.filter.fuzzyQuery ? '$regex' : '$eq'
+            value = this.filter.value
+          }
+          
+          // 构建高级筛选条件
+          this.advancedFilterConditions = {
+            [this.filter.field]: {
+              operator,
+              value
+            }
+          }
+          
+          console.log('[handleSearch] 快速搜索同步到高级筛选:', {
+            field: this.filter.field,
+            propertyName: property.bk_property_name,
+            operator,
+            value
+          })
+        } else {
+          // 如果找不到对应的属性，清除高级筛选条件
+          console.warn('[handleSearch] 未找到对应的属性:', this.filter.field)
+          this.advancedFilterConditions = null
+        }
+      } else {
+        this.advancedFilterConditions = null
+      }
+      
       this.updateFilterTags()
       this.syncStateToUrl({ resetPage: true })
       this.isUrlUpdateTriggered = true

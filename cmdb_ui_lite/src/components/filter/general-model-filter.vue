@@ -181,8 +181,8 @@ export default {
       nextItemId: 1,
       withoutOperator: ['bool', 'date', 'time'],
       operatorsMap: {
-        float: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN],
-        int: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN],
+        float: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN, LIKE],
+        int: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN, LIKE],
         singlechar: [IN, NIN, LIKE],
         longchar: [IN, NIN, LIKE],
         enum: [IN, NIN, EQ],
@@ -195,7 +195,8 @@ export default {
         timezone: [IN, NIN],
         foreignkey: [IN, NIN],
         array: [IN, NIN, LIKE],
-        object: [IN, NIN, LIKE]
+        object: [IN, NIN, LIKE],
+        bool: [EQ, NE]
       },
       operatorSymbolMap: {
         [EQ]: { symbol: '=', desc: '等于' },
