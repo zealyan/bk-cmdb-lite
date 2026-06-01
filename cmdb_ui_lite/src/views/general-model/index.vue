@@ -1133,7 +1133,8 @@ export default {
           const tempQuery = {}
           Object.keys(this.advancedFilterConditions).forEach(field => {
             const cond = this.advancedFilterConditions[field]
-            const key = `${field}${cond.operator}`
+            // 格式必须与 handleAdvancedFilterSearch 中保存的格式一致: {field}.{operator_without_$}
+            const key = `${field}.${cond.operator.replace('$', '')}`
             let value = cond.value
             
             if (Array.isArray(value)) {
