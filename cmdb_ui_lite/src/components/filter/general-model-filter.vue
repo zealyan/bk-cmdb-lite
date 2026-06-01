@@ -256,6 +256,16 @@ export default {
     },
     isShow(val) {
       this.$emit('update:show', val)
+    },
+    // 监听 conditionMap 变化，当从详情页返回时，确保恢复条件
+    conditionMap: {
+      deep: true,
+      handler(val) {
+        console.log('[GeneralModelFilter] conditionMap 变化:', val)
+        if (this.isShow && val && Object.keys(val).length > 0) {
+          this.restoreItemsFromConditionMap()
+        }
+      }
     }
   },
   methods: {
@@ -270,6 +280,7 @@ export default {
       conditionKeys.forEach(fieldId => {
         const property = this.properties.find(p => p.bk_property_id === fieldId)
         if (!property) {
+          console.warn('[GeneralModelFilter] 找不到属性:', fieldId, '当前属性:', this.properties.map(p => p.bk_property_id))
           return
         }
         
@@ -284,11 +295,17 @@ export default {
         let valueRange = ''
         
         if (isEnumOrList || isDateTime) {
-          valueText = Array.isArray(value) ? value : []
+          // enum/list/date/time 类型需要保持数组格式
+          valueText = Array.isArray(value) ? [...value] : []
         } else if (this.isRangeOperator(operator)) {
           valueRange = Array.isArray(value) ? value.join('\n') : value
         } else if (this.isInOperator(operator)) {
-          valueText = Array.isArray(value) ? value.join('\n') : value
+          // in 操作符的值可能是数组，需要处理
+          if (Array.isArray(value)) {
+            valueText = value.join('\n')
+          } else {
+            valueText = String(value)
+          }
         } else {
           valueText = Array.isArray(value) ? value.join(',') : value
         }
@@ -301,6 +318,13 @@ export default {
           valueRange
         })
       })
+      
+      console.log('[GeneralModelFilter] 恢复完成, filterItems:', this.filterItems.map(item => ({
+        property: item.property.bk_property_id,
+        operator: item.operator,
+        valueText: item.valueText,
+        type: item.property.bk_property_type
+      })))
     },
     getItemValue(item) {
       if (this.isRangeOperator(item.operator)) {
