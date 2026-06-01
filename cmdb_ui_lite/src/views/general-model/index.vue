@@ -298,7 +298,8 @@ export default {
           count: 0,
           current: 1,
           limit: 10,
-          show: true
+          show: true,
+          'limit-list': [10, 20, 50, 100, 500]
         },
         loading: false,
         displayFields: []
