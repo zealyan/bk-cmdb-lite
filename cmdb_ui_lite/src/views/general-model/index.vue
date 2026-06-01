@@ -1179,12 +1179,14 @@ export default {
             value = this.filter.value
           }
           
-          // 构建高级筛选条件
-          this.advancedFilterConditions = {
-            [this.filter.field]: {
-              operator,
-              value
-            }
+          // 构建高级筛选条件 - 累积而不是替换
+          if (!this.advancedFilterConditions) {
+            this.advancedFilterConditions = {}
+          }
+          // 添加或更新当前字段的条件
+          this.advancedFilterConditions[this.filter.field] = {
+            operator,
+            value
           }
           
           console.log('[handleSearch] 快速搜索同步到高级筛选:', {
@@ -1192,15 +1194,28 @@ export default {
             propertyName: property.bk_property_name,
             propType,
             operator,
-            value
+            value,
+            allConditions: this.advancedFilterConditions
           })
         } else {
-          // 如果找不到对应的属性，清除高级筛选条件
+          // 如果找不到对应的属性，只清除当前字段的条件
           console.warn('[handleSearch] 未找到对应的属性:', this.filter.field)
-          this.advancedFilterConditions = null
+          if (this.advancedFilterConditions) {
+            delete this.advancedFilterConditions[this.filter.field]
+            // 如果没有其他条件了，则设为 null
+            if (Object.keys(this.advancedFilterConditions).length === 0) {
+              this.advancedFilterConditions = null
+            }
+          }
         }
       } else {
-        this.advancedFilterConditions = null
+        // 没有搜索值时，只清除当前字段的条件
+        if (this.advancedFilterConditions && this.filter.field) {
+          delete this.advancedFilterConditions[this.filter.field]
+          if (Object.keys(this.advancedFilterConditions).length === 0) {
+            this.advancedFilterConditions = null
+          }
+        }
       }
       
       this.updateFilterTags()
