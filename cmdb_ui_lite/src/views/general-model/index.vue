@@ -976,18 +976,18 @@ export default {
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
       
-      // 获取 hash 路由中的参数（Vue Router）
+      // 获取 hash 路由中的参数（Vue Router）- 这是主要来源
       const routeQuery = this.$route.query
       
-      // 获取主 URL 中的参数（通过 URLSearchParams）
+      // 获取主 URL 中的参数（通过 URLSearchParams）- 作为补充
       const urlParams = new URLSearchParams(window.location.search)
       const mainQuery = {}
       urlParams.forEach((value, key) => {
         mainQuery[key] = value
       })
       
-      // 合并参数：主URL参数优先（因为包含完整的筛选条件）
-      const query = { ...routeQuery, ...mainQuery }
+      // 合并参数：hash路由参数优先，缺失时从主URL补充
+      const query = { ...mainQuery, ...routeQuery }
       
       console.log('[restoreStateFromUrl] 合并后的URL query:', query)
 
@@ -1189,6 +1189,9 @@ export default {
         hasAdvancedFilter: !!this.advancedFilterConditions,
         filterTagsCount: this.filterTags.length
       })
+      
+      // 标记URL已同步，防止watch重复触发
+      this.isUrlUpdateTriggered = true
     },
     syncStateToUrl(options = {}) {
       const { keepSort = true, resetPage = false, filter_adv, s, operator } = options
