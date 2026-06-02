@@ -1182,10 +1182,8 @@ export default {
       const query = {}
 
       if (!resetPage) {
-        // 仅在 page > 1 时才加入 URL 参数
-        if (this.table.pagination.current > 1) {
-          query.page = this.table.pagination.current
-        }
+        // 在 URL 中始终包含 page 参数
+        query.page = this.table.pagination.current
       }
       query.limit = this.table.pagination.limit
 
@@ -1738,7 +1736,7 @@ export default {
     },
     handlePageChange(page) {
       this.table.pagination.current = page
-      this.syncStateToUrl({ keepSort: false, resetPage: true })
+      this.syncStateToUrl({ keepSort: false })
       this.isUrlUpdateTriggered = true
       
       // 如果有当前搜索参数，更新页码并使用（使用当前分页限制）
