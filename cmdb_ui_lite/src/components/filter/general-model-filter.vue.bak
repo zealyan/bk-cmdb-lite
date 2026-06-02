@@ -181,8 +181,8 @@ export default {
       nextItemId: 1,
       withoutOperator: ['bool', 'date', 'time'],
       operatorsMap: {
-        float: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN, LIKE],
-        int: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN, LIKE],
+        float: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN],
+        int: [EQ, NE, GT, LT, GTE, LTE, RANGE, IN],
         singlechar: [IN, NIN, LIKE],
         longchar: [IN, NIN, LIKE],
         enum: [IN, NIN, EQ],
@@ -195,8 +195,7 @@ export default {
         timezone: [IN, NIN],
         foreignkey: [IN, NIN],
         array: [IN, NIN, LIKE],
-        object: [IN, NIN, LIKE],
-        bool: [EQ, NE]
+        object: [IN, NIN, LIKE]
       },
       operatorSymbolMap: {
         [EQ]: { symbol: '=', desc: '等于' },
@@ -264,18 +263,12 @@ export default {
     isShow(val) {
       this.$emit('update:show', val)
     },
-    // 监听 conditionMap 变化，当从详情页返回或删除标签时，确保同步更新条件
+    // 监听 conditionMap 变化，当从详情页返回时，确保恢复条件
     conditionMap: {
       deep: true,
       handler(val) {
         console.log('[GeneralModelFilter] conditionMap 变化:', val)
-        if (!val || Object.keys(val).length === 0) {
-          // 条件为空时，清空所有条件
-          console.log('[GeneralModelFilter] conditionMap 为空，清空条件')
-          this.clearAllConditions()
-        } else {
-          // 无论抽屉是否打开，都更新条件（因为抽屉可能在条件变化后打开）
-          console.log('[GeneralModelFilter] 恢复/更新条件')
+        if (this.isShow && val && Object.keys(val).length > 0) {
           this.restoreItemsFromConditionMap()
         }
       }
@@ -301,27 +294,38 @@ export default {
         const { operator, value } = condition
         
         // 添加项
-        const propType = property.bk_property_type
-        const isEnum = propType === 'enum'
-        const isBool = propType === 'bool'
-        const isList = propType === 'list'
-        const isEnumOrList = isEnum || isList || isBool
-        const isDateTime = ['date', 'time'].includes(propType)
+        const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
+        const isDateTime = ['date', 'time'].includes(property.bk_property_type)
         
         let valueText = ''
-        let valueRange = ''
         
-        if (isDateTime) {
-          // 对于日期时间类型，cmdb-search-date 和 cmdb-search-time 组件绑定的是 valueText
-          valueText = Array.isArray(value) ? [...value] : (value ? [value] : [])
-        } else if (isEnumOrList) {
-          // 枚举、布尔、列表类型使用 $in 操作符，值为数组
-          const isInOp = this.isInOperator(operator)
+        const isInOp = this.isInOperator(operator)
+        
+        
+        // 对于 enum/list/date/time 类型，需要保持数组格式
+        if (isEnumOrList || isDateTime) {
+          // 如果是 $in 操作符，且值是字符串，需要转换为数组
           if (isInOp && typeof value === 'string') {
             valueText = value.split(',').map(v => v.trim()).filter(v => v)
           } else {
-            valueText = Array.isArray(value) ? [...value] : (value ? [value] : [])
+            valueText = Array.isArray(value) ? [...value] : []
           }
+        } else if (this.isRangeOperator(operator)) {
+          valueRange = Array.isArray(value) ? value.join('\n') : value
+        } else if (isInOp) {
+          // 非 enum 类型的 in 操作符
+          if (Array.isArray(value)) {
+            valueText = value.join('\n')
+          } else if (typeof value === 'string' && value.includes(',')) {
+            valueText = value.split(',').map(v => v.trim()).filter(v => v).join('\n')
+          } else {
+            valueText = String(value)
+          }
+        } else {
+          valueText = Array.isArray(value) ? value.join(',') : value
+        }
+          // enum/list/date/time 类型需要保持数组格式
+          valueText = Array.isArray(value) ? [...value] : []
         } else if (this.isRangeOperator(operator)) {
           valueRange = Array.isArray(value) ? value.join('\n') : value
         } else if (this.isInOperator(operator)) {
@@ -348,31 +352,46 @@ export default {
         property: item.property.bk_property_id,
         operator: item.operator,
         valueText: item.valueText,
-        valueRange: item.valueRange,
         type: item.property.bk_property_type
       })))
     },
     getItemValue(item) {
-      const propType = item.property.bk_property_type
-      const isEnum = propType === 'enum'
-      const isBool = propType === 'bool'
-      const isList = propType === 'list'
-      const isEnumOrList = isEnum || isList || isBool
-      const isDateTime = ['date', 'time'].includes(propType)
-      
       if (this.isRangeOperator(item.operator)) {
-        // 范围操作符返回 valueRange
         return item.valueRange || ''
       }
-      
-      if (isEnumOrList || isDateTime) {
+      const isEnumOrList = ['enum', 'list'].includes(item.property.bk_property_type)
+      const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
+      const isInOp = this.isInOperator(operator)
+        
+        let valueText = ''
+        
+        // 对于 enum/list/date/time 类型，需要保持数组格式
+        if (isEnumOrList || isDateTime) {
+          // 如果是 $in 操作符，且值是字符串，需要转换为数组
+          if (isInOp && typeof value === 'string') {
+            valueText = value.split(',').map(v => v.trim()).filter(v => v)
+          } else {
+            valueText = Array.isArray(value) ? [...value] : []
+          }
+        } else if (this.isRangeOperator(operator)) {
+          valueRange = Array.isArray(value) ? value.join('\n') : value
+        } else if (isInOp) {
+          // 非 enum 类型的 in 操作符
+          if (Array.isArray(value)) {
+            valueText = value.join('\n')
+          } else if (typeof value === 'string' && value.includes(',')) {
+            valueText = value.split(',').map(v => v.trim()).filter(v => v).join('\n')
+          } else {
+            valueText = String(value)
+          }
+        } else {
+          valueText = Array.isArray(value) ? value.join(',') : value
+        }
         return item.valueText || []
       }
-      
       if (this.isInOperator(item.operator)) {
         return item.valueText || ''
       }
-      
       return item.valueText || ''
     },
     initDefaultItem() {
@@ -501,10 +520,7 @@ export default {
       const operators = this.getOperators(property)
       const operator = operators.length > 0 ? operators.find(op => op.id === defaultOperator)?.id || operators[0].id : defaultOperator
 
-      const isEnum = property.bk_property_type === 'enum'
-      const isBool = property.bk_property_type === 'bool'
-      const isList = property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isList || isBool
+      const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
       const isDateTime = ['date', 'time'].includes(property.bk_property_type)
       this.filterItems.push({
         id: this.nextItemId++,
@@ -555,10 +571,7 @@ export default {
       this.initDefaultItem()
     },
     handleOperatorChange(item) {
-      const isEnum = item.property.bk_property_type === 'enum'
-      const isBool = item.property.bk_property_type === 'bool'
-      const isList = item.property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isList || isBool
+      const isEnumOrList = ['enum', 'list'].includes(item.property.bk_property_type)
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
@@ -568,14 +581,35 @@ export default {
 
       this.filterItems.forEach(item => {
         const value = this.getItemValue(item)
-        const propType = item.property.bk_property_type
-        const isEnum = propType === 'enum'
-        const isBool = propType === 'bool'
-        const isList = propType === 'list'
-        const isEnumOrList = isEnum || isList || isBool
-        const isDateTime = ['date', 'time'].includes(propType)
+        const isEnumOrList = ['enum', 'list'].includes(item.property.bk_property_type)
+        const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
 
+        const isInOp = this.isInOperator(operator)
+        
+        let valueText = ''
+        
+        // 对于 enum/list/date/time 类型，需要保持数组格式
         if (isEnumOrList || isDateTime) {
+          // 如果是 $in 操作符，且值是字符串，需要转换为数组
+          if (isInOp && typeof value === 'string') {
+            valueText = value.split(',').map(v => v.trim()).filter(v => v)
+          } else {
+            valueText = Array.isArray(value) ? [...value] : []
+          }
+        } else if (this.isRangeOperator(operator)) {
+          valueRange = Array.isArray(value) ? value.join('\n') : value
+        } else if (isInOp) {
+          // 非 enum 类型的 in 操作符
+          if (Array.isArray(value)) {
+            valueText = value.join('\n')
+          } else if (typeof value === 'string' && value.includes(',')) {
+            valueText = value.split(',').map(v => v.trim()).filter(v => v).join('\n')
+          } else {
+            valueText = String(value)
+          }
+        } else {
+          valueText = Array.isArray(value) ? value.join(',') : value
+        }
           if (Array.isArray(value) && value.length > 0) {
             conditionMap[item.property.bk_property_id] = {
               operator: item.operator,
@@ -628,87 +662,10 @@ export default {
     },
     handleHidden() {
       this.isShow = false
-    },
-    clearAllConditions() {
-      console.log('[GeneralModelFilter] clearAllConditions 被调用')
-      this.filterItems = []
-      this.initDefaultItem()
-    },
-    removeConditionByPropertyId(propertyId) {
-      console.log('[GeneralModelFilter] removeConditionByPropertyId:', propertyId)
-      const index = this.filterItems.findIndex(item => item.property.bk_property_id === propertyId)
-      if (index >= 0) {
-        this.filterItems.splice(index, 1)
-        if (this.filterItems.length === 0) {
-          this.initDefaultItem()
-        }
-      }
-    },
-    updateConditionsFromMap(newConditionMap) {
-      console.log('[GeneralModelFilter] updateConditionsFromMap:', newConditionMap)
-      if (!newConditionMap || Object.keys(newConditionMap).length === 0) {
-        this.clearAllConditions()
-        return
-      }
-      
-      const existingPropertyIds = this.filterItems.map(item => item.property.bk_property_id)
-      const newPropertyIds = Object.keys(newConditionMap)
-      
-      const idsToRemove = existingPropertyIds.filter(id => !newPropertyIds.includes(id))
-      idsToRemove.forEach(id => {
-        const index = this.filterItems.findIndex(item => item.property.bk_property_id === id)
-        if (index >= 0) {
-          this.filterItems.splice(index, 1)
-        }
-      })
-      
-      newPropertyIds.forEach(fieldId => {
-        const existingIndex = this.filterItems.findIndex(item => item.property.bk_property_id === fieldId)
-        const property = this.properties.find(p => p.bk_property_id === fieldId)
-        
-        if (!property) return
-        
-        const condition = newConditionMap[fieldId]
-        const { operator, value } = condition
-        
-        const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
-        const isDateTime = ['date', 'time'].includes(property.bk_property_type)
-        
-        let valueText = ''
-        let valueRange = ''
-        
-        if (isEnumOrList || isDateTime) {
-          const isInOp = this.isInOperator(operator)
-          if (isInOp && typeof value === 'string') {
-            valueText = value.split(',').map(v => v.trim()).filter(v => v)
-          } else {
-            valueText = Array.isArray(value) ? [...value] : []
-          }
-        } else if (this.isRangeOperator(operator)) {
-          valueRange = Array.isArray(value) ? value.join('\n') : value
-        } else if (this.isInOperator(operator)) {
-          if (Array.isArray(value)) {
-            valueText = value.join('\n')
-          } else {
-            valueText = String(value)
-          }
-        } else {
-          valueText = Array.isArray(value) ? value.join(',') : value
-        }
-        
-        if (existingIndex >= 0) {
-          this.filterItems[existingIndex].operator = operator
-          this.filterItems[existingIndex].valueText = valueText
-          this.filterItems[existingIndex].valueRange = valueRange
-        }
-      })
-      
-      if (this.filterItems.length === 0) {
-        this.initDefaultItem()
-      }
     }
   }
-}</script>
+}
+</script>
 
 <style lang="scss" scoped>
 .general-model-filter-sideslider {

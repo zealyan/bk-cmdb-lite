@@ -121,9 +121,11 @@
     </filter-tag>
 
     <general-model-filter
+      ref="generalModelFilterRef"
       :show.sync="advancedFilter.show"
       :properties="allProperties"
       :loaded-data="table.list"
+      :condition-map="advancedFilterConditions"
       @search="handleAdvancedFilterSearch"
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
@@ -160,7 +162,6 @@
       </bk-table-column>
       <bk-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <bk-button :text="true" @click="handleViewDetails(row)">查看</bk-button>
           <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
         </template>
       </bk-table-column>
@@ -296,7 +297,8 @@ export default {
           count: 0,
           current: 1,
           limit: 10,
-          show: true
+          show: true,
+          'limit-list': [10, 20, 50, 100, 500]
         },
         loading: false,
         displayFields: []
@@ -909,6 +911,8 @@ export default {
       this.filter.value = ''
       this.filter.values = []
       this.filter.fuzzyQuery = false
+      this.advancedFilterConditions = null
+      this.updateFilterTags()
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
@@ -916,11 +920,7 @@ export default {
       this.filter.values = values
       if (values.length > 0) {
         this.filter.value = values.join(',')
-        this.table.pagination.current = 1
-        this.updateFilterTags()
-        this.syncStateToUrl({ resetPage: true })
-        this.isUrlUpdateTriggered = true
-        this.loadModelData()
+        this.handleSearch()
       }
     },
     toggleEnumDropdown() {
@@ -929,18 +929,10 @@ export default {
     handleEnumOptionChange() {
       if (this.filter.values.length > 0) {
         this.filter.value = this.filter.values.join(',')
-        this.table.pagination.current = 1
-        this.updateFilterTags()
-        this.syncStateToUrl({ resetPage: true })
-        this.isUrlUpdateTriggered = true
-        this.loadModelData()
       } else {
         this.filter.value = ''
-        this.table.pagination.current = 1
-        this.syncStateToUrl({ resetPage: true })
-        this.isUrlUpdateTriggered = true
-        this.loadModelData()
       }
+      this.handleSearch()
     },
     handleEnumCheckbox(optionId, event) {
       console.log('[handleEnumCheckbox]', { optionId, checked: event.target.checked, currentValues: this.filter.values })
@@ -959,35 +951,24 @@ export default {
       
       console.log('[handleEnumCheckbox] after change:', this.filter.values)
       this.filter.value = this.filter.values.join(',')
-      this.table.pagination.current = 1
-      this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
       
       // 延迟搜索，让用户可以快速多选多个选项
       if (this.searchTimeout) {
         clearTimeout(this.searchTimeout)
       }
       this.searchTimeout = setTimeout(() => {
-        this.loadModelData()
+        this.handleSearch()
       }, 300)
     },
     handleEnumSelectSingle(selected) {
       this.filter.value = selected
       this.filter.values = selected ? [selected] : []
-      this.table.pagination.current = 1
-      this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      this.handleSearch()
     },
     handleEnumClear() {
       this.filter.values = []
       this.filter.value = ''
-      this.table.pagination.current = 1
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      this.handleSearch()
     },
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
@@ -1133,7 +1114,8 @@ export default {
           const tempQuery = {}
           Object.keys(this.advancedFilterConditions).forEach(field => {
             const cond = this.advancedFilterConditions[field]
-            const key = `${field}${cond.operator}`
+            // 格式必须与 handleAdvancedFilterSearch 中保存的格式一致: {field}.{operator_without_$}
+            const key = `${field}.${cond.operator.replace('$', '')}`
             let value = cond.value
             
             if (Array.isArray(value)) {
@@ -1162,7 +1144,80 @@ export default {
     handleSearch() {
       this.table.pagination.current = 1
       this.currentSearchParams = null
-      this.advancedFilterConditions = null
+      
+      // 构建快速搜索条件并同步到高级筛选
+      if (this.filter.field && (this.filter.value || (this.filter.values && this.filter.values.length > 0))) {
+        const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
+        if (property) {
+          const propType = property.bk_property_type
+          const isEnum = propType === 'enum'
+          const isBool = propType === 'bool'
+          const isList = propType === 'list'
+          const isDate = propType === 'date'
+          const isTime = propType === 'time'
+          const isDateTime = isDate || isTime
+          const isEnumOrListOrBool = isEnum || isList || isBool
+          
+          let operator = '$eq'
+          let value = ''
+          
+          if (isDateTime) {
+            // 日期和时间类型使用 $in 操作符，与 cmdb-search-date 组件的数组格式匹配
+            operator = '$in'
+            value = this.filter.values && this.filter.values.length > 0 
+              ? [...this.filter.values] 
+              : (this.filter.value ? [this.filter.value] : [])
+          } else if (isEnumOrListOrBool) {
+            // 枚举、布尔、列表使用 $in 操作符
+            operator = '$in'
+            value = this.filter.values && this.filter.values.length > 0 
+              ? [...this.filter.values] 
+              : (this.filter.value ? [this.filter.value] : [])
+          } else {
+            // 其他类型根据模糊查询设置使用 $regex 或 $eq
+            operator = this.filter.fuzzyQuery ? '$regex' : '$eq'
+            value = this.filter.value
+          }
+          
+          // 构建高级筛选条件 - 累积而不是替换
+          if (!this.advancedFilterConditions) {
+            this.advancedFilterConditions = {}
+          }
+          // 添加或更新当前字段的条件
+          this.advancedFilterConditions[this.filter.field] = {
+            operator,
+            value
+          }
+          
+          console.log('[handleSearch] 快速搜索同步到高级筛选:', {
+            field: this.filter.field,
+            propertyName: property.bk_property_name,
+            propType,
+            operator,
+            value,
+            allConditions: this.advancedFilterConditions
+          })
+        } else {
+          // 如果找不到对应的属性，只清除当前字段的条件
+          console.warn('[handleSearch] 未找到对应的属性:', this.filter.field)
+          if (this.advancedFilterConditions) {
+            delete this.advancedFilterConditions[this.filter.field]
+            // 如果没有其他条件了，则设为 null
+            if (Object.keys(this.advancedFilterConditions).length === 0) {
+              this.advancedFilterConditions = null
+            }
+          }
+        }
+      } else {
+        // 没有搜索值时，只清除当前字段的条件
+        if (this.advancedFilterConditions && this.filter.field) {
+          delete this.advancedFilterConditions[this.filter.field]
+          if (Object.keys(this.advancedFilterConditions).length === 0) {
+            this.advancedFilterConditions = null
+          }
+        }
+      }
+      
       this.updateFilterTags()
       this.syncStateToUrl({ resetPage: true })
       this.isUrlUpdateTriggered = true
@@ -1684,9 +1739,44 @@ export default {
       }
       this.table.pagination.current = 1
       this.currentSearchParams = null
-      this.advancedFilterConditions = null
+      
+      // 修复：同步更新 advancedFilterConditions，只删除被点击的标签对应的条件
+      if (this.filterTags.length === 0) {
+        // 如果没有剩余标签，清除所有高级筛选条件
+        this.advancedFilterConditions = null
+      } else {
+        // 如果还有剩余标签，只保留剩余标签对应的条件
+        const newConditions = {}
+        this.filterTags.forEach(t => {
+          const cond = this.advancedFilterConditions ? this.advancedFilterConditions[t.id] : null
+          if (cond) {
+            newConditions[t.id] = cond
+          }
+        })
+        this.advancedFilterConditions = Object.keys(newConditions).length > 0 ? newConditions : null
+      }
+      
+      // conditionMap 的变化会被子组件自动监听，不需要手动调用子组件方法
+      
       this.syncStateToUrl({ resetPage: true })
-      this.loadModelData()
+      
+      // 如果有剩余的高级筛选条件，使用高级筛选参数加载数据
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        console.log('[handleRemoveFilterTag] 使用剩余高级筛选参数:', searchParams)
+        this.loadModelData(searchParams)
+      } else {
+        this.loadModelData()
+      }
     },
     handleClearAllFilterTags() {
       this.filterTags = []
@@ -1697,6 +1787,9 @@ export default {
       this.table.pagination.current = 1
       this.currentSearchParams = null
       this.advancedFilterConditions = null
+      
+      // conditionMap 的变化会被子组件自动监听，不需要手动调用子组件方法
+      
       this.syncStateToUrl({ resetPage: true })
       this.loadModelData()
     },

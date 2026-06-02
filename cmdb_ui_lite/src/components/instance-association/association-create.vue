@@ -132,7 +132,8 @@ export default {
         pagination: {
           count: 0,
           current: 1,
-          limit: 20
+          limit: 20,
+          'limit-list': [10, 20, 50, 100, 500]
         }
       },
       tableKey: 0, // 用于强制表格重新渲染的 key
@@ -924,7 +925,8 @@ export default {
         pagination: {
           count: 0,
           current: 1,
-          limit: 20
+          limit: 20,
+          'limit-list': [10, 20, 50, 100, 500]
         }
       }
     },
