@@ -913,6 +913,8 @@ export default {
       this.filter.fuzzyQuery = false
       this.advancedFilterConditions = null
       this.updateFilterTags()
+      // 更新URL，清除之前的搜索条件
+      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: '' })
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
@@ -1179,14 +1181,12 @@ export default {
             value = this.filter.value
           }
           
-          // 构建高级筛选条件 - 累积而不是替换
-          if (!this.advancedFilterConditions) {
-            this.advancedFilterConditions = {}
-          }
-          // 添加或更新当前字段的条件
-          this.advancedFilterConditions[this.filter.field] = {
-            operator,
-            value
+          // 构建高级筛选条件 - 互斥原则：新条件替换旧条件
+          this.advancedFilterConditions = {
+            [this.filter.field]: {
+              operator,
+              value
+            }
           }
           
           console.log('[handleSearch] 快速搜索同步到高级筛选:', {
@@ -1219,7 +1219,8 @@ export default {
       }
       
       this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
+      // 快速搜索使用简单搜索参数，清除高级筛选参数
+      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: '' })
       this.isUrlUpdateTriggered = true
       this.loadModelData()
     },
@@ -1671,7 +1672,8 @@ export default {
       const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
       if (!property) return
 
-      const existingIndex = this.filterTags.findIndex(tag => tag.id === this.filter.field)
+      // 互斥原则：清空所有旧标签，只保留当前字段的标签
+      this.filterTags = []
 
       if (this.filter.values && this.filter.values.length > 0) {
         const tagData = {
@@ -1682,11 +1684,7 @@ export default {
           values: [...this.filter.values],
           property
         }
-        if (existingIndex >= 0) {
-          this.filterTags.splice(existingIndex, 1, tagData)
-        } else {
-          this.filterTags.push(tagData)
-        }
+        this.filterTags.push(tagData)
       } else if (this.filter.value) {
         const tagData = {
           id: property.bk_property_id,
@@ -1695,13 +1693,7 @@ export default {
           value: this.filter.value,
           property
         }
-        if (existingIndex >= 0) {
-          this.filterTags.splice(existingIndex, 1, tagData)
-        } else {
-          this.filterTags.push(tagData)
-        }
-      } else if (existingIndex >= 0) {
-        this.filterTags.splice(existingIndex, 1)
+        this.filterTags.push(tagData)
       }
     },
     updateFilterTagsFromQuery() {
