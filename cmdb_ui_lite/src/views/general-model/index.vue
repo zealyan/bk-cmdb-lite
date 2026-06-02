@@ -975,8 +975,21 @@ export default {
     },
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
-      const query = this.$route.query
-      console.log('[restoreStateFromUrl] URL query:', query)
+      
+      // 获取 hash 路由中的参数（Vue Router）
+      const routeQuery = this.$route.query
+      
+      // 获取主 URL 中的参数（通过 URLSearchParams）
+      const urlParams = new URLSearchParams(window.location.search)
+      const mainQuery = {}
+      urlParams.forEach((value, key) => {
+        mainQuery[key] = value
+      })
+      
+      // 合并参数：主URL参数优先（因为包含完整的筛选条件）
+      const query = { ...routeQuery, ...mainQuery }
+      
+      console.log('[restoreStateFromUrl] 合并后的URL query:', query)
 
       if (query.page) {
         this.table.pagination.current = parseInt(query.page, 10) || 1
