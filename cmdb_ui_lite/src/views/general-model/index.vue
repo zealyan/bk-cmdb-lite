@@ -1326,10 +1326,11 @@ export default {
       }
       
       this.updateFilterTags()
-      // 快速搜索使用简单搜索参数，设置 s=fast 和 operator，保留已有的 filter_adv
+      
+      // 按高级筛选数据提交查询：先组合 URL，再查询
       let filter_advParam = undefined
       if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
-        // 如果有高级筛选条件，重新构建 filter_adv
+        // 构建 filter_adv
         try {
           const tempQuery = {}
           Object.keys(this.advancedFilterConditions).forEach(field => {
@@ -1348,10 +1349,51 @@ export default {
         } catch (e) {
           console.error('[handleSearch] 构建filter_adv失败:', e)
         }
+        
+        // 更新 filterTags - 基于组合后的高级筛选条件
+        const tags = []
+        Object.keys(this.advancedFilterConditions).forEach(id => {
+          const { operator, value } = this.advancedFilterConditions[id]
+          const property = this.allProperties.find(p => p.bk_property_id === id)
+          if (property && value !== null && value !== undefined) {
+            const hasValue = Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0
+            if (hasValue) {
+              tags.push({
+                id: id,
+                property: property,
+                propertyName: property.bk_property_name || id,
+                operator: operator,
+                value: value
+              })
+            }
+          }
+        })
+        this.filterTags = tags
+        
+        // 构建搜索参数并查询（与高级筛选一致）
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        
+        // 同步 URL，使用高级筛选模式（s=adv）
+        this.syncStateToUrl({ resetPage: true, filter_adv: filter_advParam, s: 'adv' })
+        
+        this.currentSearchParams = searchParams
+        this.isUrlUpdateTriggered = true
+        this.loadModelData(searchParams)
+      } else {
+        // 如果没有条件，直接查询
+        this.syncStateToUrl({ resetPage: true, s: 'fast', operator })
+        this.isUrlUpdateTriggered = true
+        this.loadModelData()
       }
-      this.syncStateToUrl({ resetPage: true, filter_adv: filter_advParam, s: 'fast', operator })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
     },
     handleRefresh() {
       this.isUrlUpdateTriggered = true
