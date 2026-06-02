@@ -1086,7 +1086,7 @@ export default {
       })
     },
     syncStateToUrl(options = {}) {
-      const { keepSort = true, resetPage = false, filter_adv, s } = options
+      const { keepSort = true, resetPage = false, filter_adv, s, operator } = options
       const query = {}
 
       if (!resetPage) {
@@ -1106,11 +1106,19 @@ export default {
       if (keepSort && this.table.sort) {
         query.sort = this.table.sort
       }
+      
+      // 添加operator参数
+      if (operator) {
+        query.operator = operator
+      }
 
       // 保持与原bk-cmdb项目一致的URL参数
       // 优先使用传入的filter_adv和s，如果没有则检查当前状态
       if (filter_adv !== undefined) {
-        query.filter_adv = filter_adv
+        // 只有当filter_adv不为空字符串时才设置该参数
+        if (filter_adv) {
+          query.filter_adv = filter_adv
+        }
       } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
         // 如果没有显式传入，但有当前高级筛选条件，则从当前状态重新构建
         try {
@@ -1128,7 +1136,9 @@ export default {
               tempQuery[key] = value
             }
           })
-          query.filter_adv = QS.stringify(tempQuery, { encode: false })
+          if (Object.keys(tempQuery).length > 0) {
+            query.filter_adv = QS.stringify(tempQuery, { encode: false })
+          }
         } catch (e) {
           console.error('[syncStateToUrl] 构建filter_adv失败:', e)
         }
@@ -1148,6 +1158,8 @@ export default {
       this.table.pagination.current = 1
       this.currentSearchParams = null
       
+      let operator = '$eq'
+      
       // 构建快速搜索条件并同步到高级筛选
       if (this.filter.field && (this.filter.value || (this.filter.values && this.filter.values.length > 0))) {
         const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
@@ -1161,7 +1173,6 @@ export default {
           const isDateTime = isDate || isTime
           const isEnumOrListOrBool = isEnum || isList || isBool
           
-          let operator = '$eq'
           let value = ''
           
           if (isDateTime) {
@@ -1220,8 +1231,8 @@ export default {
       }
       
       this.updateFilterTags()
-      // 快速搜索使用简单搜索参数，设置 s=fast
-      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: 'fast' })
+      // 快速搜索使用简单搜索参数，设置 s=fast 和 operator
+      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: 'fast', operator })
       this.isUrlUpdateTriggered = true
       this.loadModelData()
     },
@@ -1301,9 +1312,7 @@ export default {
       // 清除URL中的filter_adv和s参数，保持与原项目一致
       const query = {
         page: 1,
-        limit: this.table.pagination.limit,
-        filter_adv: '',
-        s: ''
+        limit: this.table.pagination.limit
       }
       routerQuery.setAll(query)
       this.loadModelData()
