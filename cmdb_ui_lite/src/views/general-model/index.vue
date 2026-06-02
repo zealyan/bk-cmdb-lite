@@ -1182,7 +1182,10 @@ export default {
       const query = {}
 
       if (!resetPage) {
-        query.page = this.table.pagination.current
+        // 仅在 page > 1 时才加入 URL 参数
+        if (this.table.pagination.current > 1) {
+          query.page = this.table.pagination.current
+        }
       }
       query.limit = this.table.pagination.limit
 
