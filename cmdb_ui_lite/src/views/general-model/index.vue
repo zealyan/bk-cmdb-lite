@@ -908,13 +908,11 @@ export default {
       return String(value)
     },
     handleFieldChange() {
+      // 只清空当前输入框的值，保留之前的搜索条件
+      // 条件清空将在提交查询时（handleSearch）触发
       this.filter.value = ''
       this.filter.values = []
       this.filter.fuzzyQuery = false
-      this.advancedFilterConditions = null
-      this.updateFilterTags()
-      // 更新URL，清除之前的搜索条件
-      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: '' })
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
