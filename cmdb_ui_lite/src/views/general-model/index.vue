@@ -731,6 +731,9 @@ export default {
         const currentPage = query.page ? parseInt(query.page, 10) : this.table.pagination.current
         const currentLimit = query.limit ? parseInt(query.limit, 10) : this.table.pagination.limit
 
+        // 输出完整的 URL 字符串
+        const fullUrl = window.location.href
+        console.log('[Index.loadModelData] 完整URL:', fullUrl)
         console.log('[Index.loadModelData] 开始加载')
         console.log('[Index.loadModelData] URL query:', query)
         console.log('[Index.loadModelData] 搜索参数:', {
@@ -1217,8 +1220,8 @@ export default {
       }
       
       this.updateFilterTags()
-      // 快速搜索使用简单搜索参数，清除高级筛选参数
-      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: '' })
+      // 快速搜索使用简单搜索参数，设置 s=fast
+      this.syncStateToUrl({ resetPage: true, filter_adv: '', s: 'fast' })
       this.isUrlUpdateTriggered = true
       this.loadModelData()
     },
