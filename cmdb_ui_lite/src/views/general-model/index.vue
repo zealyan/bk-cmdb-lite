@@ -731,6 +731,9 @@ export default {
         const currentPage = query.page ? parseInt(query.page, 10) : this.table.pagination.current
         const currentLimit = query.limit ? parseInt(query.limit, 10) : this.table.pagination.limit
 
+        // 输出完整的 URL 字符串
+        const fullUrl = window.location.href
+        console.log('[Index.loadModelData] 完整URL:', fullUrl)
         console.log('[Index.loadModelData] 开始加载')
         console.log('[Index.loadModelData] URL query:', query)
         console.log('[Index.loadModelData] 搜索参数:', {
@@ -908,11 +911,11 @@ export default {
       return String(value)
     },
     handleFieldChange() {
+      // 只清空当前输入框的值，保留之前的搜索条件
+      // 条件清空将在提交查询时（handleSearch）触发
       this.filter.value = ''
       this.filter.values = []
       this.filter.fuzzyQuery = false
-      this.advancedFilterConditions = null
-      this.updateFilterTags()
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
@@ -972,8 +975,21 @@ export default {
     },
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
-      const query = this.$route.query
-      console.log('[restoreStateFromUrl] URL query:', query)
+      
+      // 获取 hash 路由中的参数（Vue Router）- 这是主要来源
+      const routeQuery = this.$route.query
+      
+      // 获取主 URL 中的参数（通过 URLSearchParams）- 作为补充
+      const urlParams = new URLSearchParams(window.location.search)
+      const mainQuery = {}
+      urlParams.forEach((value, key) => {
+        mainQuery[key] = value
+      })
+      
+      // 合并参数：hash路由参数优先，缺失时从主URL补充
+      const query = { ...mainQuery, ...routeQuery }
+      
+      console.log('[restoreStateFromUrl] 合并后的URL query:', query)
 
       if (query.page) {
         this.table.pagination.current = parseInt(query.page, 10) || 1
@@ -1029,6 +1045,39 @@ export default {
               }
             })
             
+            // 如果是快速搜索模式，且有快速搜索条件，将其添加到 conditionMap 中
+            if (query.s === 'fast' && query.field && query.filter) {
+              const property = this.allProperties.find(p => p.bk_property_id === query.field)
+              if (property) {
+                const propType = property.bk_property_type
+                const isEnum = propType === 'enum'
+                const isBool = propType === 'bool'
+                const isList = propType === 'list'
+                const isDate = propType === 'date'
+                const isTime = propType === 'time'
+                const isDateTime = isDate || isTime
+                const isEnumOrListOrBool = isEnum || isList || isBool
+
+                let operator = query.operator || '$eq'
+                let value = query.filter
+
+                if (!query.operator) {
+                  if (isDateTime || isEnumOrListOrBool) {
+                    operator = '$in'
+                    value = value.split(',').map(v => v.trim()).filter(v => v)
+                  } else {
+                    const isFuzzy = query.fuzzy === 'true' || query.fuzzy === '1'
+                    operator = isFuzzy ? '$regex' : '$eq'
+                  }
+                }
+
+                conditionMap[query.field] = {
+                  operator,
+                  value
+                }
+              }
+            }
+
             // 只有当 conditionMap 非空时才设置 advancedFilterConditions
             if (Object.keys(conditionMap).length > 0) {
               this.advancedFilterConditions = conditionMap
@@ -1067,9 +1116,68 @@ export default {
           this.updateFilterTagsFromQuery()
         }
       } else {
-        this.advancedFilterConditions = null
-        // 没有高级筛选条件时，使用简单搜索条件更新filterTags
-        this.updateFilterTagsFromQuery()
+        // 没有高级筛选条件时，检查是否有快速搜索条件
+        if (query.s === 'fast' && query.field && query.filter) {
+          // 有快速搜索条件，构建高级筛选条件
+          const property = this.allProperties.find(p => p.bk_property_id === query.field)
+          if (property) {
+            const propType = property.bk_property_type
+            const isEnum = propType === 'enum'
+            const isBool = propType === 'bool'
+            const isList = propType === 'list'
+            const isDate = propType === 'date'
+            const isTime = propType === 'time'
+            const isDateTime = isDate || isTime
+            const isEnumOrListOrBool = isEnum || isList || isBool
+
+            let operator = query.operator || '$eq'
+            let value = query.filter
+
+            if (!query.operator) {
+              if (isDateTime || isEnumOrListOrBool) {
+                operator = '$in'
+                value = value.split(',').map(v => v.trim()).filter(v => v)
+              } else {
+                const isFuzzy = query.fuzzy === 'true' || query.fuzzy === '1'
+                operator = isFuzzy ? '$regex' : '$eq'
+              }
+            }
+
+            const conditionMap = {
+              [query.field]: {
+                operator,
+                value
+              }
+            }
+
+            this.advancedFilterConditions = conditionMap
+
+            // 更新 filterTags
+            const tags = []
+            Object.keys(conditionMap).forEach(id => {
+              const { operator, value } = conditionMap[id]
+              const property = this.allProperties.find(p => p.bk_property_id === id)
+              if (property && value !== null && value !== undefined) {
+                if (Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0) {
+                  tags.push({
+                    id: id,
+                    property: property,
+                    propertyName: property.bk_property_name || id,
+                    operator: operator,
+                    value: value
+                  })
+                }
+              }
+            })
+            this.filterTags = tags
+          } else {
+            this.advancedFilterConditions = null
+            this.updateFilterTagsFromQuery()
+          }
+        } else {
+          this.advancedFilterConditions = null
+          this.updateFilterTagsFromQuery()
+        }
       }
 
       console.log('[restoreStateFromUrl] 恢复后的状态:', {
@@ -1081,25 +1189,37 @@ export default {
         hasAdvancedFilter: !!this.advancedFilterConditions,
         filterTagsCount: this.filterTags.length
       })
+      
+      // 标记URL已同步，防止watch重复触发
+      this.isUrlUpdateTriggered = true
     },
     syncStateToUrl(options = {}) {
-      const { keepSort = true, resetPage = false, filter_adv, s } = options
+      const { keepSort = true, resetPage = false, filter_adv, s, operator } = options
       const query = {}
 
       if (!resetPage) {
+        // 在 URL 中始终包含 page 参数
         query.page = this.table.pagination.current
       }
       query.limit = this.table.pagination.limit
 
-      if (this.filter.field) {
-        query.field = this.filter.field
+      // 如果是高级筛选模式，不要添加快速搜索的参数
+      if (s !== 'adv') {
+        if (this.filter.field) {
+          query.field = this.filter.field
+        }
+        if (this.filter.value) {
+          query.filter = this.filter.value
+        }
+        if (this.filter.fuzzyQuery !== false) {
+          query.fuzzy = this.filter.fuzzyQuery ? '1' : '0'
+        }
+        // 添加operator参数
+        if (operator) {
+          query.operator = operator
+        }
       }
-      if (this.filter.value) {
-        query.filter = this.filter.value
-      }
-      if (this.filter.fuzzyQuery !== false) {
-        query.fuzzy = this.filter.fuzzyQuery ? '1' : '0'
-      }
+
       if (keepSort && this.table.sort) {
         query.sort = this.table.sort
       }
@@ -1107,7 +1227,10 @@ export default {
       // 保持与原bk-cmdb项目一致的URL参数
       // 优先使用传入的filter_adv和s，如果没有则检查当前状态
       if (filter_adv !== undefined) {
-        query.filter_adv = filter_adv
+        // 只有当filter_adv不为空字符串时才设置该参数
+        if (filter_adv) {
+          query.filter_adv = filter_adv
+        }
       } else if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
         // 如果没有显式传入，但有当前高级筛选条件，则从当前状态重新构建
         try {
@@ -1125,7 +1248,9 @@ export default {
               tempQuery[key] = value
             }
           })
-          query.filter_adv = QS.stringify(tempQuery, { encode: false })
+          if (Object.keys(tempQuery).length > 0) {
+            query.filter_adv = QS.stringify(tempQuery, { encode: false })
+          }
         } catch (e) {
           console.error('[syncStateToUrl] 构建filter_adv失败:', e)
         }
@@ -1145,6 +1270,8 @@ export default {
       this.table.pagination.current = 1
       this.currentSearchParams = null
       
+      let operator = '$eq'
+      
       // 构建快速搜索条件并同步到高级筛选
       if (this.filter.field && (this.filter.value || (this.filter.values && this.filter.values.length > 0))) {
         const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
@@ -1158,7 +1285,6 @@ export default {
           const isDateTime = isDate || isTime
           const isEnumOrListOrBool = isEnum || isList || isBool
           
-          let operator = '$eq'
           let value = ''
           
           if (isDateTime) {
@@ -1179,15 +1305,13 @@ export default {
             value = this.filter.value
           }
           
-          // 构建高级筛选条件 - 累积而不是替换
-          if (!this.advancedFilterConditions) {
-            this.advancedFilterConditions = {}
-          }
-          // 添加或更新当前字段的条件
-          this.advancedFilterConditions[this.filter.field] = {
+          // 构建高级筛选条件 - 同一字段替换，不同字段追加
+          const newConditions = { ...this.advancedFilterConditions } || {}
+          newConditions[this.filter.field] = {
             operator,
             value
           }
+          this.advancedFilterConditions = Object.keys(newConditions).length > 0 ? newConditions : null
           
           console.log('[handleSearch] 快速搜索同步到高级筛选:', {
             field: this.filter.field,
@@ -1219,9 +1343,74 @@ export default {
       }
       
       this.updateFilterTags()
-      this.syncStateToUrl({ resetPage: true })
-      this.isUrlUpdateTriggered = true
-      this.loadModelData()
+      
+      // 按高级筛选数据提交查询：先组合 URL，再查询
+      let filter_advParam = undefined
+      if (this.advancedFilterConditions && Object.keys(this.advancedFilterConditions).length > 0) {
+        // 构建 filter_adv
+        try {
+          const tempQuery = {}
+          Object.keys(this.advancedFilterConditions).forEach(field => {
+            const cond = this.advancedFilterConditions[field]
+            const key = `${field}.${cond.operator.replace('$', '')}`
+            let value = cond.value
+            if (Array.isArray(value)) {
+              tempQuery[key] = value.join(',')
+            } else if (value !== null && value !== undefined) {
+              tempQuery[key] = value
+            }
+          })
+          if (Object.keys(tempQuery).length > 0) {
+            filter_advParam = QS.stringify(tempQuery, { encode: false })
+          }
+        } catch (e) {
+          console.error('[handleSearch] 构建filter_adv失败:', e)
+        }
+        
+        // 更新 filterTags - 基于组合后的高级筛选条件
+        const tags = []
+        Object.keys(this.advancedFilterConditions).forEach(id => {
+          const { operator, value } = this.advancedFilterConditions[id]
+          const property = this.allProperties.find(p => p.bk_property_id === id)
+          if (property && value !== null && value !== undefined) {
+            const hasValue = Array.isArray(value) ? value.length > 0 : String(value).trim().length > 0
+            if (hasValue) {
+              tags.push({
+                id: id,
+                property: property,
+                propertyName: property.bk_property_name || id,
+                operator: operator,
+                value: value
+              })
+            }
+          }
+        })
+        this.filterTags = tags
+        
+        // 构建搜索参数并查询（与高级筛选一致）
+        const rawConditions = []
+        Object.keys(this.advancedFilterConditions).forEach(field => {
+          const cond = this.advancedFilterConditions[field]
+          rawConditions.push({
+            field,
+            operator: cond.operator,
+            value: cond.value
+          })
+        })
+        const searchParams = this.buildAdvancedSearchParams(rawConditions)
+        
+        // 同步 URL，使用高级筛选模式（s=adv）
+        this.syncStateToUrl({ resetPage: true, filter_adv: filter_advParam, s: 'adv' })
+        
+        this.currentSearchParams = searchParams
+        this.isUrlUpdateTriggered = true
+        this.loadModelData(searchParams)
+      } else {
+        // 如果没有条件，直接查询
+        this.syncStateToUrl({ resetPage: true, s: 'fast', operator })
+        this.isUrlUpdateTriggered = true
+        this.loadModelData()
+      }
     },
     handleRefresh() {
       this.isUrlUpdateTriggered = true
@@ -1299,9 +1488,7 @@ export default {
       // 清除URL中的filter_adv和s参数，保持与原项目一致
       const query = {
         page: 1,
-        limit: this.table.pagination.limit,
-        filter_adv: '',
-        s: ''
+        limit: this.table.pagination.limit
       }
       routerQuery.setAll(query)
       this.loadModelData()
@@ -1565,7 +1752,7 @@ export default {
     },
     handlePageChange(page) {
       this.table.pagination.current = page
-      this.syncStateToUrl({ keepSort: false, resetPage: true })
+      this.syncStateToUrl({ keepSort: false })
       this.isUrlUpdateTriggered = true
       
       // 如果有当前搜索参数，更新页码并使用（使用当前分页限制）
@@ -1671,7 +1858,8 @@ export default {
       const property = this.allProperties.find(p => p.bk_property_id === this.filter.field)
       if (!property) return
 
-      const existingIndex = this.filterTags.findIndex(tag => tag.id === this.filter.field)
+      // 互斥原则：清空所有旧标签，只保留当前字段的标签
+      this.filterTags = []
 
       if (this.filter.values && this.filter.values.length > 0) {
         const tagData = {
@@ -1682,11 +1870,7 @@ export default {
           values: [...this.filter.values],
           property
         }
-        if (existingIndex >= 0) {
-          this.filterTags.splice(existingIndex, 1, tagData)
-        } else {
-          this.filterTags.push(tagData)
-        }
+        this.filterTags.push(tagData)
       } else if (this.filter.value) {
         const tagData = {
           id: property.bk_property_id,
@@ -1695,13 +1879,7 @@ export default {
           value: this.filter.value,
           property
         }
-        if (existingIndex >= 0) {
-          this.filterTags.splice(existingIndex, 1, tagData)
-        } else {
-          this.filterTags.push(tagData)
-        }
-      } else if (existingIndex >= 0) {
-        this.filterTags.splice(existingIndex, 1)
+        this.filterTags.push(tagData)
       }
     },
     updateFilterTagsFromQuery() {
