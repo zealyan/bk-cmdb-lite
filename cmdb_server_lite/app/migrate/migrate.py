@@ -132,6 +132,27 @@ CLASSIFICATIONS = [
     {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-loadbalance", "ispre": True},
 ]
 
+# 属性分组定义
+PROPERTY_GROUPS = [
+    {"id": 1, "bk_group_id": "default", "bk_group_name": "default", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
+    {"id": 2, "bk_group_id": "base", "bk_group_name": "基础信息", "bk_isdefault": False, "is_collapse": False, "ispre": True, "bk_group_index": 1},
+]
+
+# 需要更新分组的属性映射（属性ID -> 分组ID）
+PROPERTY_GROUP_UPDATE_MAP = {
+    "name": "base",
+    "bk_inst_name": "base",
+    "bk_host_innerip": "base",
+    "bk_host_outerip": "base",
+    "bk_cloud_id": "base",
+    "bk_switch_name": "base",
+    "bk_switch_ip": "base",
+    "bk_lb_name": "base",
+    "bk_server_name": "base",
+    "bk_listener_name": "base",
+    "description": "base",
+}
+
 
 class DatabaseMigrator:
     def __init__(self, config=None):
@@ -171,15 +192,76 @@ class DatabaseMigrator:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_ObjClassification
                 (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, bk_supplier_account)
-                VALUES (?, ?, ?, ?, ?, '0')
-            """, (
-                cls["id"],
-                cls["bk_classification_id"],
-                cls["bk_classification_name"],
-                cls["bk_classification_icon"],
-                cls["ispre"]
-            ))
+                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, '0')
+            """, {
+                "id": cls["id"],
+                "bk_classification_id": cls["bk_classification_id"],
+                "bk_classification_name": cls["bk_classification_name"],
+                "bk_classification_icon": cls["bk_classification_icon"],
+                "ispre": cls["ispre"]
+            })
         logger.info(f"迁移 {len(CLASSIFICATIONS)} 个分类")
+    
+    def migrate_property_groups(self):
+        """迁移属性分组数据"""
+        # 先获取所有模型
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        
+        group_id = 1
+        for model in models:
+            model_id = model['bk_obj_id']
+            for group in PROPERTY_GROUPS:
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_PropertyGroup
+                    (_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, 
+                     bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
+                     creator, modifier)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, 
+                            :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
+                            0, '0', 'admin', 'admin')
+                """, {
+                    '_id': f"{model_id}.{group['bk_group_id']}",
+                    'id': group_id,
+                    'bk_obj_id': model_id,
+                    'bk_group_id': group['bk_group_id'],
+                    'bk_group_name': group['bk_group_name'],
+                    'bk_group_index': group['bk_group_index'],
+                    'bk_isdefault': group['bk_isdefault'],
+                    'is_collapse': group['is_collapse'],
+                    'ispre': group['ispre']
+                })
+                group_id += 1
+        
+        logger.info(f"迁移了 {len(models) * len(PROPERTY_GROUPS)} 个属性分组")
+    
+    def update_attributes_group(self):
+        """更新现有属性的分组"""
+        # 构建 CASE WHEN 语句
+        case_when_clauses = []
+        params = {}
+        
+        for idx, (prop_id, group_id) in enumerate(PROPERTY_GROUP_UPDATE_MAP.items()):
+            param_name = f"prop_{idx}"
+            param_group = f"group_{idx}"
+            case_when_clauses.append(f"WHEN bk_property_id = :{param_name} THEN :{param_group}")
+            params[param_name] = prop_id
+            params[param_group] = group_id
+        
+        if case_when_clauses:
+            sql = f"""
+                UPDATE cc_ObjAttDes 
+                SET bk_property_group = CASE 
+                    {' '.join(case_when_clauses)}
+                    ELSE bk_property_group
+                END
+                WHERE bk_property_id IN ({', '.join([f':prop_{i}' for i in range(len(PROPERTY_GROUP_UPDATE_MAP))])})
+            """
+            
+            # 执行更新
+            self.execute_sql(sql, params)
+            
+            updated_count = len(PROPERTY_GROUP_UPDATE_MAP)
+            logger.info(f"更新了 {updated_count} 个属性的分组")
     
     def init_core_tables(self):
         """初始化核心表结构"""
@@ -206,6 +288,25 @@ class DatabaseMigrator:
                     bk_ishidden BOOLEAN DEFAULT false,
                     bk_ispaused BOOLEAN DEFAULT false,
                     obj_sort_number INTEGER DEFAULT 0,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    bk_supplier_account VARCHAR DEFAULT '0'
+                )
+            """,
+            "cc_PropertyGroup": """
+                CREATE TABLE IF NOT EXISTS cc_PropertyGroup (
+                    _id VARCHAR,
+                    id INTEGER PRIMARY KEY,
+                    bk_obj_id VARCHAR,
+                    bk_group_id VARCHAR NOT NULL,
+                    bk_group_name VARCHAR NOT NULL,
+                    bk_group_index INTEGER DEFAULT 0,
+                    bk_isdefault BOOLEAN DEFAULT false,
+                    is_collapse BOOLEAN DEFAULT false,
+                    ispre BOOLEAN DEFAULT false,
+                    bk_biz_id INTEGER DEFAULT 0,
                     creator VARCHAR DEFAULT 'admin',
                     modifier VARCHAR DEFAULT 'admin',
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -251,6 +352,10 @@ class DatabaseMigrator:
                     bk_asst_name VARCHAR NOT NULL,
                     bk_asst_icon VARCHAR,
                     ispre BOOLEAN DEFAULT false,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
@@ -636,9 +741,14 @@ class DatabaseMigrator:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_AsstDes 
                 (id, bk_asst_id, bk_asst_name, ispre, bk_supplier_account, creator, modifier)
-                VALUES (?, ?, ?, ?, ?, 'admin', 'admin')
-            """, (idx, asst_type["bk_asst_id"], asst_type["bk_asst_name"], 
-                  asst_type["ispre"], asst_type["bk_supplier_account"]))
+                VALUES (:id, :bk_asst_id, :bk_asst_name, :ispre, :bk_supplier_account, 'admin', 'admin')
+            """, {
+                "id": idx,
+                "bk_asst_id": asst_type["bk_asst_id"],
+                "bk_asst_name": asst_type["bk_asst_name"],
+                "ispre": asst_type["ispre"],
+                "bk_supplier_account": asst_type["bk_supplier_account"]
+            })
         
         logger.info(f"迁移了 {len(asst_types)} 个关联类型")
 
@@ -674,12 +784,21 @@ class DatabaseMigrator:
                 (id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id, 
                  bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete, 
                  creator, modifier, bk_supplier_account)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', 'admin', ?)
-            """, (idx, obj_asst["bk_obj_id"], obj_asst["target_obj_id"], 
-                  obj_asst["target_obj_name"], obj_asst["bk_asst_id"], 
-                  obj_asst["bk_obj_asst_id"], obj_asst["bk_obj_asst_name"],
-                  obj_asst["mapping"], obj_asst["on_delete"],
-                  obj_asst["bk_supplier_account"]))
+                VALUES (:id, :bk_obj_id, :target_obj_id, :target_obj_name, :bk_asst_id, 
+                        :bk_obj_asst_id, :bk_obj_asst_name, :mapping, :on_delete, 
+                        'admin', 'admin', :bk_supplier_account)
+            """, {
+                "id": idx,
+                "bk_obj_id": obj_asst["bk_obj_id"],
+                "target_obj_id": obj_asst["target_obj_id"],
+                "target_obj_name": obj_asst["target_obj_name"],
+                "bk_asst_id": obj_asst["bk_asst_id"],
+                "bk_obj_asst_id": obj_asst["bk_obj_asst_id"],
+                "bk_obj_asst_name": obj_asst["bk_obj_asst_name"],
+                "mapping": obj_asst["mapping"],
+                "on_delete": obj_asst["on_delete"],
+                "bk_supplier_account": obj_asst["bk_supplier_account"]
+            })
         
         logger.info(f"迁移了 {len(obj_associations)} 个对象关联")
 
@@ -701,17 +820,18 @@ class DatabaseMigrator:
                     INSERT OR REPLACE INTO cc_InstAsst_0_pub 
                     (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
                      bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    assoc.get("id"),
-                    bk_obj_id,
-                    assoc.get("bk_inst_id"),
-                    bk_asst_obj_id,
-                    assoc.get("bk_asst_inst_id"),
-                    bk_obj_asst_id,
-                    assoc.get("bk_relation_type_id"),
-                    "0"
-                ))
+                    VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
+                            :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
+                """, {
+                    "id": assoc.get("id"),
+                    "bk_obj_id": bk_obj_id,
+                    "bk_inst_id": assoc.get("bk_inst_id"),
+                    "bk_asst_obj_id": bk_asst_obj_id,
+                    "bk_asst_inst_id": assoc.get("bk_asst_inst_id"),
+                    "bk_obj_asst_id": bk_obj_asst_id,
+                    "bk_relation_type_id": assoc.get("bk_relation_type_id"),
+                    "bk_supplier_account": "0"
+                })
             
             logger.info(f"迁移了 {len(associations)} 个实例关联")
         else:
@@ -733,15 +853,21 @@ class DatabaseMigrator:
         # 步骤4: 迁移属性
         self.migrate_attributes()
 
-        # 步骤5: 创建实例表
+        # 步骤5: 迁移属性分组
+        self.migrate_property_groups()
+
+        # 步骤6: 更新属性分组
+        self.update_attributes_group()
+
+        # 步骤7: 创建实例表
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
         for model in models:
             self.create_instance_table(model['bk_obj_id'])
 
-        # 步骤6: 迁移实例数据
+        # 步骤8: 迁移实例数据
         self.migrate_instances()
 
-        # 步骤7: 迁移关联关系数据
+        # 步骤9: 迁移关联关系数据
         self.migrate_associations()
 
         logger.info("数据库初始化迁移完成!")
