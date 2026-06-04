@@ -41,6 +41,16 @@ def get_model_attributes(model_id):
         logger.error(f"Error getting model attributes: {e}")
         return jsonify({'detail': str(e)}), 500
 
+@model_bp.route('/<model_id>/property-groups', methods=['GET'])
+def get_model_property_groups(model_id):
+    """获取模型的属性分组"""
+    try:
+        groups = ModelService.get_model_property_groups(model_id)
+        return jsonify({'groups': groups})
+    except Exception as e:
+        logger.error(f"Error getting model property groups: {e}")
+        return jsonify({'detail': str(e)}), 500
+
 @model_bp.route('/<model_id>/associations', methods=['GET'])
 def get_model_associations(model_id):
     """获取模型的关联关系"""

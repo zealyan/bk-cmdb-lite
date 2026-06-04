@@ -4,29 +4,34 @@
       <bk-tab :active.sync="activeTab" type="unborder-card" class="details-tab">
         <bk-tab-panel name="info" label="基本信息">
           <div class="info-card">
-            <div class="info-grid">
-              <div
-                v-for="property in displayProperties"
-                :key="property.bk_property_id"
-                class="info-item">
-                <span class="property-label">{{ property.bk_property_name }}</span>
-                <span class="property-colon">：</span>
-                <span class="property-value-wrap">
-                  <template v-if="property.bk_property_id === 'id'">
-                    <bk-button :text="true" @click="viewInstance">{{ instanceData[property.bk_property_id] }}</bk-button>
-                  </template>
-                  <template v-else>
-                    <editable-property
-                      :property="property"
-                      :value="instanceData[property.bk_property_id]"
-                      :editable="property.editable !== false && !property.bk_isapi"
-                      :editing-property-id="editingPropertyId"
-                      @start-edit="editingPropertyId = $event"
-                      @end-edit="editingPropertyId = null"
-                      @confirm="handlePropertyConfirm">
-                    </editable-property>
-                  </template>
-                </span>
+            <div class="property-groups">
+              <div v-for="group in propertyGroups" :key="group.bk_group_id" class="property-group">
+                <h3 class="group-title">{{ group.bk_group_name }}</h3>
+                <div class="info-grid">
+                  <div
+                    v-for="property in getPropertiesByGroup(group.bk_group_id)"
+                    :key="property.bk_property_id"
+                    class="info-item">
+                    <span class="property-label">{{ property.bk_property_name }}</span>
+                    <span class="property-colon">：</span>
+                    <span class="property-value-wrap">
+                      <template v-if="property.bk_property_id === 'id'">
+                        <bk-button :text="true" @click="viewInstance">{{ instanceData[property.bk_property_id] }}</bk-button>
+                      </template>
+                      <template v-else>
+                        <editable-property
+                          :property="property"
+                          :value="instanceData[property.bk_property_id]"
+                          :editable="property.editable !== false && !property.bk_isapi"
+                          :editing-property-id="editingPropertyId"
+                          @start-edit="editingPropertyId = $event"
+                          @end-edit="editingPropertyId = null"
+                          @confirm="handlePropertyConfirm">
+                        </editable-property>
+                      </template>
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -84,6 +89,7 @@ export default {
       apiRelations: [],
       apiInstances: {},
       apiAttributes: {},
+      propertyGroups: [], // 属性分组数据
       isDataReady: false,
       associationLoading: false,
       editingPropertyId: null // 当前正在编辑的属性ID
@@ -153,6 +159,19 @@ export default {
     this.loadInstanceData()
   },
   methods: {
+    // 获取指定分组的属性
+    getPropertiesByGroup (groupId) {
+      const props = this.properties.filter(p => {
+        // 不显示 id 字段
+        if (p.bk_property_id === 'id') return false
+        // 检查分组，默认为 'default'
+        const propGroup = p.bk_property_group || 'default'
+        return propGroup === groupId && p.bk_property_index !== -1
+      }).sort((a, b) => a.bk_property_index - b.bk_property_index)
+      
+      return props
+    },
+
     async loadInstanceData () {
       this.associationLoading = true
       try {
@@ -171,6 +190,24 @@ export default {
             objId: this.objId,
             instId: this.instId
           })
+        }
+        
+        // 加载属性分组
+        try {
+          const groupsResponse = await modelAPI.getModelPropertyGroups(this.objId)
+          if (groupsResponse && groupsResponse.groups) {
+            this.propertyGroups = groupsResponse.groups
+          }
+        } catch (err) {
+          console.warn('加载属性分组失败:', err)
+          // 如果没有分组，创建默认分组
+          this.propertyGroups = [{
+            id: 1,
+            bk_group_id: 'default',
+            bk_group_name: '默认',
+            bk_group_index: 0,
+            bk_isdefault: true
+          }]
         }
         
         const assocResponse = await modelAPI.getInstanceAssociations(this.instId)
@@ -307,6 +344,25 @@ export default {
 
 .info-card {
   padding: 20px;
+}
+
+.property-groups {
+  .property-group {
+    margin-bottom: 24px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .group-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #313238;
+      margin: 0 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e8eaec;
+    }
+  }
 }
 
 .info-grid {

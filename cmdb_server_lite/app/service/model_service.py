@@ -35,3 +35,10 @@ class ModelService:
                     pass
         
         return attributes
+    
+    @staticmethod
+    def get_model_property_groups(model_id):
+        """获取模型的属性分组"""
+        return query_all('model/select_property_groups.sql', {
+            'model_id': model_id
+        })

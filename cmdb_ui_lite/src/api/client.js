@@ -73,6 +73,11 @@ export const modelAPI = {
   getModelAttributes (modelId) {
     return http.get(`/api/v1/models/${modelId}/attributes`)
   },
+
+  // 获取模型属性分组
+  getModelPropertyGroups (modelId) {
+    return http.get(`/api/v1/models/${modelId}/property-groups`)
+  },
   
   // 获取模型实例列表
   listInstances (modelId, params = {}) {
