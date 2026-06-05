@@ -2,7 +2,7 @@
   <div class="model-details-page">
     <div class="details-layout">
       <bk-tab :active.sync="activeTab" type="unborder-card" class="details-tab">
-        <bk-tab-panel name="info" label="基本信息">
+      <bk-tab-panel name="property" label="属性">
           <div class="info-card">
             <div class="property-groups">
               <div v-for="group in propertyGroups" :key="group.bk_group_id" class="property-group">
@@ -78,9 +78,9 @@ export default {
     InstanceAssociation,
     EditableProperty
   },
-  data () {
+  data() {
     return {
-      activeTab: 'info',
+      activeTab: 'property',
       objId: '',
       instId: null,
       instanceData: {},
