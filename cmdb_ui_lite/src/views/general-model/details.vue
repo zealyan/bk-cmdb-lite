@@ -332,11 +332,26 @@ export default {
     min-height: 400px;
 
     :deep(.bk-tab-header) {
-      padding: 0;
-      margin: 0 20px;
+      padding: 0 20px;
+      height: 58px;
+      background-image: linear-gradient(transparent 57px, #dcdee5 0);
+
+      .bk-tab-label-list {
+        height: 58px;
+
+        .bk-tab-label-item {
+          line-height: 58px;
+          min-width: auto;
+
+          &.active {
+            background-color: transparent;
+          }
+        }
+      }
     }
 
     :deep(.bk-tab-section) {
+      padding: 0 20px;
       padding-bottom: 10px;
     }
   }
