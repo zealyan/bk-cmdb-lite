@@ -3,6 +3,13 @@
 """
 数据库初始化迁移工具
 使用 sqlglot 处理多数据库方言
+
+枚举选项格式（原项目标准格式）：
+- enum（单选枚举）: [{"id": "xxx", "name": "显示名", "type": "text", "is_default": false}]
+- enummulti（多选枚举）: [{"id": "xxx", "name": "显示名", "type": "text", "is_default": false}]
+- list（列表）: ["选项1", "选项2"]
+- int: {"min": 0, "max": 100}
+- float: {"min": 0.0, "max": 100.5}
 """
 
 import json
@@ -21,6 +28,56 @@ from app.config.settings import get_config
 # 配置日志
 logger = logging.getLogger('migrate')
 coloredlogs.install(level='INFO', logger=logger)
+
+
+def convert_enum_option(option_list, default_index=None):
+    """
+    将简单的字符串数组格式转换为原项目标准的枚举选项格式
+    
+    Args:
+        option_list: 简单字符串数组，如 ["选项1", "选项2", "选项3"]
+        default_index: 默认选中的索引（可选），从0开始
+    
+    Returns:
+        JSON字符串，符合原项目EnumVal格式
+    """
+    if not option_list:
+        return None
+    
+    enum_options = []
+    for idx, option_text in enumerate(option_list):
+        # 使用字符串本身作为ID（URL安全）
+        option_id = str(option_text).strip()
+        enum_options.append({
+            "id": option_id,
+            "name": str(option_text).strip(),
+            "type": "text",
+            "is_default": True if default_index is not None and idx == default_index else False
+        })
+    
+    return json.dumps(enum_options, ensure_ascii=False)
+
+
+def parse_enum_option(json_string):
+    """
+    解析JSON字符串为枚举选项列表
+    
+    Args:
+        json_string: JSON格式的枚举选项字符串
+    
+    Returns:
+        枚举选项列表
+    """
+    if not json_string:
+        return []
+    
+    if isinstance(json_string, list):
+        return json_string
+    
+    try:
+        return json.loads(json_string)
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 # 系统字段列表
 SYSTEM_FIELDS = {
@@ -442,6 +499,59 @@ class DatabaseMigrator:
         
         logger.info(f"迁移了 {len(data.get('models', []))} 个模型")
     
+    def process_option(self, prop_type, option):
+        """
+        处理属性选项值，根据类型进行转换
+        
+        Args:
+            prop_type: 属性类型
+            option: 原始选项值
+        
+        Returns:
+            处理后的选项值（JSON字符串或原值）
+        """
+        if option is None:
+            return None
+        
+        # 如果已经是字符串，直接返回
+        if isinstance(option, str):
+            return option
+        
+        # 枚举类型（单选）
+        if prop_type == 'enum':
+            if isinstance(option, list):
+                # 将简单数组转换为原项目标准格式
+                return convert_enum_option(option)
+            return option
+        
+        # 多选枚举类型
+        if prop_type == 'enummulti':
+            if isinstance(option, list):
+                # 将简单数组转换为原项目标准格式
+                return convert_enum_option(option)
+            return option
+        
+        # 列表类型
+        if prop_type == 'list':
+            if isinstance(option, list):
+                return json.dumps(option, ensure_ascii=False)
+            return option
+        
+        # 整数范围类型
+        if prop_type == 'int':
+            if isinstance(option, dict):
+                return json.dumps(option, ensure_ascii=False)
+            return option
+        
+        # 浮点数范围类型
+        if prop_type == 'float':
+            if isinstance(option, dict):
+                return json.dumps(option, ensure_ascii=False)
+            return option
+        
+        # 其他类型转为JSON字符串
+        return json.dumps(option, ensure_ascii=False)
+    
     def migrate_attributes(self):
         """迁移属性数据"""
         ui_project = self.workspace_root / "cmdb_ui_lite" / "src" / "assets" / "api"
@@ -471,9 +581,9 @@ class DatabaseMigrator:
                 
                 # 先插入系统属性
                 for sys_prop in SYSTEM_PROPERTIES:
+                    prop_type = sys_prop.get("bk_property_type", "string")
                     option = sys_prop.get("option")
-                    if option and not isinstance(option, str):
-                        option = json.dumps(option)
+                    option = self.process_option(prop_type, option)
                     
                     self.execute_sql("""
                         INSERT INTO cc_ObjAttDes 
@@ -492,7 +602,7 @@ class DatabaseMigrator:
                         'bk_obj_id': model_id,
                         'bk_property_id': sys_prop['bk_property_id'],
                         'bk_property_name': sys_prop['bk_property_name'],
-                        'bk_property_type': sys_prop['bk_property_type'],
+                        'bk_property_type': prop_type,
                         'bk_property_group': sys_prop['bk_property_group'],
                         'isrequired': sys_prop['isrequired'],
                         'bk_ispassword': sys_prop['bk_ispassword'],
@@ -518,9 +628,9 @@ class DatabaseMigrator:
                     if bk_property_id in SYSTEM_FIELDS:
                         continue
                     
+                    prop_type = prop.get("bk_property_type", "string")
                     option = prop.get("option")
-                    if option and not isinstance(option, str):
-                        option = json.dumps(option)
+                    option = self.process_option(prop_type, option)
                     
                     bk_issystem = prop.get("bk_issystem", False)
                     bk_isapi = prop.get("bk_isapi", False)
@@ -545,7 +655,7 @@ class DatabaseMigrator:
                         'bk_obj_id': model_id,
                         'bk_property_id': bk_property_id,
                         'bk_property_name': prop.get("bk_property_name"),
-                        'bk_property_type': prop.get("bk_property_type", "string"),
+                        'bk_property_type': prop_type,
                         'bk_property_group': prop.get("bk_property_group", "default"),
                         'isrequired': prop.get("isrequired", False),
                         'bk_ispassword': prop.get("bk_ispassword", False),
@@ -627,6 +737,7 @@ class DatabaseMigrator:
             'objuser': 'TEXT',
             'list': 'TEXT',
             'enum': 'TEXT',
+            'enummulti': 'TEXT',
             'enumquote': 'TEXT',
             'textarea': 'TEXT',
             'array': 'TEXT',
