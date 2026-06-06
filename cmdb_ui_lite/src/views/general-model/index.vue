@@ -391,7 +391,17 @@ export default {
 
       const option = property.option || property.bk_property_option
       if (option && Array.isArray(option)) {
-        return option.map(opt => ({ id: opt, name: opt }))
+        if (option.length > 0 && option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
+          return option.map(opt => ({
+            id: opt.id,
+            name: opt.name
+          }))
+        } else {
+          return option.map(opt => ({
+            id: opt,
+            name: opt
+          }))
+        }
       }
 
       return []

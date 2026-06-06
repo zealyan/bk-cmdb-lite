@@ -51,12 +51,35 @@ export default {
         return String(v)
       }).filter(v => v.length > 0)
     },
+    getEnumDisplayValue(id) {
+      const option = this.property.option || this.property.bk_property_option
+      if (option && Array.isArray(option) && option.length > 0) {
+        if (option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
+          const opt = option.find(o => o.id === id || o.id === String(id))
+          if (opt) {
+            return opt.name
+          }
+        } else if (typeof option[0] === 'string') {
+          // 旧格式，直接返回 id
+          return id
+        }
+      }
+      return id
+    },
     displayText() {
+      const propertyType = this.property.bk_property_type
+      
+      // 处理枚举类型，显示名称而不是 ID
+      let displayValues = this.transformedValue
+      if (propertyType === 'enum' || propertyType === 'list') {
+        displayValues = this.transformedValue.map(v => this.getEnumDisplayValue(v))
+      }
+      
       if (this.operator === '$range') {
-        const [start, end] = this.transformedValue
+        const [start, end] = displayValues
         return `${start} ~ ${end}`
       }
-      return `${this.operatorSymbol} ${this.transformedValue.join(' | ')}`
+      return `${this.operatorSymbol} ${displayValues.join(' | ')}`
     }
   },
   methods: {
