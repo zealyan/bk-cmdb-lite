@@ -70,7 +70,7 @@ export default {
   methods: {
     getEnumDisplayValue(id) {
       // 获取 option，可能需要解析 JSON 字符串
-      let option = this.property?.option || this.property?.bk_property_option
+      let option = this.property?.option
       
       // 如果是字符串，尝试解析为 JSON
       if (typeof option === 'string') {

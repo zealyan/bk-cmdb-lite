@@ -143,7 +143,7 @@ export default {
   methods: {
     // 格式化枚举值
     formatEnumValue(value) {
-      const option = this.property?.option || this.property?.bk_property_option
+      const option = this.property?.option
       if (!option) {
         return String(value)
       }
@@ -173,7 +173,7 @@ export default {
     
     // 格式化多选枚举值
     formatEnumMultiValue(value) {
-      const option = this.property?.option || this.property?.bk_property_option
+      const option = this.property?.option
       if (!option) {
         return Array.isArray(value) ? value.join(', ') : String(value)
       }

@@ -390,7 +390,6 @@ class DatabaseMigrator:
                     ispre BOOLEAN DEFAULT false,
                     bk_property_index INTEGER DEFAULT 0,
                     option TEXT,
-                    bk_property_option TEXT,
                     placeholder VARCHAR,
                     unit VARCHAR,
                     creator VARCHAR DEFAULT 'admin',
@@ -590,12 +589,11 @@ class DatabaseMigrator:
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
                          bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre, 
-                         bk_property_index, bk_supplier_account, bk_property_option)
+                         bk_property_index, bk_supplier_account)
                         VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
                                 :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
                                 :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :option, 
-                                :unit, :placeholder, :editable, :ispre, :bk_property_index, 
-                                '0', :bk_property_option)
+                                :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{sys_prop['bk_property_id']}",
                         'id': attr_id,
@@ -615,8 +613,7 @@ class DatabaseMigrator:
                         'placeholder': sys_prop['placeholder'],
                         'editable': sys_prop['editable'],
                         'ispre': sys_prop['ispre'],
-                        'bk_property_index': sys_prop['bk_property_index'],
-                        'bk_property_option': option
+                        'bk_property_index': sys_prop['bk_property_index']
                     })
                     attr_id += 1
                     total_attrs += 1
@@ -643,12 +640,11 @@ class DatabaseMigrator:
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
                          bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre, 
-                         bk_property_index, bk_supplier_account, bk_property_option)
+                         bk_property_index, bk_supplier_account)
                         VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
                                 :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
                                 :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :option, 
-                                :unit, :placeholder, :editable, :ispre, :bk_property_index, 
-                                '0', :bk_property_option)
+                                :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{bk_property_id}",
                         'id': attr_id,
@@ -668,8 +664,7 @@ class DatabaseMigrator:
                         'placeholder': prop.get("placeholder"),
                         'editable': editable,
                         'ispre': prop.get("ispre", False),
-                        'bk_property_index': prop.get("bk_property_index", 0),
-                        'bk_property_option': option
+                        'bk_property_index': prop.get("bk_property_index", 0)
                     })
                     attr_id += 1
                     total_attrs += 1

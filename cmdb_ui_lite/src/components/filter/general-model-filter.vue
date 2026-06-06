@@ -452,7 +452,7 @@ export default {
           { id: 'false', name: 'false' }
         ]
       }
-      const option = property.option || property.bk_property_option
+      const option = property.option
       if (option && Array.isArray(option)) {
         if (option.length > 0 && option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
           return option.map(opt => ({

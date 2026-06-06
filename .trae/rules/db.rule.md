@@ -141,7 +141,6 @@ SQLALCHEMY_ECHO = False           # 是否输出 SQL 日志
 | `isreadonly` | BOOLEAN | 否 | 是否只读（默认false） |
 | `bk_isapi` | BOOLEAN | 否 | 是否API字段（默认false） |
 | `option` | VARCHAR | 否 | 选项配置（JSON序列化存储） |
-| `bk_property_option` | VARCHAR | 否 | 选项配置副本 |
 | `unit` | VARCHAR | 否 | 单位 |
 | `placeholder` | VARCHAR | 否 | 占位符 |
 | `editable` | BOOLEAN | 否 | 是否可编辑（默认true） |

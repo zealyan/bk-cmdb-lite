@@ -156,7 +156,7 @@ export default {
       return []
     },
     enumOptions() {
-      const option = this.property.option || this.property.bk_property_option
+      const option = this.property.option
       
       if (!option) {
         console.log('[enumOptions] No option found for property:', this.property.bk_property_id)
