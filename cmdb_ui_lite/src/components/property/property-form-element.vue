@@ -34,7 +34,7 @@
       @blur="handleBlur">
     </bk-input>
 
-    <!-- 枚举类型 -->
+    <!-- 枚举类型（单选） -->
     <bk-select
       v-else-if="property.bk_property_type === 'enum'"
       ref="inputRef"
@@ -42,6 +42,22 @@
       :placeholder="placeholder"
       @change="handleSelect"
       @selected="handleSelect">
+      <bk-option
+        v-for="option in enumOptions"
+        :key="option.id"
+        :id="String(option.id)"
+        :name="String(option.name)">
+      </bk-option>
+    </bk-select>
+
+    <!-- 多选枚举类型 -->
+    <bk-select
+      v-else-if="property.bk_property_type === 'enummulti'"
+      ref="inputRef"
+      :value="multiValue"
+      multiple
+      :placeholder="placeholder"
+      @change="handleMultiSelect">
       <bk-option
         v-for="option in enumOptions"
         :key="option.id"
@@ -106,7 +122,8 @@ export default {
   },
   data() {
     return {
-      localValue: ''
+      localValue: '',
+      localMultiValue: []
     }
   },
   computed: {
@@ -115,6 +132,28 @@ export default {
     },
     isNumberType() {
       return ['int', 'float'].includes(this.property.bk_property_type)
+    },
+    // 多选枚举的值
+    multiValue() {
+      if (this.localMultiValue && this.localMultiValue.length > 0) {
+        return this.localMultiValue
+      }
+      // 从 localValue 解析数组值
+      if (this.localValue) {
+        if (Array.isArray(this.localValue)) {
+          return this.localValue
+        }
+        // 尝试解析 JSON 字符串
+        try {
+          const parsed = JSON.parse(this.localValue)
+          if (Array.isArray(parsed)) {
+            return parsed
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return []
     },
     enumOptions() {
       const option = this.property.option || this.property.bk_property_option
@@ -182,7 +221,32 @@ export default {
     value: {
       immediate: true,
       handler(val) {
-        this.localValue = val === null || val === undefined ? '' : val
+        if (this.property.bk_property_type === 'enummulti') {
+          // 多选枚举
+          if (Array.isArray(val)) {
+            this.localMultiValue = val
+            this.localValue = JSON.stringify(val)
+          } else if (val) {
+            try {
+              const parsed = JSON.parse(val)
+              if (Array.isArray(parsed)) {
+                this.localMultiValue = parsed
+                this.localValue = val
+              } else {
+                this.localMultiValue = []
+                this.localValue = ''
+              }
+            } catch (e) {
+              this.localMultiValue = []
+              this.localValue = ''
+            }
+          } else {
+            this.localMultiValue = []
+            this.localValue = ''
+          }
+        } else {
+          this.localValue = val === null || val === undefined ? '' : val
+        }
       }
     }
   },
@@ -200,6 +264,15 @@ export default {
       this.$emit('input', value)
       this.$emit('selected', value)
       this.$emit('change', value)
+    },
+    handleMultiSelect(value) {
+      console.log('[handleMultiSelect]', value)
+      this.localMultiValue = value
+      // 存储为 JSON 字符串
+      const jsonValue = JSON.stringify(value)
+      this.localValue = jsonValue
+      this.$emit('input', jsonValue)
+      this.$emit('change', jsonValue)
     },
     handleSwitchChange(value) {
       this.localValue = value
