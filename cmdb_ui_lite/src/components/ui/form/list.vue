@@ -1,6 +1,9 @@
 <template>
   <bk-select
     v-model="localValue"
+    multiple
+    display-tag
+    selected-style="checkbox"
     :disabled="disabled || readonly"
     :clearable="true"
     :searchable="true"
@@ -19,7 +22,7 @@ export default {
   name: 'cmdb-form-list',
   props: {
     value: {
-      default: ''
+      default: () => []
     },
     property: {
       type: Object,
@@ -30,7 +33,7 @@ export default {
   },
   data() {
     return {
-      localValue: ''
+      localValue: []
     }
   },
   computed: {
@@ -39,19 +42,26 @@ export default {
       if (!option) {
         return []
       }
-      if (Array.isArray(option)) {
-        return option
-      }
-      if (typeof option === 'string') {
+      let parsedOption = option
+      
+      if (typeof parsedOption === 'string') {
         try {
-          return JSON.parse(option)
-        } catch (e) {
-          return option.split(',').map(opt => ({
-            id: opt.trim(),
-            name: opt.trim()
-          }))
-        }
+          parsedOption = JSON.parse(parsedOption)
+        } catch (e) {}
       }
+      
+      if (Array.isArray(parsedOption)) {
+        return parsedOption.map(opt => {
+          if (typeof opt === 'object' && opt.id && opt.name) {
+            return opt
+          }
+          return {
+            id: opt,
+            name: opt
+          }
+        })
+      }
+      
       return []
     }
   },
@@ -59,7 +69,18 @@ export default {
     value: {
       immediate: true,
       handler(val) {
-        this.localValue = val
+        if (Array.isArray(val)) {
+          this.localValue = val
+        } else if (val) {
+          try {
+            const parsed = JSON.parse(val)
+            this.localValue = Array.isArray(parsed) ? parsed : []
+          } catch (e) {
+            this.localValue = []
+          }
+        } else {
+          this.localValue = []
+        }
       }
     }
   },

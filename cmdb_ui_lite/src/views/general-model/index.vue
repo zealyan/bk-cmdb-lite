@@ -36,7 +36,7 @@
         </div>
         <div class="filter-value">
           <div v-if="filter.field && filter.field !== ''" class="search-input-wrapper">
-            <div v-if="isEnumField || isBoolField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
+            <div v-if="isEnumField || isBoolField || isListField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
               <div class="enum-input-container">
                 <input
                   type="text"
@@ -362,6 +362,11 @@ export default {
       const property = this.filterProperty
       if (!property) return false
       return property.bk_property_type === 'enum'
+    },
+    isListField() {
+      const property = this.filterProperty
+      if (!property) return false
+      return property.bk_property_type === 'list'
     },
     isBoolField() {
       const property = this.filterProperty
