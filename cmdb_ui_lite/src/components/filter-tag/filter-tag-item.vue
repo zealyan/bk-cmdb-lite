@@ -51,23 +51,8 @@ export default {
         return String(v)
       }).filter(v => v.length > 0)
     },
-    getEnumDisplayValue(id) {
-      const option = this.property.option || this.property.bk_property_option
-      if (option && Array.isArray(option) && option.length > 0) {
-        if (option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
-          const opt = option.find(o => o.id === id || o.id === String(id))
-          if (opt) {
-            return opt.name
-          }
-        } else if (typeof option[0] === 'string') {
-          // 旧格式，直接返回 id
-          return id
-        }
-      }
-      return id
-    },
     displayText() {
-      const propertyType = this.property.bk_property_type
+      const propertyType = this.property?.bk_property_type
       
       // 处理枚举类型，显示名称而不是 ID
       let displayValues = this.transformedValue
@@ -83,6 +68,37 @@ export default {
     }
   },
   methods: {
+    getEnumDisplayValue(id) {
+      // 获取 option，可能需要解析 JSON 字符串
+      let option = this.property?.option || this.property?.bk_property_option
+      
+      // 如果是字符串，尝试解析为 JSON
+      if (typeof option === 'string') {
+        try {
+          option = JSON.parse(option)
+        } catch (e) {
+          console.warn('[FilterTagItem] 解析 option JSON 失败:', e)
+          return id
+        }
+      }
+      
+      if (!option || !Array.isArray(option) || option.length === 0) {
+        return id
+      }
+      
+      // 新格式: [{id: "xxx", name: "显示名"}]
+      if (option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
+        const opt = option.find(o => o.id === id || o.id === String(id))
+        if (opt) {
+          return opt.name
+        }
+      } else if (typeof option[0] === 'string') {
+        // 旧格式: ["选项1", "选项2"]，直接返回 id
+        return id
+      }
+      
+      return id
+    },
     handleClick() {
       this.$emit('click')
     },
