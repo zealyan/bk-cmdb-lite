@@ -215,6 +215,35 @@
       "editable": true,
       "bk_property_index": 17,
       "width": 250
+    },
+    {
+      "bk_property_id": "bk_backend_ips",
+      "bk_property_name": "后端IP列表",
+      "bk_property_type": "list",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 18,
+      "width": 200,
+      "option": []
+    },
+    {
+      "bk_property_id": "bk_server_groups",
+      "bk_property_name": "服务器分组",
+      "bk_property_type": "list",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 19,
+      "width": 180,
+      "option": [
+        "Web服务器",
+        "应用服务器",
+        "数据库服务器",
+        "缓存服务器",
+        "消息队列",
+        "负载均衡器"
+      ]
     }
   ]
 }
