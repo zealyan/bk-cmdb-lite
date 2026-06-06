@@ -16,7 +16,10 @@ class InstanceService:
         """获取单个实例"""
         table_name = InstanceService._get_table_name(model_id)
         sql = f'SELECT * FROM "{table_name}" WHERE id = :instance_id'
-        return query_one(sql, {'instance_id': instance_id})
+        instance = query_one(sql, {'instance_id': instance_id})
+        if instance:
+            instance = InstanceService._parse_json_fields(instance, model_id)
+        return instance
     
     @staticmethod
     def get_instances(model_id, page=1, page_size=20, conditions=None):
@@ -42,6 +45,10 @@ class InstanceService:
         
         sql = ' '.join(sql_parts)
         instances = query_all(sql, params)
+        
+        # 解析JSON字段
+        for i in range(len(instances)):
+            instances[i] = InstanceService._parse_json_fields(instances[i], model_id)
         
         # 获取总数
         count_sql_parts = [f'SELECT COUNT(*) as total FROM "{table_name}"']
@@ -257,6 +264,10 @@ class InstanceService:
         sql = ''.join(sql_parts)
         instances = query_all(sql, params)
         
+        # 解析JSON字段
+        for i in range(len(instances)):
+            instances[i] = InstanceService._parse_json_fields(instances[i], model_id)
+        
         # 获取总数
         count_sql_parts = [f'SELECT COUNT(*) as total FROM "{table_name}"']
         if where_clauses:
@@ -272,6 +283,33 @@ class InstanceService:
             'page_size': page_size,
             'total': total
         }
+    
+    @staticmethod
+    def _parse_json_fields(instance, model_id):
+        """解析JSON字段，将list、enum等类型的JSON字符串解析为数组或对象"""
+        from app.service.model_service import ModelService
+        
+        if not instance:
+            return instance
+        
+        # 获取模型的所有属性，确定哪些是需要解析JSON的字段
+        attributes = ModelService.get_model_attributes(model_id)
+        
+        for attr in attributes:
+            prop_id = attr.get('bk_property_id')
+            prop_type = attr.get('bk_property_type')
+            
+            if prop_id and prop_id in instance:
+                value = instance[prop_id]
+                if value is not None and isinstance(value, str) and value.strip().startswith(('[', '{')):
+                    try:
+                        parsed = json.loads(value)
+                        instance[prop_id] = parsed
+                    except (json.JSONDecodeError, ValueError):
+                        # 如果解析失败，保持原样
+                        pass
+        
+        return instance
     
     @staticmethod
     def _build_condition(field, op, value, params, param_counter):
