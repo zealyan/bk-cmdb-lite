@@ -339,7 +339,227 @@ sql = transpile("SELECT * FROM table", read="sqlite", write="postgresql")
 
 ---
 
-## 六、与原项目对比
+## 六、属性选项格式（Option）
+
+### 6.1 option 字段存储规则
+
+`option` 字段在数据库中存储为 **JSON 序列化字符串**，后端 API 会自动反序列化为对应类型返回给前端。
+
+**存储格式**：
+- 数据库存储：`'[{"id": "xxx", "name": "xxx", ...}]'`（JSON 字符串）
+- API 返回：反序列化后的对象/数组
+
+---
+
+### 6.2 枚举类型（enum）- 单选枚举
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type EnumOption []EnumVal
+
+type EnumVal struct {
+    ID        string `bson:"id"           json:"id"`
+    Name      string `bson:"name"         json:"name"`
+    Type      string `bson:"type"         json:"type"`
+    IsDefault bool   `bson:"is_default"   json:"is_default"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+[
+    {"id": "running", "name": "运行中", "type": "text", "is_default": true},
+    {"id": "stopped", "name": "已停止", "type": "text", "is_default": false},
+    {"id": "maintenance", "name": "维护中", "type": "text", "is_default": false}
+]
+```
+
+#### 验证规则
+
+| 字段 | 规则 | 说明 |
+|------|------|------|
+| `id` | 不能为空，最大 128 Unicode 字符 | **完全支持中文** |
+| `name` | 不能为空，最大 128 Unicode 字符 | **完全支持中文** |
+| `type` | 必须是 "text" | 固定值 |
+| `is_default` | 单选只能有 1 个为 true | 多选无此限制 |
+
+#### 长度常量
+
+```go
+// src/common/definitions.go
+AttributeOptionValueMaxLength = 128   // 单个选项ID/Name最大长度（Unicode字符）
+AttributeOptionArrayMaxLength = 200  // 选项数组最大长度
+```
+
+#### 示例
+
+```json
+[
+    {"id": "公网", "name": "公网", "type": "text", "is_default": false},
+    {"id": "内网", "name": "内网", "type": "text", "is_default": true}
+]
+```
+
+---
+
+### 6.3 多选枚举类型（enummulti）
+
+多选枚举与单选枚举使用相同的结构，区别在于 `is_default` 数量限制：
+
+- **单选枚举（enum）**：只能有 1 个 `is_default: true`
+- **多选枚举（enummulti）**：可以有多个 `is_default: true`（表示默认选中多个）
+
+#### 数据库存储格式
+
+```json
+[
+    {"id": "HTTP", "name": "HTTP", "type": "text", "is_default": true},
+    {"id": "HTTPS", "name": "HTTPS", "type": "text", "is_default": true},
+    {"id": "TCP", "name": "TCP", "type": "text", "is_default": false},
+    {"id": "UDP", "name": "UDP", "type": "text", "is_default": false}
+]
+```
+
+#### 示例
+
+```json
+[
+    {"id": "生产环境", "name": "生产环境", "type": "text", "is_default": true},
+    {"id": "测试环境", "name": "测试环境", "type": "text", "is_default": true},
+    {"id": "开发环境", "name": "开发环境", "type": "text", "is_default": false}
+]
+```
+
+---
+
+### 6.4 列表类型（list）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type ListOption []string
+type ListOptions []string
+```
+
+#### 数据库存储格式
+
+```json
+["北京", "上海", "广州", "深圳"]
+```
+
+#### 验证规则
+
+| 规则 | 说明 |
+|------|------|
+| 数组长度 | 最大 200 项 |
+| 单项长度 | 最大 128 Unicode 字符 |
+| 内容 | 字符串数组 |
+
+---
+
+### 6.5 整数范围类型（int）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type IntOption struct {
+    Min int64 `bson:"min" json:"min"`
+    Max int64 `bson:"max" json:"max"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+{"min": 0, "max": 100}
+```
+
+#### 验证规则
+
+- `min` 必须小于等于 `max`
+- 支持负数
+
+---
+
+### 6.6 浮点数范围类型（float）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type FloatOption struct {
+    Min float64 `bson:"min" json:"min"`
+    Max float64 `bson:"max" json:"max"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+{"min": 0.0, "max": 100.5}
+```
+
+---
+
+### 6.7 表格类型（table）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type TableAttributesOption struct {
+    Header  []Attribute              `json:"header" bson:"header"`
+    Default []map[string]interface{} `json:"default" bson:"default"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+{
+    "header": [
+        {"bk_property_id": "col1", "bk_property_name": "列1", "bk_property_type": "text"},
+        {"bk_property_id": "col2", "bk_property_name": "列2", "bk_property_type": "int"}
+    ],
+    "default": [
+        {"col1": "value1", "col2": 100}
+    ]
+}
+```
+
+---
+
+### 6.8 类型汇总表
+
+| 属性类型 | option 存储格式示例 | 是否支持中文 ID |
+|---------|-------------------|----------------|
+| `enum`（单选枚举） | `[{"id":"x","name":"y","type":"text","is_default":false}]` | ✅ 完全支持 |
+| `enummulti`（多选枚举） | `[{"id":"x","name":"y","type":"text","is_default":false}]` | ✅ 完全支持 |
+| `list`（列表） | `["选项1","选项2"]` | ✅ 数组项支持中文 |
+| `int`（整数范围） | `{"min":0,"max":100}` | 不适用 |
+| `float`（浮点范围） | `{"min":0.0,"max":100.5}` | 不适用 |
+| `table`（表格） | `{"header":[...],"default":[...]}` | ✅ 列名支持中文 |
+| `bool`（布尔） | `null` 或不存储 | 不适用 |
+| `date/time`（日期时间） | `null` 或不存储 | 不适用 |
+| `char`（字符） | `"^[a-zA-Z]\\w*$"` | ✅ 可存储中文正则 |
+
+---
+
+### 6.9 数据库字段映射
+
+| 字段名 | 存储内容 | 说明 |
+|--------|---------|------|
+| `option` | JSON 字符串 | 原始选项配置 |
+| `bk_property_option` | JSON 字符串 | 选项配置副本（与 option 相同） |
+
+---
+
+## 七、与原项目对比
 
 | 原项目 (MongoDB) | Lite项目 (SQLAlchemy) | 状态 |
 |------------------|----------------------|------|
@@ -354,7 +574,7 @@ sql = transpile("SELECT * FROM table", read="sqlite", write="postgresql")
 
 ---
 
-## 七、新增模型标准步骤
+## 八、新增模型标准步骤
 
 ### 步骤 1: 在 cc_ObjDes 中添加模型定义
 
@@ -397,7 +617,7 @@ CREATE TABLE cc_ObjectBase_0_pub_bk_custom_model (
 
 ---
 
-## 八、参考文件
+## 九、参考文件
 
 - **数据库引擎**：[engine.py](file:///workspace/cmdb_server_lite/app/db/engine.py)
 - **数据库配置**：[settings.py](file:///workspace/cmdb_server_lite/app/config/settings.py)
@@ -410,5 +630,7 @@ CREATE TABLE cc_ObjectBase_0_pub_bk_custom_model (
 ---
 
 **文档维护**：本文档随代码更新，请保持同步。
-- **最后更新**：2026-05-29
-- **更新内容**：v2.0 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持
+- **最后更新**：2026-06-06
+- **更新内容**：
+  - v2.0 - 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持
+  - v2.1 - 新增属性选项格式（Option）章节，详细定义 enum/enummulti/list/int/float/table 等类型的 JSON schema 和 MongoDB 存储格式
