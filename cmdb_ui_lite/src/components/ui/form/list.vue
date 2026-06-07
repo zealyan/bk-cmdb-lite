@@ -1,9 +1,6 @@
 <template>
   <bk-select
     v-model="localValue"
-    multiple
-    display-tag
-    selected-style="checkbox"
     :disabled="disabled || readonly"
     :clearable="true"
     :searchable="true"
@@ -22,7 +19,7 @@ export default {
   name: 'cmdb-form-list',
   props: {
     value: {
-      default: () => []
+      default: ''
     },
     property: {
       type: Object,
@@ -33,7 +30,7 @@ export default {
   },
   data() {
     return {
-      localValue: []
+      localValue: ''
     }
   },
   computed: {
@@ -69,18 +66,7 @@ export default {
     value: {
       immediate: true,
       handler(val) {
-        if (Array.isArray(val)) {
-          this.localValue = val
-        } else if (val) {
-          try {
-            const parsed = JSON.parse(val)
-            this.localValue = Array.isArray(parsed) ? parsed : []
-          } catch (e) {
-            this.localValue = []
-          }
-        } else {
-          this.localValue = []
-        }
+        this.localValue = val || ''
       }
     }
   },
