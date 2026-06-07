@@ -9,10 +9,10 @@
       v-bind="$attrs"
       :show-select-all="true"
       @clear="() => $emit('clear')">
-      <bk-option v-for="(option, index) in options"
-        :key="index"
-        :id="option"
-        :name="option">
+      <bk-option v-for="option in normalizedOptions"
+        :key="option.id"
+        :id="option.id"
+        :name="option.name">
       </bk-option>
     </bk-select>
   </div>
@@ -36,6 +36,21 @@ export default {
     }
   },
   computed: {
+    normalizedOptions() {
+      if (!this.options || !this.options.length) {
+        return []
+      }
+      if (typeof this.options[0] === 'string') {
+        return this.options.map(opt => ({ id: opt, name: opt }))
+      }
+      if (typeof this.options[0] === 'object' && this.options[0] !== null) {
+        return this.options.map(opt => ({
+          id: opt.id !== undefined ? opt.id : opt,
+          name: opt.name !== undefined ? opt.name : opt
+        }))
+      }
+      return []
+    },
     localValue: {
       get() {
         return this.value || []
