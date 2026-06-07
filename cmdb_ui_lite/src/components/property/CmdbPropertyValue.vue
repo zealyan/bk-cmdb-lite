@@ -119,18 +119,9 @@ export default {
     },
 
     formatList(value) {
-      if (Array.isArray(value)) {
-        return value.join(', ')
-      }
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value)
-          if (Array.isArray(parsed)) {
-            return parsed.join(', ')
-          }
-        } catch (e) {
-          // ignore
-        }
+      // list 类型是单选，值是单个字符串，不需要解析
+      if (value === null || value === undefined || value === '') {
+        return '-'
       }
       return String(value)
     },
