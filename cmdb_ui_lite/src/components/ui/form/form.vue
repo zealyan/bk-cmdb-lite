@@ -32,6 +32,8 @@
                       :value="values[property.bk_property_id]"
                       :disabled="checkDisabled(property)"
                       :readonly="property.isreadonly"
+                      :multiple="property.bk_property_type === 'enummulti'"
+                      :options="getPropertyOptions(property)"
                       @input="handleInput(property.bk_property_id, $event)"
                       @change="handleInput(property.bk_property_id, $event)">
                     </component>
@@ -170,6 +172,38 @@ export default {
     },
     isFullWidth(property) {
       return ['innerTable', 'table', 'text', 'longchar'].includes(property.bk_property_type)
+    },
+    getPropertyOptions(property) {
+      const option = property.option
+      if (!option) {
+        return []
+      }
+      
+      let parsedOption = option
+      
+      if (typeof option === 'string') {
+        try {
+          parsedOption = JSON.parse(option)
+        } catch (e) {
+          return []
+        }
+      }
+      
+      if (Array.isArray(parsedOption)) {
+        return parsedOption.map(opt => {
+          if (typeof opt === 'string') {
+            return { id: opt, name: opt, type: 'text', is_default: false }
+          }
+          return {
+            id: opt.id !== undefined ? opt.id : opt,
+            name: opt.name !== undefined ? opt.name : opt,
+            type: opt.type || 'text',
+            is_default: opt.is_default || false
+          }
+        })
+      }
+      
+      return []
     },
     getComponentName(type) {
       const componentMap = {

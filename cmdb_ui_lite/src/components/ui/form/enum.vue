@@ -36,10 +36,6 @@ export default {
       type: Boolean,
       default: false
     },
-    readonly: {
-      type: Boolean,
-      default: false
-    },
     multiple: {
       type: Boolean,
       default: false
@@ -58,10 +54,6 @@ export default {
         return []
       }
     },
-    property: {
-      type: Object,
-      default: () => ({})
-    },
     placeholder: {
       type: String,
       default: ''
@@ -69,16 +61,35 @@ export default {
     fontSize: {
       type: [String, Number],
       default: 'medium'
+    },
+    property: {
+      type: Object,
+      default: () => ({})
     }
   },
   computed: {
+    // 兼容原来通过property传递选项的方式
     parsedOptions() {
-      const option = this.property?.option || this.options
+      if (this.options && this.options.length > 0) {
+        return this.options
+      }
+      const option = this.property?.option
       if (!option) {
         return []
       }
-      if (Array.isArray(option)) {
-        return option.map(opt => {
+      
+      let parsedOption = option
+      
+      if (typeof option === 'string') {
+        try {
+          parsedOption = JSON.parse(option)
+        } catch (e) {
+          return []
+        }
+      }
+      
+      if (Array.isArray(parsedOption)) {
+        return parsedOption.map(opt => {
           if (typeof opt === 'string') {
             return { id: opt, name: opt, type: 'text', is_default: false }
           }
@@ -90,26 +101,7 @@ export default {
           }
         })
       }
-      if (typeof option === 'string') {
-        try {
-          const parsed = JSON.parse(option)
-          if (Array.isArray(parsed)) {
-            return parsed.map(opt => {
-              if (typeof opt === 'string') {
-                return { id: opt, name: opt, type: 'text', is_default: false }
-              }
-              return {
-                id: opt.id !== undefined ? opt.id : opt,
-                name: opt.name !== undefined ? opt.name : opt,
-                type: opt.type || 'text',
-                is_default: opt.is_default || false
-              }
-            })
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
+      
       return []
     },
     selected: {
@@ -157,7 +149,7 @@ export default {
       }
     },
     focus() {
-      this.$refs.selector && this.$refs.selector.show && this.$refs.selector.show()
+      this.$refs.selector.show()
     },
     handleToggle() {
       // do nothing

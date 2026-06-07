@@ -40,6 +40,7 @@
       ref="inputRef"
       :value="localValue"
       :property="property"
+      :multiple="false"
       :placeholder="placeholder"
       @input="handleSelect"
       @on-selected="handleSelect">
@@ -51,6 +52,7 @@
       ref="inputRef"
       :value="localValue"
       :property="property"
+      :multiple="true"
       :placeholder="placeholder"
       @input="handleMultiSelect"
       @on-selected="handleMultiSelect"
