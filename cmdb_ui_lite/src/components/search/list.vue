@@ -1,13 +1,9 @@
 <template>
   <div class="g-expand">
     <bk-select
-      multiple
-      display-tag
-      selected-style="checkbox"
       searchable
       v-model="localValue"
       v-bind="$attrs"
-      :show-select-all="true"
       @clear="() => $emit('clear')">
       <bk-option v-for="option in normalizedOptions"
         :key="option.id"
@@ -23,8 +19,8 @@ export default {
   name: 'cmdb-search-list',
   props: {
     value: {
-      type: Array,
-      default: () => ([])
+      type: String,
+      default: ''
     },
     options: {
       type: Array,
@@ -53,7 +49,7 @@ export default {
     },
     localValue: {
       get() {
-        return this.value || []
+        return this.value || ''
       },
       set(value) {
         this.$emit('input', value)

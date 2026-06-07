@@ -66,14 +66,14 @@
       </bk-option>
     </bk-select>
 
-    <!-- list类型（多选列表） -->
+    <!-- list类型（单选） -->
     <bk-select
       v-else-if="property.bk_property_type === 'list'"
       ref="inputRef"
-      :value="listValue"
-      multiple
+      :value="localValue"
       :placeholder="placeholder"
-      @change="handleListSelect">
+      @change="handleSelect"
+      @selected="handleSelect">
       <bk-option
         v-for="option in listOptions"
         :key="option.id"
@@ -139,8 +139,7 @@ export default {
   data() {
     return {
       localValue: '',
-      localMultiValue: [],
-      localListValue: []
+      localMultiValue: []
     }
   },
   computed: {
@@ -233,28 +232,6 @@ export default {
     placeholder() {
       return this.property.placeholder || `请输入${this.property.bk_property_name}`
     },
-    // list类型的值
-    listValue() {
-      if (this.localListValue && this.localListValue.length > 0) {
-        return this.localListValue
-      }
-      // 从 localValue 解析数组值
-      if (this.localValue) {
-        if (Array.isArray(this.localValue)) {
-          return this.localValue
-        }
-        // 尝试解析 JSON 字符串
-        try {
-          const parsed = JSON.parse(this.localValue)
-          if (Array.isArray(parsed)) {
-            return parsed
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-      return []
-    },
     listOptions() {
       const option = this.property.option
       
@@ -313,29 +290,6 @@ export default {
             this.localMultiValue = []
             this.localValue = ''
           }
-        } else if (this.property.bk_property_type === 'list') {
-          // list类型
-          if (Array.isArray(val)) {
-            this.localListValue = val
-            this.localValue = JSON.stringify(val)
-          } else if (val) {
-            try {
-              const parsed = JSON.parse(val)
-              if (Array.isArray(parsed)) {
-                this.localListValue = parsed
-                this.localValue = val
-              } else {
-                this.localListValue = []
-                this.localValue = ''
-              }
-            } catch (e) {
-              this.localListValue = []
-              this.localValue = ''
-            }
-          } else {
-            this.localListValue = []
-            this.localValue = ''
-          }
         } else {
           this.localValue = val === null || val === undefined ? '' : val
         }
@@ -360,15 +314,6 @@ export default {
     handleMultiSelect(value) {
       console.log('[handleMultiSelect]', value)
       this.localMultiValue = value
-      // 存储为 JSON 字符串
-      const jsonValue = JSON.stringify(value)
-      this.localValue = jsonValue
-      this.$emit('input', jsonValue)
-      this.$emit('change', jsonValue)
-    },
-    handleListSelect(value) {
-      console.log('[handleListSelect]', value)
-      this.localListValue = value
       // 存储为 JSON 字符串
       const jsonValue = JSON.stringify(value)
       this.localValue = jsonValue

@@ -19,7 +19,7 @@
       "bk_biz_name": "游戏业务",
       "operator": "admin",
       "description": "Web服务公网负载均衡",
-      "bk_zones": "[\"zone-a\", \"zone-b\"]"
+      "bk_zones": "zone-a"
     },
     {
       "id": 2,
@@ -40,7 +40,7 @@
       "bk_biz_name": "游戏业务",
       "operator": "admin",
       "description": "API服务内网负载均衡",
-      "bk_zones": "[\"zone-b\", \"zone-c\"]"
+      "bk_zones": "zone-b"
     },
     {
       "id": 3,
@@ -61,7 +61,7 @@
       "bk_biz_name": "电商业务",
       "operator": "devops",
       "description": "HTTPS安全负载均衡",
-      "bk_zones": "[\"zone-a\", \"zone-d\"]"
+      "bk_zones": "zone-c"
     },
     {
       "id": 4,
@@ -82,7 +82,7 @@
       "bk_biz_name": "云服务",
       "operator": "admin",
       "description": "Redis集群负载均衡",
-      "bk_zones": "[\"zone-a\", \"zone-b\", \"zone-c\"]"
+      "bk_zones": "zone-d"
     },
     {
       "id": 5,
@@ -103,7 +103,7 @@
       "bk_biz_name": "游戏业务",
       "operator": "dba",
       "description": "数据库读写分离负载均衡",
-      "bk_zones": "[\"zone-b\", \"zone-e\"]"
+      "bk_zones": "zone-e"
     },
     {
       "id": 6,
@@ -124,7 +124,7 @@
       "bk_biz_name": "基础网络",
       "operator": "admin",
       "description": "CDN回源负载均衡(已停用)",
-      "bk_zones": "[\"zone-a\"]"
+      "bk_zones": "zone-a"
     },
     {
       "id": 7,
@@ -145,7 +145,7 @@
       "bk_biz_name": "视频服务",
       "operator": "media",
       "description": "视频流媒体负载均衡",
-      "bk_zones": "[\"zone-c\", \"zone-d\", \"zone-e\"]"
+      "bk_zones": "zone-c"
     },
     {
       "id": 8,
@@ -166,7 +166,7 @@
       "bk_biz_name": "运维平台",
       "operator": "admin",
       "description": "灾备中心负载均衡",
-      "bk_zones": "[\"zone-b\", \"zone-c\"]"
+      "bk_zones": "zone-b"
     }
   ]
 }
