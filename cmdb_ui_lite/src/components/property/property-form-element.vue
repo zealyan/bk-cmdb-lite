@@ -35,36 +35,27 @@
     </bk-input>
 
     <!-- 枚举类型（单选） -->
-    <bk-select
+    <cmdb-form-enum
       v-else-if="property.bk_property_type === 'enum'"
       ref="inputRef"
       :value="localValue"
+      :property="property"
       :placeholder="placeholder"
-      @change="handleSelect"
-      @selected="handleSelect">
-      <bk-option
-        v-for="option in enumOptions"
-        :key="option.id"
-        :id="String(option.id)"
-        :name="String(option.name)">
-      </bk-option>
-    </bk-select>
+      @input="handleSelect"
+      @on-selected="handleSelect">
+    </cmdb-form-enum>
 
     <!-- 多选枚举类型 -->
-    <bk-select
+    <cmdb-form-enummulti
       v-else-if="property.bk_property_type === 'enummulti'"
       ref="inputRef"
-      :value="multiValue"
-      multiple
+      :value="localValue"
+      :property="property"
       :placeholder="placeholder"
+      @input="handleMultiSelect"
+      @on-selected="handleMultiSelect"
       @change="handleMultiSelect">
-      <bk-option
-        v-for="option in enumOptions"
-        :key="option.id"
-        :id="String(option.id)"
-        :name="String(option.name)">
-      </bk-option>
-    </bk-select>
+    </cmdb-form-enummulti>
 
     <!-- list类型（单选） -->
     <bk-select
@@ -124,8 +115,15 @@
 </template>
 
 <script>
+import CmdbFormEnum from '../ui/form/enum.vue'
+import CmdbFormEnummulti from '../ui/form/enummulti.vue'
+
 export default {
   name: 'PropertyFormElement',
+  components: {
+    CmdbFormEnum,
+    CmdbFormEnummulti
+  },
   props: {
     property: {
       type: Object,
@@ -138,8 +136,7 @@ export default {
   },
   data() {
     return {
-      localValue: '',
-      localMultiValue: []
+      localValue: ''
     }
   },
   computed: {
@@ -148,86 +145,6 @@ export default {
     },
     isNumberType() {
       return ['int', 'float'].includes(this.property.bk_property_type)
-    },
-    // 多选枚举的值
-    multiValue() {
-      if (this.localMultiValue && this.localMultiValue.length > 0) {
-        return this.localMultiValue
-      }
-      // 从 localValue 解析数组值
-      if (this.localValue) {
-        if (Array.isArray(this.localValue)) {
-          return this.localValue
-        }
-        // 尝试解析 JSON 字符串
-        try {
-          const parsed = JSON.parse(this.localValue)
-          if (Array.isArray(parsed)) {
-            return parsed
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-      return []
-    },
-    enumOptions() {
-      const option = this.property.option
-      
-      if (!option) {
-        console.log('[enumOptions] No option found for property:', this.property.bk_property_id)
-        return []
-      }
-      
-      console.log('[enumOptions] Raw option:', { option, type: typeof option })
-      
-      let parsedOption = option
-      
-      // 解析字符串格式
-      if (typeof parsedOption === 'string') {
-        try {
-          parsedOption = JSON.parse(parsedOption)
-          console.log('[enumOptions] Parsed option:', parsedOption)
-        } catch (e) {
-          console.error('[enumOptions] JSON parse error:', e)
-          return []
-        }
-      }
-      
-      let result = []
-      
-      try {
-        // 如果是对象格式 { "key1": "name1", "key2": "name2" }
-        if (parsedOption && typeof parsedOption === 'object' && !Array.isArray(parsedOption)) {
-          result = Object.entries(parsedOption).map(([key, name]) => ({
-            id: String(key),
-            name: String(name)
-          }))
-        }
-        // 数组格式 [{ id: "1", name: "选项1" }] 或 ["a", "b"]
-        else if (Array.isArray(parsedOption)) {
-          result = parsedOption.map(item => {
-            if (typeof item === 'string' || typeof item === 'number') {
-              return { id: String(item), name: String(item) }
-            }
-            if (item && typeof item === 'object') {
-              const id = item.id || item.key || item.value
-              const name = item.name || item.label || item.text || id
-              if (id) {
-                return { id: String(id), name: String(name || id) }
-              }
-            }
-            return null
-          }).filter(item => item && item.id)
-        }
-        
-        console.log('[enumOptions] Processed result:', result)
-      } catch (e) {
-        console.error('[enumOptions] processing error:', e)
-        return []
-      }
-      
-      return result
     },
     placeholder() {
       return this.property.placeholder || `请输入${this.property.bk_property_name}`
@@ -252,9 +169,9 @@ export default {
       
       // list类型的option格式通常是简单的字符串数组
       if (Array.isArray(parsedOption)) {
-        return parsedOption.map(item => {
-          if (typeof item === 'string' || typeof item === 'number') {
-            return { id: String(item), name: String(item) }
+        return parsedOption.map(opt => {
+          if (typeof opt === 'string' || typeof opt === 'number') {
+            return { id: String(opt), name: String(opt) }
           }
           return null
         }).filter(item => item && item.id)
@@ -267,32 +184,7 @@ export default {
     value: {
       immediate: true,
       handler(val) {
-        if (this.property.bk_property_type === 'enummulti') {
-          // 多选枚举
-          if (Array.isArray(val)) {
-            this.localMultiValue = val
-            this.localValue = JSON.stringify(val)
-          } else if (val) {
-            try {
-              const parsed = JSON.parse(val)
-              if (Array.isArray(parsed)) {
-                this.localMultiValue = parsed
-                this.localValue = val
-              } else {
-                this.localMultiValue = []
-                this.localValue = ''
-              }
-            } catch (e) {
-              this.localMultiValue = []
-              this.localValue = ''
-            }
-          } else {
-            this.localMultiValue = []
-            this.localValue = ''
-          }
-        } else {
-          this.localValue = val === null || val === undefined ? '' : val
-        }
+        this.localValue = val === null || val === undefined ? '' : val
       }
     }
   },
@@ -313,12 +205,9 @@ export default {
     },
     handleMultiSelect(value) {
       console.log('[handleMultiSelect]', value)
-      this.localMultiValue = value
-      // 存储为 JSON 字符串
-      const jsonValue = JSON.stringify(value)
-      this.localValue = jsonValue
-      this.$emit('input', jsonValue)
-      this.$emit('change', jsonValue)
+      this.localValue = value
+      this.$emit('input', value)
+      this.$emit('change', value)
     },
     handleSwitchChange(value) {
       this.localValue = value
@@ -332,9 +221,9 @@ export default {
     },
     focus() {
       this.$nextTick(() => {
-        const input = this.$refs.inputRef?.$refs?.input
+        const input = this.$refs.inputRef?.focus
         if (input) {
-          input.focus()
+          input()
         }
       })
     }

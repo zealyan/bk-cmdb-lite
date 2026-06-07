@@ -39,6 +39,7 @@ export default {
 
       switch (propertyType) {
         case 'enum':
+        case 'enummulti':
           return this.formatEnum(value)
         case 'bool':
           return this.formatBool(value)

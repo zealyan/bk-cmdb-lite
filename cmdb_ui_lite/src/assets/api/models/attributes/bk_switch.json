@@ -239,7 +239,7 @@
     {
       "bk_property_id": "power_type",
       "bk_property_name": "电源类型",
-      "bk_property_type": "enum",
+      "bk_property_type": "enummulti",
       "isrequired": false,
       "isreadonly": false,
       "editable": true,
