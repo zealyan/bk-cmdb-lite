@@ -179,7 +179,7 @@ export default {
         'float': 'cmdb-form-float',
         'bool': 'cmdb-form-bool',
         'enum': 'cmdb-form-enum',
-        'enumMulti': 'cmdb-form-enummulti',
+        'enummulti': 'cmdb-form-enummulti',
         'date': 'cmdb-form-date',
         'time': 'cmdb-form-time',
         'datetime': 'cmdb-form-datetime',
