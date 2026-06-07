@@ -389,6 +389,7 @@ class DatabaseMigrator:
                     bk_issystem BOOLEAN DEFAULT false,
                     ispre BOOLEAN DEFAULT false,
                     bk_property_index INTEGER DEFAULT 0,
+                    ismultiple BOOLEAN DEFAULT false,
                     option TEXT,
                     placeholder VARCHAR,
                     unit VARCHAR,
@@ -629,6 +630,9 @@ class DatabaseMigrator:
                     option = prop.get("option")
                     option = self.process_option(prop_type, option)
                     
+                    # 判断是否为多选枚举
+                    is_multiple = prop_type == 'enummulti'
+                    
                     bk_issystem = prop.get("bk_issystem", False)
                     bk_isapi = prop.get("bk_isapi", False)
                     isreadonly = prop.get("isreadonly", False)
@@ -639,11 +643,11 @@ class DatabaseMigrator:
                         INSERT INTO cc_ObjAttDes 
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
-                         bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre, 
+                         bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre, 
                          bk_property_index, bk_supplier_account)
                         VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
                                 :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
-                                :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :option, 
+                                :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :ismultiple, :option, 
                                 :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{bk_property_id}",
@@ -659,6 +663,7 @@ class DatabaseMigrator:
                         'isreadonly': isreadonly,
                         'bk_isapi': bk_isapi,
                         'bk_issystem': bk_issystem,
+                        'ismultiple': is_multiple,
                         'option': option,
                         'unit': prop.get("unit"),
                         'placeholder': prop.get("placeholder"),
