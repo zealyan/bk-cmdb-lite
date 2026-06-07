@@ -36,7 +36,7 @@
         </div>
         <div class="filter-value">
           <div v-if="filter.field && filter.field !== ''" class="search-input-wrapper">
-            <div v-if="isEnumField || isBoolField || isListField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
+            <div v-if="isEnumField || isBoolField || isListField || isEnumMultiField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
               <div class="enum-input-container">
                 <input
                   type="text"
@@ -372,6 +372,11 @@ export default {
       const property = this.filterProperty
       if (!property) return false
       return property.bk_property_type === 'bool'
+    },
+    isEnumMultiField() {
+      const property = this.filterProperty
+      if (!property) return false
+      return property.bk_property_type === 'enummulti'
     },
     isDateField() {
       const property = this.filterProperty
@@ -794,7 +799,7 @@ export default {
         }
 
         // 只有在非多选场景下才设置 filter.value，避免与 filter.values 冲突
-        if (!(this.isEnumField || this.isBoolField) || this.filter.values.length === 0) {
+        if (!(this.isEnumField || this.isBoolField || this.isEnumMultiField) || this.filter.values.length === 0) {
           this.filter.value = currentValue
         }
         this.filter.fuzzyQuery = currentFuzzy
@@ -815,7 +820,7 @@ export default {
           })
         } else {
           // 否则使用原有的简单搜索方式
-          const isMultiSelectEnum = this.isEnumField || this.isBoolField
+          const isMultiSelectEnum = this.isEnumField || this.isBoolField || this.isEnumMultiField
           const isDateTimeField = this.isDateField || this.isTimeField
           const searchValues = (isMultiSelectEnum || isDateTimeField) && this.filter.values.length > 0
             ? this.filter.values
@@ -1880,7 +1885,7 @@ export default {
         const tagData = {
           id: property.bk_property_id,
           propertyName: property.bk_property_name,
-          operator: (this.isEnumField || this.isBoolField) ? '$in' : ((this.isDateField || this.isTimeField) ? '$range' : (this.filter.fuzzyQuery ? '$regex' : '$eq')),
+          operator: (this.isEnumField || this.isBoolField || this.isEnumMultiField) ? '$in' : ((this.isDateField || this.isTimeField) ? '$range' : (this.filter.fuzzyQuery ? '$regex' : '$eq')),
           value: [...this.filter.values],
           values: [...this.filter.values],
           property
