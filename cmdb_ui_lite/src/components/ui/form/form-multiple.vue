@@ -226,6 +226,7 @@ export default {
         'float': 'cmdb-form-float',
         'bool': 'cmdb-form-bool',
         'enum': 'cmdb-form-enum',
+        'enummulti': 'cmdb-form-enummulti',
         'enumMulti': 'cmdb-form-enummulti',
         'list': 'cmdb-form-list',
         'date': 'cmdb-form-date',
