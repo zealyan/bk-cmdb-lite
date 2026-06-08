@@ -763,6 +763,15 @@ class DatabaseMigrator:
                 
                 instances = inst_data.get("info", [])
                 
+                # 先获取模型的属性定义，用于正确处理数据类型
+                attributes = self.execute_query("""
+                    SELECT bk_property_id, bk_property_type FROM cc_ObjAttDes WHERE bk_obj_id = :model_id
+                """, {"model_id": model_id})
+                attr_type_map = {
+                    attr['bk_property_id']: attr['bk_property_type']
+                    for attr in attributes
+                }
+                
                 logger.info(f"迁移模型 {model_id} 的 {len(instances)} 个实例")
                 
                 for idx, inst in enumerate(instances):
@@ -806,7 +815,12 @@ class DatabaseMigrator:
                         if key not in ["id", "bk_inst_id", "bk_inst_name"]:
                             columns.append(f'"{key}"')
                             placeholders.append(f":{key}")
-                            values.append(value)
+                            # 根据属性类型处理值
+                            prop_type = attr_type_map.get(key)
+                            if prop_type in ['list', 'enum', 'enummulti', 'array', 'object'] and isinstance(value, (list, dict)):
+                                values.append(json.dumps(value, ensure_ascii=False))
+                            else:
+                                values.append(value)
                     
                     if columns:
                         columns.append("bk_obj_id")

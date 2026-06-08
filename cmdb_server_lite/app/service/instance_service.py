@@ -286,7 +286,7 @@ class InstanceService:
     
     @staticmethod
     def _parse_json_fields(instance, model_id):
-        """解析JSON字段，将enum等类型的JSON字符串解析为数组或对象（list类型不解析）"""
+        """解析JSON字段，将enum等类型的JSON字符串解析为数组或对象"""
         from app.service.model_service import ModelService
 
         if not instance:
@@ -301,11 +301,17 @@ class InstanceService:
 
             if prop_id and prop_id in instance:
                 value = instance[prop_id]
-                # list 类型不解析，保持原样；enum 和 enummulti 类型继续解析
-                if value is not None and isinstance(value, str) and value.strip().startswith(('[', '{')) and prop_type != 'list':
+                if value is not None and isinstance(value, str) and value.strip().startswith(('[', '{')):
                     try:
                         parsed = json.loads(value)
                         instance[prop_id] = parsed
+                        
+                        # 对于list类型，如果解包是双重编码，则再解一次
+                        if prop_type == 'list' and isinstance(parsed, str) and parsed.strip().startswith(('[', '{')):
+                            try:
+                                instance[prop_id] = json.loads(parsed)
+                            except (json.JSONDecodeError, ValueError):
+                                pass
                     except (json.JSONDecodeError, ValueError):
                         # 如果解析失败，保持原样
                         pass
