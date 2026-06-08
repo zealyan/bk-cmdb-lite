@@ -22,8 +22,20 @@ class ModelService:
             'model_id': model_id
         })
         
-        # 处理 option 字段的反序列化
+        # 处理布尔值字段和 option 字段
+        boolean_fields = [
+            'bk_isapi', 'bk_issystem', 'bk_ishidden', 'bk_ispassword',
+            'isrequired', 'isreadonly', 'editable', 'ispre', 'ismultiple'
+        ]
+        
         for attr in attributes:
+            # 转换布尔字段
+            for field in boolean_fields:
+                if field in attr and attr[field] is not None:
+                    if isinstance(attr[field], int):
+                        attr[field] = bool(attr[field])
+            
+            # 处理 option 字段的反序列化
             option = attr.get('option')
             if option:
                 try:
