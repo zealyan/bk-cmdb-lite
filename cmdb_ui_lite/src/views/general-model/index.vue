@@ -879,7 +879,7 @@ export default {
      * 与原项目 getHeaderProperties 保持一致的表头生成逻辑
      * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js
      * - getPropertyPriority(property): 基于 bk_property_index，isonly(is only/unique)，isrequired 计算优先级，越小越高
-     * - getDefaultHeaderProperties(properties): 按优先级排序取前6个
+     * - getDefaultHeaderProperties(properties): 按优先级排序取前6个，过滤 bk_isapi=true 的字段（除了固定字段）
      * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性
      * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 合并固定字段+自定义/默认列
      */
@@ -893,18 +893,23 @@ export default {
       }
       return priority
     },
-    getDefaultHeaderProperties(properties) {
-      // 与原项目一致: 按优先级排序取前6个
-      return [...properties]
+    getDefaultHeaderProperties(properties, fixedPropertyIds = []) {
+      // 与原项目一致: 过滤 bk_isapi=true 的字段，然后按优先级排序取前6个
+      // 但保留 fixedPropertyIds 中的字段（如 bk_inst_id、bk_inst_name）
+      const filteredProperties = properties.filter(p => 
+        !p.bk_isapi || fixedPropertyIds.includes(p.bk_property_id)
+      )
+      return [...filteredProperties]
         .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
         .slice(0, 6)
     },
-    getCustomHeaderProperties(properties, customColumns) {
-      // 与原项目一致: 按自定义列ID查找属性
+    getCustomHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
+      // 与原项目一致: 按自定义列ID查找属性，过滤 bk_isapi=true 的字段
       const columnProperties = []
       customColumns.forEach((propertyId) => {
         const columnProperty = properties.find(property => property.bk_property_id === propertyId)
-        if (columnProperty) {
+        // 过滤掉 bk_isapi=true 的字段，但保留固定字段
+        if (columnProperty && (!columnProperty.bk_isapi || fixedPropertyIds.includes(propertyId))) {
           columnProperties.push(columnProperty)
         }
       })
@@ -914,9 +919,9 @@ export default {
       // 与原项目保持一致
       let headerProperties
       if (customColumns && customColumns.length) {
-        headerProperties = this.getCustomHeaderProperties(properties, customColumns)
+        headerProperties = this.getCustomHeaderProperties(properties, customColumns, fixedPropertyIds)
       } else {
-        headerProperties = this.getDefaultHeaderProperties(properties)
+        headerProperties = this.getDefaultHeaderProperties(properties, fixedPropertyIds)
       }
       if (fixedPropertyIds.length) {
         // 过滤掉 headerProperties 中已有的固定字段，避免重复
