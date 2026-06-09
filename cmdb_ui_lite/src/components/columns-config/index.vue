@@ -110,7 +110,7 @@ export default {
       localSelected: []
     }
   },
-  computed: {
+  methods: {
     /**
      * 判断属性是否为系统字段（应从用户界面隐藏）
      * 与原项目保持一致：
@@ -127,7 +127,9 @@ export default {
         return true
       }
       return false
-    },
+    }
+  },
+  computed: {
     /**
      * 获取可配置的属性列表（过滤掉系统字段）
      * 与原项目保持一致：排除系统字段，但保留 disabledColumns 中的字段
