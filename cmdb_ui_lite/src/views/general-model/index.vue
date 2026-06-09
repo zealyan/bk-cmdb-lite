@@ -151,7 +151,7 @@
         :label="column.name"
         :sortable="getColumnSortable(column.id)"
         :show-overflow-tooltip="true">
-        <template v-if="column.id === 'id'" #default="{ row }">
+        <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
           <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
             {{ row[column.id] }}
           </bk-button>
@@ -1802,10 +1802,10 @@ export default {
         filter_adv: filterAdv,
         s: filterAdv ? s : undefined
       })
-      this.prevInstanceId = instance.id
+      this.prevInstanceId = instance.bk_inst_id
       this.$router.push({
         name: 'ResourceInstanceDetails',
-        params: { objId: this.objId, instId: instance.id }
+        params: { objId: this.objId, instId: instance.bk_inst_id }
       })
     },
     handlePageChange(page) {
