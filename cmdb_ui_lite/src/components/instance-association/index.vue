@@ -23,7 +23,7 @@
               :class="{ 'is-open': item.expanded }"
             ></i>
             <span class="title-text">{{ item.relationTypeName }}</span>
-            <span class="title-count">({{ item.total })</span>
+            <span class="title-count">({{ item.total }})</span>
           </div>
           <div class="info-pagination fr" v-if="item.totalPages > 1" @click.stop>
             <span class="pagination-info">
