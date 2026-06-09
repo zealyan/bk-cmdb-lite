@@ -318,9 +318,9 @@ export default {
       columnsConfig: {
         show: false,
         selected: [],
-        // 与原项目保持一致: 禁用 id、bk_inst_id、bk_inst_name 列，这些是系统字段不能移除
-        // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue disabledColumns
-        disabledColumns: ['id', 'bk_inst_id', 'bk_inst_name']
+        // 与原项目保持一致: 禁用 bk_inst_id、bk_inst_name 列，这些是系统字段不能移除
+        // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue disabledColumns: ['bk_inst_id', 'bk_inst_name']
+        disabledColumns: ['bk_inst_id', 'bk_inst_name']
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null
@@ -875,79 +875,91 @@ export default {
         this.table.loading = false
       }
     },
+    /**
+     * 与原项目 getHeaderProperties 保持一致的表头生成逻辑
+     * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js
+     * - getPropertyPriority(property): 基于 bk_property_index，isonly(is only/unique)，isrequired 计算优先级，越小越高
+     * - getDefaultHeaderProperties(properties): 按优先级排序取前6个
+     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性
+     * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 合并固定字段+自定义/默认列
+     */
+    getPropertyPriority(property) {
+      let priority = property.bk_property_index ?? 0
+      if (property.isonly) {
+        priority = priority - 1
+      }
+      if (property.isrequired) {
+        priority = priority - 1
+      }
+      return priority
+    },
+    getDefaultHeaderProperties(properties) {
+      // 与原项目一致: 按优先级排序取前6个
+      return [...properties]
+        .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
+        .slice(0, 6)
+    },
+    getCustomHeaderProperties(properties, customColumns) {
+      // 与原项目一致: 按自定义列ID查找属性
+      const columnProperties = []
+      customColumns.forEach((propertyId) => {
+        const columnProperty = properties.find(property => property.bk_property_id === propertyId)
+        if (columnProperty) {
+          columnProperties.push(columnProperty)
+        }
+      })
+      return columnProperties
+    },
+    getHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
+      // 与原项目保持一致
+      let headerProperties
+      if (customColumns && customColumns.length) {
+        headerProperties = this.getCustomHeaderProperties(properties, customColumns)
+      } else {
+        headerProperties = this.getDefaultHeaderProperties(properties)
+      }
+      if (fixedPropertyIds.length) {
+        // 过滤掉 headerProperties 中已有的固定字段，避免重复
+        headerProperties = headerProperties.filter(property => !fixedPropertyIds.includes(property.bk_property_id))
+        const fixedProperties = []
+        fixedPropertyIds.forEach((id) => {
+          const property = properties.find(property => property.bk_property_id === id)
+          if (property) {
+            fixedProperties.push(property)
+          }
+        })
+        return [...fixedProperties, ...headerProperties]
+      }
+      return headerProperties
+    },
     setTableHeader() {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
       console.log('[Debug] columnsConfig.selected:', this.columnsConfig.selected)
       console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
-      
-      const maxDefaultColumns = 6  // 原项目默认取前6个属性
-      const disabledColumns = this.columnsConfig.disabledColumns || []
-      let selectedIds = null
-      
-      // 检查是否有有效的用户配置
-      if (this.columnsConfig.selected && Array.isArray(this.columnsConfig.selected) && this.columnsConfig.selected.length > 0) {
-        selectedIds = this.columnsConfig.selected
-        console.log('[Debug] Use user config:', selectedIds)
-      } else {
-        console.log('[Debug] Use default config')
-      }
 
-      if (!selectedIds) {
-        // 从属性中获取排序后的默认列（与原项目 getDefaultHeaderProperties 一致）
-        // 过滤条件：bk_property_index >= 0，不包含在 disabledColumns 中
-        selectedIds = this.allProperties
-          .filter(p => p.bk_property_index >= 0 && !disabledColumns.includes(p.bk_property_id))
-          .sort((a, b) => a.bk_property_index - b.bk_property_index)
-          .slice(0, maxDefaultColumns)
-          .map(p => p.bk_property_id)
+      // 与原项目保持一致: 优先使用用户自定义列，否则使用默认规则
+      const customColumns = this.columnsConfig.selected || []
+      const fixedPropertyIds = this.columnsConfig.disabledColumns || []
 
-        console.log('[Debug] Default selectedIds:', selectedIds)
-      }
+      // 调用与原项目一致的 getHeaderProperties 函数
+      const headerProperties = this.getHeaderProperties(
+        this.allProperties,
+        customColumns,
+        fixedPropertyIds
+      )
 
-      // 与原项目保持一致：将 disabledColumns 中的字段固定在前面
-      // disabledColumns = ['id', 'bk_inst_id', 'bk_inst_name']
-      const fixedPropertyIds = disabledColumns.filter(id => {
-        // 只有当该属性存在于 allProperties 中时才添加
-        return this.allProperties.some(p => p.bk_property_id === id)
-      })
-      
-      // 获取已选中但不在 disabledColumns 中的属性
-      const otherSelectedIds = selectedIds.filter(id => !disabledColumns.includes(id))
-      
-      // 合并：disabledColumns 固定在前 + 其他选中的列
-      const finalSelectedIds = [...fixedPropertyIds, ...otherSelectedIds]
+      console.log('[Debug] headerProperties:', headerProperties.length)
 
-      const selectedProperties = this.allProperties
-        .filter(p => finalSelectedIds.includes(p.bk_property_id))
-        .sort((a, b) => {
-          // 优先按 disabledColumns 顺序排序
-          const disabledIndexA = disabledColumns.indexOf(a.bk_property_id)
-          const disabledIndexB = disabledColumns.indexOf(b.bk_property_id)
-          
-          if (disabledIndexA !== -1 && disabledIndexB !== -1) {
-            return disabledIndexA - disabledIndexB
-          }
-          if (disabledIndexA !== -1) return -1
-          if (disabledIndexB !== -1) return 1
-          
-          // 其他按 finalSelectedIds 顺序排列
-          const indexA = finalSelectedIds.indexOf(a.bk_property_id)
-          const indexB = finalSelectedIds.indexOf(b.bk_property_id)
-          return indexA - indexB
-        })
-
-      console.log('[Debug] selectedProperties:', selectedProperties.length)
-      
-      this.table.header = selectedProperties.map(property => ({
+      this.table.header = headerProperties.map(property => ({
         id: property.bk_property_id,
         name: property.bk_property_name,
         property
       }))
-      
-      // 同步更新 columnsConfig.selected
-      this.columnsConfig.selected = finalSelectedIds
-      
+
+      // 同步更新 columnsConfig.selected，与原项目一致
+      this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
+
       console.log('[Debug] table.header:', this.table.header.length)
     },
     formatCellValue(value, column) {
