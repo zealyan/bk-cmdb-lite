@@ -76,66 +76,13 @@
       :inst-id="instId"
       @created="handleAssociationCreated"
     />
-
-    <!-- 关联实例详情抽屉
-    -->
-    <bk-sideslider
-      :is-show.sync="showDetailsSlider"
-      :title="detailsTitle"
-      :width="800"
-      transfer
-      @update:isShow="handleCloseDetails"
-    >
-      <div slot="content" class="details-content" v-bkloading="{ isLoading: detailsLoading }">
-        <template v-if="detailsInstance && Object.keys(detailsInstance).length > 0">
-          <div class="detail-section">
-            <div class="detail-title">基础信息</div>
-            <ul class="property-list clearfix">
-              <li class="property-item fl">
-                <span class="property-name">实例ID</span>
-                <span class="property-value">{{ detailsInstance.id }}</span>
-              </li>
-              <li class="property-item fl">
-                <span class="property-name">蓝鲸ID</span>
-                <span class="property-value">{{ detailsInstance.bk_inst_id }}</span>
-              </li>
-              <li class="property-item fl">
-                <span class="property-name">实例名称</span>
-                <span class="property-value">{{ detailsInstance.bk_inst_name }}</span>
-              </li>
-              <li class="property-item fl">
-                <span class="property-name">所属模型</span>
-                <span class="property-value">{{ getModelDisplayName(detailsObjId) }}</span>
-              </li>
-            </ul>
-          </div>
-          <div class="detail-section" v-if="detailColumns.length">
-            <div class="detail-title">详细信息</div>
-            <ul class="property-list clearfix">
-              <li class="property-item fl" v-for="column in detailColumns" :key="column.bk_property_id">
-                <span class="property-name">{{ column.bk_property_name }}</span>
-                <span class="property-value">
-                  {{ formatValue(detailsInstance[column.bk_property_id], column, detailsInstance) }}
-                </span>
-              </li>
-            </ul>
-          </div>
-        </template>
-        <div v-else-if="!detailsLoading" class="details-empty">
-          未找到实例信息
-        </div>
-        <div v-else class="details-empty">
-          正在加载实例详情...
-        </div>
-      </div>
-    </bk-sideslider>
   </div>
 </template>
 
 <script>
 import AssociationCreate from './association-create.vue'
 import associationAPI from '@/api/association'
-import instanceAPI from '@/api/instance'
+import showInstanceDetails from '@/components/instance/details/index.js'
 
 export default {
   name: 'InstanceAssociation',
@@ -174,14 +121,7 @@ export default {
       groupStates: {},
       showCreateDialog: false,
       loading: false,
-      cachedProperties: {},
-      // 抽屉相关
-      showDetailsSlider: false,
-      detailsLoading: false,
-      detailsTitle: '',
-      detailsObjId: '',
-      detailsInstance: {},
-      detailColumns: []
+      cachedProperties: {}
     }
   },
   computed: {
@@ -360,34 +300,19 @@ export default {
     handleAssociationCreated() {
       this.$emit('association-change')
     },
-    async handleRowClick(row, event, column, item) {
-      // 使用 bk_inst_id 作为标准实例ID（与原项目一致
+    handleRowClick(row, event, column, item) {
+      // 使用 bk_inst_id 作为标准实例ID（与原项目一致）
       const instId = row.bk_inst_id !== undefined ? row.bk_inst_id : row.id
       const objId = item.relatedObjId
+      const modelName = this.getModelDisplayName(objId)
+      const instanceName = row.bk_inst_name || row.name || 'ID: ' + instId
 
-      const displayName = row.bk_inst_name || row.name || 'ID: ' + instId
-      this.detailsTitle = this.getModelDisplayName(objId) + ' - ' + displayName
-      this.detailsObjId = objId
-      this.showDetailsSlider = true
-      this.detailsLoading = true
-      this.detailsInstance = {}
-
-      try {
-        const instance = await instanceAPI.getInstanceDetails(objId, instId)
-        if (instance) {
-          this.detailsInstance = instance
-          this.detailColumns = this.getColumnsForModel(objId)
-        } else {
-          this.detailsInstance = row
-          this.detailColumns = item.columns
-        }
-      } catch (e) {
-        console.error('加载实例详情失败:', e)
-        this.detailsInstance = row
-        this.detailColumns = item.columns
-      } finally {
-        this.detailsLoading = false
-      }
+      // 与原项目一致：调用 showInstanceDetails 函数显示标准详情页
+      showInstanceDetails({
+        bk_obj_id: objId,
+        bk_inst_id: instId,
+        title: modelName + '-' + instanceName
+      })
     },
     async handleRemoveAssociation(row, item) {
       const instIdNum = Number(row.bk_inst_id !== undefined ? row.bk_inst_id : row.id)
@@ -425,9 +350,6 @@ export default {
           }
         }
       })
-    },
-    handleCloseDetails(val) {
-      this.showDetailsSlider = val
     }
   }
 }
@@ -586,73 +508,7 @@ export default {
   float: right;
 }
 
-/* ========== 实例详情抽屉样式
-  */
-.details-content {
-  padding: 20px;
-  min-height: 100%;
-}
-
-.detail-section {
-  margin-bottom: 20px;
-}
-
-.detail-title {
-  font-size: 14px;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e7e9ef;
-}
-
-.property-list {
-  padding: 0;
-  margin: 0;
-}
-
-.property-item {
-  list-style: none;
-  width: 50%;
-  margin: 8px 0;
-  font-size: 14px;
-  line-height: 24px;
-  display: flex;
-  float: left;
-  box-sizing: border-box;
-
-  .property-name {
-    position: relative;
-    flex: none;
-    width: 120px;
-    padding: 0 16px 0 0;
-    color: #63656e;
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-
-    &::after {
-      content: ':';
-      position: absolute;
-      right: 10px;
-    }
-  }
-
-  .property-value {
-    max-width: calc(100% - 120px - 24px);
-    color: #313238;
-    word-break: break-all;
-  }
-}
-
 .cell-value {
   color: #3a84ff;
-}
-
-.details-empty {
-  padding: 80px 20px;
-  text-align: center;
-  color: #909399;
 }
 </style>
