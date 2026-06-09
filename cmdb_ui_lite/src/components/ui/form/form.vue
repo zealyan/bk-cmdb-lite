@@ -159,6 +159,10 @@ export default {
       })
     },
     checkEditable(property) {
+      // 过滤内部数据库 ID 字段
+      if (property.bk_property_id === 'id') {
+        return false
+      }
       if (this.type === 'create') {
         return !property.bk_isapi
       }
