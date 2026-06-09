@@ -302,10 +302,11 @@ export default {
           .sort((a, b) => a.bk_property_index - b.bk_property_index)
           .slice(0, 5)
       } else {
+        // 默认只显示 ID 字段，用于点击打开详情
         orderedColumns = [{
-          bk_property_id: 'bk_inst_name',
-          bk_property_name: '实例名称',
-          bk_property_type: 'string',
+          bk_property_id: 'id',
+          bk_property_name: 'ID',
+          bk_property_type: 'int',
           bk_property_index: 0
         }]
       }
