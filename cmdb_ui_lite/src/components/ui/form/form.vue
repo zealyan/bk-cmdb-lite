@@ -116,19 +116,30 @@ export default {
   },
   computed: {
     groupedPropertiesList() {
+      const groupNameMap = {
+        'base': '基本信息',
+        'default': '默认',
+        'extend': '扩展信息'
+      }
+      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
       const groups = {}
       this.properties.forEach(property => {
         const groupId = property.bk_property_group || 'default'
         if (!groups[groupId]) {
           groups[groupId] = {
             bk_group_id: groupId,
-            bk_group_name: property.bk_property_group_name || property.bk_group_name || '基本信息',
+            bk_group_name: groupNameMap[groupId] || groupId,
             properties: []
           }
         }
         groups[groupId].properties.push(property)
       })
-      return Object.values(groups).map(group => ({
+      // 对每个分组内的属性按 bk_property_index 排序
+      Object.values(groups).forEach(group => {
+        group.properties.sort((a, b) => (a.bk_property_index || 0) - (b.bk_property_index || 0))
+      })
+      // 对分组按预定义顺序排序，然后过滤组内属性
+      return Object.values(groups).sort((a, b) => (groupOrder[a.bk_group_id] || 99) - (groupOrder[b.bk_group_id] || 99)).map(group => ({
         ...group,
         properties: this.filterGroupProperties(group.properties)
       }))

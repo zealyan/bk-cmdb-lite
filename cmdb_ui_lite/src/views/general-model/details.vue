@@ -5,7 +5,7 @@
       <bk-tab-panel name="property" label="属性">
           <div class="info-card">
             <div class="property-groups">
-              <div v-for="group in propertyGroups" :key="group.bk_group_id" class="property-group">
+              <div v-for="group in effectivePropertyGroups" :key="group.bk_group_id" class="property-group">
                 <h3 class="group-title">{{ group.bk_group_name }}</h3>
                 <div class="info-grid">
                   <div
@@ -124,6 +124,35 @@ export default {
         p.bk_property_id !== 'id' &&
         !p.bk_isapi
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
+    },
+    // 从属性数据动态生成分组
+    dynamicPropertyGroups () {
+      const groupNameMap = {
+        'base': '基本信息',
+        'default': '默认',
+        'extend': '扩展信息'
+      }
+      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
+      const groups = {}
+      this.displayProperties.forEach(prop => {
+        const groupId = prop.bk_property_group || 'default'
+        if (!groups[groupId]) {
+          groups[groupId] = {
+            bk_group_id: groupId,
+            bk_group_name: groupNameMap[groupId] || groupId,
+            bk_group_index: groupOrder[groupId] !== undefined ? groupOrder[groupId] : 99
+          }
+        }
+      })
+      // 过滤掉空分组并排序
+      return Object.values(groups).sort((a, b) => a.bk_group_index - b.bk_group_index)
+    },
+    // 实际使用的分组：优先使用动态分组
+    effectivePropertyGroups () {
+      if (this.dynamicPropertyGroups && this.dynamicPropertyGroups.length > 0) {
+        return this.dynamicPropertyGroups
+      }
+      return this.propertyGroups
     },
     modelName () {
       const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)

@@ -144,7 +144,7 @@ SYSTEM_PROPERTIES = [
         "editable": True,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": True,
+        "bk_isapi": False,
         "bk_issystem": True,
         "ispre": True,
         "bk_property_index": 1,
