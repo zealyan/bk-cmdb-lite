@@ -199,7 +199,9 @@ export default {
         const targetInstId = isSource ? asst.bk_asst_inst_id : asst.bk_inst_id
         const instances = this.instancesMap[relatedObjId] || []
         
-        // 使用 bk_inst_id 作为主要匹配字段，同时兼容 id 字段
+        // 优先使用 bk_inst_id 匹配（与原项目保持一致），兼容 id 字段
+        // 原项目使用 bk_inst_id 作为标准实例ID字段（蓝鲸规范 bk_ 前缀）
+        // 关联表 cc_InstAsst_0_pub 中使用 bk_inst_id / bk_asst_inst_id 标识实例
         const instance = instances.find(inst => {
           const instId = inst.bk_inst_id !== undefined ? inst.bk_inst_id : inst.id
           return Number(instId) === Number(targetInstId)
