@@ -792,9 +792,10 @@ export default {
           this.columnsConfig.selected = []
         }
 
-        const validField = this.allProperties.find(p => p.bk_property_id === currentField)
-        if (!validField && this.allProperties.length > 0) {
-          const firstField = this.allProperties.find(p => p.bk_property_id !== 'id')
+        // 与原项目保持一致: 使用 searchableProperties 的过滤逻辑，排除 bk_isapi=true 和 id 字段
+        const validField = this.searchableProperties.find(p => p.bk_property_id === currentField)
+        if (!validField && this.searchableProperties.length > 0) {
+          const firstField = this.searchableProperties[0]
           if (firstField) {
             this.filter.field = firstField.bk_property_id
           }
