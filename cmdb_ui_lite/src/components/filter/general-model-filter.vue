@@ -234,7 +234,9 @@ export default {
       })
     },
     showAddButton() {
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
       const availableProperties = this.properties.filter(p => {
+        if (p.bk_property_id === 'id' || p.bk_isapi) return false
         const usedIds = this.filterItems.map(item => item.property.bk_property_id)
         return !usedIds.includes(p.bk_property_id)
       })
@@ -380,9 +382,10 @@ export default {
       return item.valueText || ''
     },
     initDefaultItem() {
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
       if (this.properties.length > 0) {
         const sortedProperties = [...this.properties]
-          .filter(p => p.bk_property_index >= 0)
+          .filter(p => p.bk_property_index >= 0 && p.bk_property_id !== 'id' && !p.bk_isapi)
           .sort((a, b) => a.bk_property_index - b.bk_property_index)
         
         if (sortedProperties.length > 0) {

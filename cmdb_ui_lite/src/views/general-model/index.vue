@@ -330,7 +330,9 @@ export default {
       return model ? model.bk_obj_name : this.objId
     },
     searchableProperties() {
-      return this.allProperties.filter(property => property.bk_property_id !== 'id')
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)
+      // 参考: /workspace/bk-cmdb/src/ui/src/components/model-instance/property.vue
+      return this.allProperties.filter(property => !property.bk_isapi && property.bk_property_id !== 'id')
     },
     filterProperty() {
       if (!this.filter.field || !this.allProperties.length) return null

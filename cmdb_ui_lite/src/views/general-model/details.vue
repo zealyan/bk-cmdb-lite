@@ -117,9 +117,12 @@ export default {
       return map
     },
     displayProperties () {
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段
+      // 参考: /workspace/bk-cmdb/src/ui/src/components/model-instance/property.vue
       return this.properties.filter(p =>
         p.bk_property_index !== -1 &&
-        p.bk_property_id !== 'id'
+        p.bk_property_id !== 'id' &&
+        !p.bk_isapi
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
     },
     modelName () {
@@ -164,6 +167,8 @@ export default {
       const props = this.properties.filter(p => {
         // 不显示 id 字段
         if (p.bk_property_id === 'id') return false
+        // 不显示 bk_isapi=true 的系统字段
+        if (p.bk_isapi) return false
         // 检查分组，默认为 'default'
         const propGroup = p.bk_property_group || 'default'
         return propGroup === groupId && p.bk_property_index !== -1

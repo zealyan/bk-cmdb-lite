@@ -150,12 +150,12 @@ export default {
       return properties.some(p => this.checkEditable(p))
     },
     filterGroupProperties(properties) {
+      // 与原项目保持一致: 只过滤关联类型和 BUILTIN_UNEDITABLE_FIELDS
+      // 参考: /workspace/bk-cmdb/src/ui/src/components/ui/form/form.vue (groupedProperties computed)
       return properties.filter(property => {
         const isAsst = UNEDITABLE_ASSOCIATION_TYPES.includes(property.bk_property_type)
         const isBuiltinUneditable = BUILTIN_UNEDITABLE_FIELDS.includes(property.bk_property_id)
-        const isHidden = property.bk_ishidden
-        const isSystem = property.bk_issystem
-        return !isAsst && !isBuiltinUneditable && !isHidden && !isSystem
+        return !isAsst && !isBuiltinUneditable
       })
     },
     checkEditable(property) {
