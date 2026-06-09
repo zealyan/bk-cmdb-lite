@@ -111,10 +111,16 @@ export default {
     }
   },
   computed: {
+    /**
+     * 获取可配置的属性列表（过滤掉系统字段）
+     * 与原项目保持一致：排除 bk_isapi=true 的字段，但保留 disabledColumns 中的字段
+     */
     sortedProperties() {
-      return [...this.properties].sort((propertyA, propertyB) => 
-        propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
-      )
+      return [...this.properties]
+        .filter(p => !p.bk_isapi || this.disabledColumns.includes(p.bk_property_id))
+        .sort((propertyA, propertyB) => 
+          propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
+        )
     },
     unselectedProperties() {
       // 与原项目保持一致: 排除 disabledColumns 中的属性，不能选择系统字段
