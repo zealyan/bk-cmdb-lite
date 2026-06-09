@@ -117,10 +117,12 @@ export default {
       )
     },
     unselectedProperties() {
+      // 与原项目保持一致: 排除 disabledColumns 中的属性，不能选择系统字段
       return this.sortedProperties.filter((property) => {
+        const isDisabled = this.disabledColumns.includes(property.bk_property_id)
         const unselected = !this.localSelected.includes(property.bk_property_id)
         const includesFilter = property.bk_property_name.toLowerCase().indexOf(this.filter.toLowerCase()) !== -1
-        return unselected && includesFilter
+        return !isDisabled && unselected && includesFilter
       })
     },
     undragbbleProperties() {
@@ -172,6 +174,10 @@ export default {
       )
     },
     selectProperty(property) {
+      // 与原项目保持一致: 不能选择 disabledColumns 中的属性
+      if (this.disabledColumns.includes(property.bk_property_id)) {
+        return
+      }
       if (this.localSelected.length < this.max) {
         this.localSelected.push(property.bk_property_id)
       } else {

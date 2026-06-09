@@ -318,7 +318,9 @@ export default {
       columnsConfig: {
         show: false,
         selected: [],
-        disabledColumns: ['id']
+        // 与原项目保持一致: 禁用 id、bk_inst_id、bk_inst_name 列，这些是系统字段不能移除
+        // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue disabledColumns
+        disabledColumns: ['id', 'bk_inst_id', 'bk_inst_name']
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null
@@ -877,8 +879,10 @@ export default {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
       console.log('[Debug] columnsConfig.selected:', this.columnsConfig.selected)
+      console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
       
-      const maxDefaultColumns = 8
+      const maxDefaultColumns = 6  // 原项目默认取前6个属性
+      const disabledColumns = this.columnsConfig.disabledColumns || []
       let selectedIds = null
       
       // 检查是否有有效的用户配置
@@ -890,30 +894,46 @@ export default {
       }
 
       if (!selectedIds) {
-        // 从属性中获取排序后的默认列
+        // 从属性中获取排序后的默认列（与原项目 getDefaultHeaderProperties 一致）
+        // 过滤条件：bk_property_index >= 0，不包含在 disabledColumns 中
         selectedIds = this.allProperties
-          .filter(p => p.bk_property_index >= 0)
+          .filter(p => p.bk_property_index >= 0 && !disabledColumns.includes(p.bk_property_id))
           .sort((a, b) => a.bk_property_index - b.bk_property_index)
           .slice(0, maxDefaultColumns)
           .map(p => p.bk_property_id)
 
-        // 确保 id 始终在第一位
-        selectedIds = ['id', ...selectedIds.filter(id => id !== 'id')]
         console.log('[Debug] Default selectedIds:', selectedIds)
-      } else if (!selectedIds.includes('id')) {
-        // 确保 id 在自定义配置中
-        selectedIds = ['id', ...selectedIds]
       }
 
+      // 与原项目保持一致：将 disabledColumns 中的字段固定在前面
+      // disabledColumns = ['id', 'bk_inst_id', 'bk_inst_name']
+      const fixedPropertyIds = disabledColumns.filter(id => {
+        // 只有当该属性存在于 allProperties 中时才添加
+        return this.allProperties.some(p => p.bk_property_id === id)
+      })
+      
+      // 获取已选中但不在 disabledColumns 中的属性
+      const otherSelectedIds = selectedIds.filter(id => !disabledColumns.includes(id))
+      
+      // 合并：disabledColumns 固定在前 + 其他选中的列
+      const finalSelectedIds = [...fixedPropertyIds, ...otherSelectedIds]
+
       const selectedProperties = this.allProperties
-        .filter(p => selectedIds.includes(p.bk_property_id))
+        .filter(p => finalSelectedIds.includes(p.bk_property_id))
         .sort((a, b) => {
-          // 强制 id 在第一位
-          if (a.bk_property_id === 'id') return -1
-          if (b.bk_property_id === 'id') return 1
-          // 其他按 selectedIds 顺序排列
-          const indexA = selectedIds.indexOf(a.bk_property_id)
-          const indexB = selectedIds.indexOf(b.bk_property_id)
+          // 优先按 disabledColumns 顺序排序
+          const disabledIndexA = disabledColumns.indexOf(a.bk_property_id)
+          const disabledIndexB = disabledColumns.indexOf(b.bk_property_id)
+          
+          if (disabledIndexA !== -1 && disabledIndexB !== -1) {
+            return disabledIndexA - disabledIndexB
+          }
+          if (disabledIndexA !== -1) return -1
+          if (disabledIndexB !== -1) return 1
+          
+          // 其他按 finalSelectedIds 顺序排列
+          const indexA = finalSelectedIds.indexOf(a.bk_property_id)
+          const indexB = finalSelectedIds.indexOf(b.bk_property_id)
           return indexA - indexB
         })
 
@@ -924,6 +944,9 @@ export default {
         name: property.bk_property_name,
         property
       }))
+      
+      // 同步更新 columnsConfig.selected
+      this.columnsConfig.selected = finalSelectedIds
       
       console.log('[Debug] table.header:', this.table.header.length)
     },
