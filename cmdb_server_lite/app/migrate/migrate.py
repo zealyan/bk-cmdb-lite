@@ -119,7 +119,7 @@ SYSTEM_PROPERTIES = [
     },
     {
         "bk_property_id": "bk_inst_id",
-        "bk_property_name": "实例ID(BK)",
+        "bk_property_name": "实例ID",
         "bk_property_type": "int",
         "isrequired": False,
         "isreadonly": True,
