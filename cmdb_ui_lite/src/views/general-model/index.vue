@@ -879,9 +879,14 @@ export default {
      * 与原项目 getHeaderProperties 保持一致的表头生成逻辑
      * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js
      * - getPropertyPriority(property): 基于 bk_property_index，isonly(is only/unique)，isrequired 计算优先级，越小越高
-     * - getDefaultHeaderProperties(properties): 按优先级排序取前6个，过滤 bk_isapi=true 的字段（除了固定字段）
-     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性
+     * - getDefaultHeaderProperties(properties): 过滤系统字段后按优先级排序取前6个
+     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性，过滤系统字段
      * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 合并固定字段+自定义/默认列
+     * 
+     * 系统字段判断规则：
+     * - bk_isapi=true 的字段（API 字段）应隐藏
+     * - bk_property_id === 'id' 的字段（内部数据库ID）应隐藏
+     * - 固定字段（fixedPropertyIds）如 bk_inst_id、bk_inst_name 始终保留
      */
     getPropertyPriority(property) {
       let priority = property.bk_property_index ?? 0
@@ -893,30 +898,23 @@ export default {
       }
       return priority
     },
-    /**
-     * 判断属性是否为系统字段（应从用户界面隐藏）
-     * 与原项目保持一致：
-     * - bk_isapi=true 的字段是 API 字段，应隐藏
-     * - bk_property_id === 'id' 是内部数据库字段，应隐藏
-     */
-    isSystemProperty(property, fixedPropertyIds = []) {
-      // 如果在固定字段列表中，则不视为系统字段
-      if (fixedPropertyIds.includes(property.bk_property_id)) {
-        return false
-      }
-      // API 字段应隐藏
-      if (property.bk_isapi) {
-        return true
-      }
-      // 内部数据库 ID 字段应隐藏
-      if (property.bk_property_id === 'id') {
-        return true
-      }
-      return false
-    },
     getDefaultHeaderProperties(properties, fixedPropertyIds = []) {
       // 与原项目一致: 过滤系统字段，然后按优先级排序取前6个
-      const filteredProperties = properties.filter(p => !this.isSystemProperty(p, fixedPropertyIds))
+      const filteredProperties = properties.filter(p => {
+        // 保留固定字段
+        if (fixedPropertyIds.includes(p.bk_property_id)) {
+          return true
+        }
+        // 过滤 API 字段
+        if (p.bk_isapi) {
+          return false
+        }
+        // 过滤内部数据库 ID 字段
+        if (p.bk_property_id === 'id') {
+          return false
+        }
+        return true
+      })
       return [...filteredProperties]
         .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
         .slice(0, 6)
@@ -926,9 +924,23 @@ export default {
       const columnProperties = []
       customColumns.forEach((propertyId) => {
         const columnProperty = properties.find(property => property.bk_property_id === propertyId)
-        if (columnProperty && !this.isSystemProperty(columnProperty, fixedPropertyIds)) {
-          columnProperties.push(columnProperty)
+        if (!columnProperty) {
+          return
         }
+        // 保留固定字段
+        if (fixedPropertyIds.includes(columnProperty.bk_property_id)) {
+          columnProperties.push(columnProperty)
+          return
+        }
+        // 过滤 API 字段
+        if (columnProperty.bk_isapi) {
+          return
+        }
+        // 过滤内部数据库 ID 字段
+        if (columnProperty.bk_property_id === 'id') {
+          return
+        }
+        columnProperties.push(columnProperty)
       })
       return columnProperties
     },

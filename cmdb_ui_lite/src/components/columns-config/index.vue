@@ -110,33 +110,28 @@ export default {
       localSelected: []
     }
   },
-  methods: {
-    /**
-     * 判断属性是否为系统字段（应从用户界面隐藏）
-     * 与原项目保持一致：
-     * - bk_isapi=true 的字段是 API 字段，应隐藏
-     * - bk_property_id === 'id' 是内部数据库字段，应隐藏
-     */
-    isSystemProperty(property) {
-      // API 字段应隐藏
-      if (property.bk_isapi) {
-        return true
-      }
-      // 内部数据库 ID 字段应隐藏
-      if (property.bk_property_id === 'id') {
-        return true
-      }
-      return false
-    }
-  },
   computed: {
     /**
      * 获取可配置的属性列表（过滤掉系统字段）
-     * 与原项目保持一致：排除系统字段，但保留 disabledColumns 中的字段
+     * 与原项目保持一致：排除 bk_isapi=true 和 id 字段，但保留 disabledColumns 中的字段
      */
     sortedProperties() {
       return [...this.properties]
-        .filter(p => !this.isSystemProperty(p) || this.disabledColumns.includes(p.bk_property_id))
+        .filter(p => {
+          // 保留固定字段（如 bk_inst_id, bk_inst_name）
+          if (this.disabledColumns.includes(p.bk_property_id)) {
+            return true
+          }
+          // 过滤 API 字段
+          if (p.bk_isapi) {
+            return false
+          }
+          // 过滤内部数据库 ID 字段
+          if (p.bk_property_id === 'id') {
+            return false
+          }
+          return true
+        })
         .sort((propertyA, propertyB) => 
           propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
         )
