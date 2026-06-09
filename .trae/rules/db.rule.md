@@ -11,6 +11,7 @@
   - v1.1 - 移除自定义 `relations` 表，回归原项目的 `cc_AsstDes` + `cc_ObjAsst` 结构
   - v1.2 - 实现动态模型表名，移除硬编码 `table_map`
   - **v2.0** - 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持（SQLite/MySQL/PostgreSQL）
+  - **v2.3** - 补充原项目 `Attribute` 结构体所有字段的 bson 标签对照，整理完整 MongoDB 表映射关系
 
 ---
 
@@ -95,64 +96,69 @@ SQLALCHEMY_ECHO = False           # 是否输出 SQL 日志
 
 ### 3.1 cc_ObjDes - 对象/模型定义表
 
-**作用**：存放所有模型的元数据定义
+**作用**：存放所有模型的元数据定义，对应原项目 MongoDB 表 `cc_ObjDes`（见 [tablenames.go](file:///workspace/bk-cmdb/src/common/tablenames.go#L32-L33)）
 
-**表结构**：
+**表结构**（基于原项目 [Object 结构体](file:///workspace/bk-cmdb/src/common/metadata/object.go#L63-L83)）：
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `_id` | VARCHAR | 否 | 内部唯一ID（原项目MongoDB兼容） |
-| `id` | INTEGER | 否 | 整数ID |
-| `bk_obj_id` | VARCHAR | 是 | 模型ID（主键） |
-| `bk_obj_name` | VARCHAR | 是 | 模型名称 |
-| `bk_obj_icon` | VARCHAR | 否 | 模型图标 |
-| `bk_classification_id` | VARCHAR | 否 | 分类ID |
-| `bk_ishidden` | BOOLEAN | 否 | 是否隐藏（默认false） |
-| `ispre` | BOOLEAN | 否 | 是否预置模型（默认false） |
-| `bk_ispaused` | BOOLEAN | 否 | 是否暂停（默认false） |
-| `position` | VARCHAR | 否 | 排序位置 |
-| `creator` | VARCHAR | 否 | 创建者（默认admin） |
-| `modifier` | VARCHAR | 否 | 修改者（默认admin） |
-| `create_time` | TIMESTAMP | 否 | 创建时间（默认CURRENT_TIMESTAMP） |
-| `last_time` | TIMESTAMP | 否 | 最后修改时间（默认CURRENT_TIMESTAMP） |
-| `obj_sort_number` | INTEGER | 否 | 排序编号（默认0） |
-| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） |
+| 字段 | 类型 | 必填 | 说明 | BSON标签 |
+|------|------|------|------|----------|
+| `_id` | VARCHAR | 否 | 内部唯一ID（原项目MongoDB兼容） | `_id` |
+| `id` | INTEGER | 否 | 整数ID | `id` |
+| `bk_classification_id` | VARCHAR | 否 | 分类ID | `bk_classification_id` |
+| `bk_obj_icon` | VARCHAR | 否 | 模型图标 | `bk_obj_icon` |
+| `bk_obj_id` | VARCHAR | 是 | 模型ID（主键） | `bk_obj_id` |
+| `bk_obj_name` | VARCHAR | 是 | 模型名称 | `bk_obj_name` |
+| `bk_ishidden` | BOOLEAN | 否 | 是否隐藏（默认false） | `bk_ishidden` |
+| `ispre` | BOOLEAN | 否 | 是否预置模型（默认false） | `ispre` |
+| `bk_ispaused` | BOOLEAN | 否 | 是否暂停（默认false） | `bk_ispaused` |
+| `position` | VARCHAR | 否 | 排序位置 | `position` |
+| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） | `bk_supplier_account` |
+| `description` | VARCHAR | 否 | 描述 | `description` |
+| `creator` | VARCHAR | 否 | 创建者（默认admin） | `creator` |
+| `modifier` | VARCHAR | 否 | 修改者（默认admin） | `modifier` |
+| `create_time` | TIMESTAMP | 否 | 创建时间（默认CURRENT_TIMESTAMP） | `create_time` |
+| `last_time` | TIMESTAMP | 否 | 最后修改时间（默认CURRENT_TIMESTAMP） | `last_time` |
+| `obj_sort_number` | INTEGER | 否 | 排序编号（默认0） | `obj_sort_number` |
 
 ---
 
 ### 3.2 cc_ObjAttDes - 对象属性定义表
 
-**作用**：定义模型的属性字段
+**作用**：定义模型的属性字段，对应原项目 MongoDB 表 `cc_ObjAttDes`（见 [tablenames.go](file:///workspace/bk-cmdb/src/common/tablenames.go#L38-L39)）
 
-**表结构**：
+**表结构**（基于原项目 [Attribute 结构体](file:///workspace/bk-cmdb/src/common/metadata/attribute.go#L106-L134)）：
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `_id` | VARCHAR | 否 | 内部唯一ID |
-| `id` | INTEGER | 否 | 整数ID |
-| `bk_obj_id` | VARCHAR | 是 | 所属模型ID |
-| `bk_property_id` | VARCHAR | 是 | 属性ID（唯一标识） |
-| `bk_property_name` | VARCHAR | 是 | 属性名称 |
-| `bk_property_type` | VARCHAR | 是 | 属性类型 |
-| `bk_property_group` | VARCHAR | 否 | 属性分组 |
-| `isrequired` | BOOLEAN | 否 | 是否必填（默认false） |
-| `bk_ispassword` | BOOLEAN | 否 | 是否密码字段（默认false） |
-| `bk_ishidden` | BOOLEAN | 否 | 是否隐藏（默认false） |
-| `isreadonly` | BOOLEAN | 否 | 是否只读（默认false） |
-| `bk_isapi` | BOOLEAN | 否 | 是否API字段（默认false） |
-| `option` | VARCHAR | 否 | 选项配置（JSON序列化存储） |
-| `bk_property_option` | VARCHAR | 否 | 选项配置副本 |
-| `unit` | VARCHAR | 否 | 单位 |
-| `placeholder` | VARCHAR | 否 | 占位符 |
-| `editable` | BOOLEAN | 否 | 是否可编辑（默认true） |
-| `ispre` | BOOLEAN | 否 | 是否预置属性（默认false） |
-| `bk_property_index` | INTEGER | 否 | 属性排序索引 |
-| `bk_issystem` | BOOLEAN | 否 | 是否系统字段（默认false） |
-| `creator` | VARCHAR | 否 | 创建者（默认admin） |
-| `modifier` | VARCHAR | 否 | 修改者（默认admin） |
-| `create_time` | TIMESTAMP | 否 | 创建时间 |
-| `last_time` | TIMESTAMP | 否 | 最后修改时间 |
-| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） |
+| 字段 | 类型 | 必填 | 说明 | BSON标签 |
+|------|------|------|------|----------|
+| `_id` | VARCHAR | 否 | 内部唯一ID | `_id` |
+| `bk_biz_id` | INTEGER | 否 | 业务ID | `bk_biz_id` |
+| `id` | INTEGER | 否 | 整数ID | `id` |
+| `bk_supplier_account` | VARCHAR | 否 | 供应商账号（默认0） | `bk_supplier_account` |
+| `bk_obj_id` | VARCHAR | 是 | 所属模型ID | `bk_obj_id` |
+| `bk_property_id` | VARCHAR | 是 | 属性ID（唯一标识） | `bk_property_id` |
+| `bk_property_name` | VARCHAR | 是 | 属性名称 | `bk_property_name` |
+| `bk_property_group` | VARCHAR | 否 | 属性分组 | `bk_property_group` |
+| `bk_property_group_name` | VARCHAR | 否 | 属性分组名称（不存储） | `-` |
+| `bk_property_index` | INTEGER | 否 | 属性排序索引 | `bk_property_index` |
+| `unit` | VARCHAR | 否 | 单位 | `unit` |
+| `placeholder` | VARCHAR | 否 | 占位符 | `placeholder` |
+| `editable` | BOOLEAN | 否 | 是否可编辑（默认true） | `editable` |
+| `ispre` | BOOLEAN | 否 | 是否预置属性（默认false） | `ispre` |
+| `isrequired` | BOOLEAN | 否 | 是否必填（默认false） | `isrequired` |
+| `isreadonly` | BOOLEAN | 否 | 是否只读（默认false） | `isreadonly` |
+| `isonly` | BOOLEAN | 否 | 是否唯一（默认false） | `isonly` |
+| `bk_issystem` | BOOLEAN | 否 | 是否系统字段（默认false） | `bk_issystem` |
+| `bk_isapi` | BOOLEAN | 否 | 是否API字段（默认false） | `bk_isapi` |
+| `bk_property_type` | VARCHAR | 是 | 属性类型 | `bk_property_type` |
+| `option` | VARCHAR | 否 | 选项配置（JSON序列化存储） | `option` |
+| `default` | VARCHAR | 否 | 默认值 | `default` |
+| `ismultiple` | BOOLEAN | 否 | 是否多选（默认false），配合 `enummulti` 类型使用 | `ismultiple` |
+| `description` | VARCHAR | 否 | 描述 | `description` |
+| `bk_template_id` | INTEGER | 否 | 模板ID | `bk_template_id` |
+| `creator` | VARCHAR | 否 | 创建者（默认admin） | `creator` |
+| `create_time` | TIMESTAMP | 否 | 创建时间 | `create_time` |
+| `last_time` | TIMESTAMP | 否 | 最后修改时间 | `last_time` |
+| `modifier` | VARCHAR | 否 | 修改者（默认admin） | `modifier` |
 
 **注意**：`option` 字段在数据库中存储为 JSON 序列化字符串（如 `"[\"选项1\", \"选项2\"]"`），后端 API 会自动反序列化为数组返回给前端。
 
@@ -339,7 +345,227 @@ sql = transpile("SELECT * FROM table", read="sqlite", write="postgresql")
 
 ---
 
-## 六、与原项目对比
+## 六、属性选项格式（Option）
+
+### 6.1 option 字段存储规则
+
+`option` 字段在数据库中存储为 **JSON 序列化字符串**，后端 API 会自动反序列化为对应类型返回给前端。
+
+**存储格式**：
+- 数据库存储：`'[{"id": "xxx", "name": "xxx", ...}]'`（JSON 字符串）
+- API 返回：反序列化后的对象/数组
+
+---
+
+### 6.2 枚举类型（enum）- 单选枚举
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type EnumOption []EnumVal
+
+type EnumVal struct {
+    ID        string `bson:"id"           json:"id"`
+    Name      string `bson:"name"         json:"name"`
+    Type      string `bson:"type"         json:"type"`
+    IsDefault bool   `bson:"is_default"   json:"is_default"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+[
+    {"id": "running", "name": "运行中", "type": "text", "is_default": true},
+    {"id": "stopped", "name": "已停止", "type": "text", "is_default": false},
+    {"id": "maintenance", "name": "维护中", "type": "text", "is_default": false}
+]
+```
+
+#### 验证规则
+
+| 字段 | 规则 | 说明 |
+|------|------|------|
+| `id` | 不能为空，最大 128 Unicode 字符 | **完全支持中文** |
+| `name` | 不能为空，最大 128 Unicode 字符 | **完全支持中文** |
+| `type` | 必须是 "text" | 固定值 |
+| `is_default` | 单选只能有 1 个为 true | 多选无此限制 |
+
+#### 长度常量
+
+```go
+// src/common/definitions.go
+AttributeOptionValueMaxLength = 128   // 单个选项ID/Name最大长度（Unicode字符）
+AttributeOptionArrayMaxLength = 200  // 选项数组最大长度
+```
+
+#### 示例
+
+```json
+[
+    {"id": "公网", "name": "公网", "type": "text", "is_default": false},
+    {"id": "内网", "name": "内网", "type": "text", "is_default": true}
+]
+```
+
+---
+
+### 6.3 多选枚举类型（enummulti）
+
+多选枚举与单选枚举使用相同的结构，区别在于 `is_default` 数量限制：
+
+- **单选枚举（enum）**：只能有 1 个 `is_default: true`
+- **多选枚举（enummulti）**：可以有多个 `is_default: true`（表示默认选中多个）
+
+#### 数据库存储格式
+
+```json
+[
+    {"id": "HTTP", "name": "HTTP", "type": "text", "is_default": true},
+    {"id": "HTTPS", "name": "HTTPS", "type": "text", "is_default": true},
+    {"id": "TCP", "name": "TCP", "type": "text", "is_default": false},
+    {"id": "UDP", "name": "UDP", "type": "text", "is_default": false}
+]
+```
+
+#### 示例
+
+```json
+[
+    {"id": "生产环境", "name": "生产环境", "type": "text", "is_default": true},
+    {"id": "测试环境", "name": "测试环境", "type": "text", "is_default": true},
+    {"id": "开发环境", "name": "开发环境", "type": "text", "is_default": false}
+]
+```
+
+---
+
+### 6.4 列表类型（list）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type ListOption []string
+type ListOptions []string
+```
+
+#### 数据库存储格式
+
+```json
+["北京", "上海", "广州", "深圳"]
+```
+
+#### 验证规则
+
+| 规则 | 说明 |
+|------|------|
+| 数组长度 | 最大 200 项 |
+| 单项长度 | 最大 128 Unicode 字符 |
+| 内容 | 字符串数组 |
+
+---
+
+### 6.5 整数范围类型（int）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type IntOption struct {
+    Min int64 `bson:"min" json:"min"`
+    Max int64 `bson:"max" json:"max"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+{"min": 0, "max": 100}
+```
+
+#### 验证规则
+
+- `min` 必须小于等于 `max`
+- 支持负数
+
+---
+
+### 6.6 浮点数范围类型（float）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type FloatOption struct {
+    Min float64 `bson:"min" json:"min"`
+    Max float64 `bson:"max" json:"max"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+{"min": 0.0, "max": 100.5}
+```
+
+---
+
+### 6.7 表格类型（table）
+
+#### Go 结构定义（原项目源码）
+
+```go
+// src/common/metadata/attribute.go
+type TableAttributesOption struct {
+    Header  []Attribute              `json:"header" bson:"header"`
+    Default []map[string]interface{} `json:"default" bson:"default"`
+}
+```
+
+#### 数据库存储格式
+
+```json
+{
+    "header": [
+        {"bk_property_id": "col1", "bk_property_name": "列1", "bk_property_type": "text"},
+        {"bk_property_id": "col2", "bk_property_name": "列2", "bk_property_type": "int"}
+    ],
+    "default": [
+        {"col1": "value1", "col2": 100}
+    ]
+}
+```
+
+---
+
+### 6.8 类型汇总表
+
+| 属性类型 | option 存储格式示例 | 是否支持中文 ID |
+|---------|-------------------|----------------|
+| `enum`（单选枚举） | `[{"id":"x","name":"y","type":"text","is_default":false}]` | ✅ 完全支持 |
+| `enummulti`（多选枚举） | `[{"id":"x","name":"y","type":"text","is_default":false}]` | ✅ 完全支持 |
+| `list`（列表） | `["选项1","选项2"]` | ✅ 数组项支持中文 |
+| `int`（整数范围） | `{"min":0,"max":100}` | 不适用 |
+| `float`（浮点范围） | `{"min":0.0,"max":100.5}` | 不适用 |
+| `table`（表格） | `{"header":[...],"default":[...]}` | ✅ 列名支持中文 |
+| `bool`（布尔） | `null` 或不存储 | 不适用 |
+| `date/time`（日期时间） | `null` 或不存储 | 不适用 |
+| `char`（字符） | `"^[a-zA-Z]\\w*$"` | ✅ 可存储中文正则 |
+
+---
+
+### 6.9 数据库字段映射
+
+| 字段名 | 存储内容 | 说明 |
+|--------|---------|------|
+| `option` | JSON 字符串 | 原始选项配置 |
+| `bk_property_option` | JSON 字符串 | 选项配置副本（与 option 相同） |
+
+---
+
+## 七、与原项目对比
 
 | 原项目 (MongoDB) | Lite项目 (SQLAlchemy) | 状态 |
 |------------------|----------------------|------|
@@ -354,7 +580,7 @@ sql = transpile("SELECT * FROM table", read="sqlite", write="postgresql")
 
 ---
 
-## 七、新增模型标准步骤
+## 八、新增模型标准步骤
 
 ### 步骤 1: 在 cc_ObjDes 中添加模型定义
 
@@ -397,7 +623,7 @@ CREATE TABLE cc_ObjectBase_0_pub_bk_custom_model (
 
 ---
 
-## 八、参考文件
+## 九、参考文件
 
 - **数据库引擎**：[engine.py](file:///workspace/cmdb_server_lite/app/db/engine.py)
 - **数据库配置**：[settings.py](file:///workspace/cmdb_server_lite/app/config/settings.py)
@@ -409,6 +635,85 @@ CREATE TABLE cc_ObjectBase_0_pub_bk_custom_model (
 
 ---
 
+## 十、原项目结构体与 MongoDB 表映射
+
+### 10.1 Attribute 结构体与 cc_ObjAttDes 表映射
+
+**原项目结构体定义**（来自 [attribute.go](file:///workspace/bk-cmdb/src/common/metadata/attribute.go#L106-L134)）：
+
+```go
+// Attribute attribute metadata definition
+type Attribute struct {
+    BizID             int64       `field:"bk_biz_id" json:"bk_biz_id" bson:"bk_biz_id" mapstructure:"bk_biz_id"`
+    ID                int64       `field:"id" json:"id" bson:"id" mapstructure:"id"`
+    OwnerID           string      `field:"bk_supplier_account" json:"bk_supplier_account" bson:"bk_supplier_account" mapstructure:"bk_supplier_account"`
+    ObjectID          string      `field:"bk_obj_id" json:"bk_obj_id" bson:"bk_obj_id" mapstructure:"bk_obj_id"`
+    PropertyID        string      `field:"bk_property_id" json:"bk_property_id" bson:"bk_property_id" mapstructure:"bk_property_id"`
+    PropertyName      string      `field:"bk_property_name" json:"bk_property_name" bson:"bk_property_name" mapstructure:"bk_property_name"`
+    PropertyGroup     string      `field:"bk_property_group" json:"bk_property_group" bson:"bk_property_group" mapstructure:"bk_property_group"`
+    PropertyGroupName string      `field:"bk_property_group_name,ignoretomap" json:"bk_property_group_name" bson:"-" mapstructure:"bk_property_group_name"`
+    PropertyIndex     int64       `field:"bk_property_index" json:"bk_property_index" bson:"bk_property_index" mapstructure:"bk_property_index"`
+    Unit              string      `field:"unit" json:"unit" bson:"unit" mapstructure:"unit"`
+    Placeholder       string      `field:"placeholder" json:"placeholder" bson:"placeholder" mapstructure:"placeholder"`
+    IsEditable        bool        `field:"editable" json:"editable" bson:"editable" mapstructure:"editable"`
+    IsPre             bool        `field:"ispre" json:"ispre" bson:"ispre" mapstructure:"ispre"`
+    IsRequired        bool        `field:"isrequired" json:"isrequired" bson:"isrequired" mapstructure:"isrequired"`
+    IsReadOnly        bool        `field:"isreadonly" json:"isreadonly" bson:"isreadonly" mapstructure:"isreadonly"`
+    IsOnly            bool        `field:"isonly" json:"isonly" bson:"isonly" mapstructure:"isonly"`
+    IsSystem          bool        `field:"bk_issystem" json:"bk_issystem" bson:"bk_issystem" mapstructure:"bk_issystem"`
+    IsAPI             bool        `field:"bk_isapi" json:"bk_isapi" bson:"bk_isapi" mapstructure:"bk_isapi"`
+    PropertyType      string      `field:"bk_property_type" json:"bk_property_type" bson:"bk_property_type" mapstructure:"bk_property_type"`
+    Option            interface{} `field:"option" json:"option" bson:"option" mapstructure:"option"`
+    Default           interface{} `field:"default" json:"default,omitempty" bson:"default" mapstructure:"default"`
+    IsMultiple        *bool       `field:"ismultiple" json:"ismultiple,omitempty" bson:"ismultiple" mapstructure:"ismultiple"`
+    Description       string      `field:"description" json:"description" bson:"description" mapstructure:"description"`
+    TemplateID        int64       `field:"bk_template_id" json:"bk_template_id" bson:"bk_template_id" mapstructure:"bk_template_id"`
+    Creator           string      `field:"creator" json:"creator" bson:"creator" mapstructure:"creator"`
+    CreateTime        *Time       `json:"create_time" bson:"create_time" mapstructure:"create_time"`
+    LastTime          *Time       `json:"last_time" bson:"last_time" mapstructure:"last_time"`
+}
+```
+
+**对应 MongoDB 表**：`cc_ObjAttDes`（见 [tablenames.go](file:///workspace/bk-cmdb/src/common/tablenames.go#L38-L39)）
+
+**bson 标签对照表**：
+
+| Go 结构体字段 | bson 标签 | SQL 表字段 | 说明 |
+|--------------|-----------|-----------|------|
+| `BizID` | `bk_biz_id` | `bk_biz_id` | 业务ID |
+| `ID` | `id` | `id` | 整数ID |
+| `OwnerID` | `bk_supplier_account` | `bk_supplier_account` | 供应商账号 |
+| `ObjectID` | `bk_obj_id` | `bk_obj_id` | 所属模型ID |
+| `PropertyID` | `bk_property_id` | `bk_property_id` | 属性ID |
+| `PropertyName` | `bk_property_name` | `bk_property_name` | 属性名称 |
+| `PropertyGroup` | `bk_property_group` | `bk_property_group` | 属性分组 |
+| `PropertyGroupName` | `-` | `bk_property_group_name` | 属性分组名称（不存储） |
+| `PropertyIndex` | `bk_property_index` | `bk_property_index` | 属性排序索引 |
+| `Unit` | `unit` | `unit` | 单位 |
+| `Placeholder` | `placeholder` | `placeholder` | 占位符 |
+| `IsEditable` | `editable` | `editable` | 是否可编辑 |
+| `IsPre` | `ispre` | `ispre` | 是否预置属性 |
+| `IsRequired` | `isrequired` | `isrequired` | 是否必填 |
+| `IsReadOnly` | `isreadonly` | `isreadonly` | 是否只读 |
+| `IsOnly` | `isonly` | `isonly` | 是否唯一 |
+| `IsSystem` | `bk_issystem` | `bk_issystem` | 是否系统字段 |
+| `IsAPI` | `bk_isapi` | `bk_isapi` | 是否API字段 |
+| `PropertyType` | `bk_property_type` | `bk_property_type` | 属性类型 |
+| `Option` | `option` | `option` | 选项配置 |
+| `Default` | `default` | `default` | 默认值 |
+| `IsMultiple` | `ismultiple` | `ismultiple` | 是否多选 |
+| `Description` | `description` | `description` | 描述 |
+| `TemplateID` | `bk_template_id` | `bk_template_id` | 模板ID |
+| `Creator` | `creator` | `creator` | 创建者 |
+| `CreateTime` | `create_time` | `create_time` | 创建时间 |
+| `LastTime` | `last_time` | `last_time` | 最后修改时间 |
+
+---
+
 **文档维护**：本文档随代码更新，请保持同步。
-- **最后更新**：2026-05-29
-- **更新内容**：v2.0 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持
+- **最后更新**：2026-06-08
+- **更新内容**：
+  - v2.0 - 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持
+  - v2.1 - 新增属性选项格式（Option）章节，详细定义 enum/enummulti/list/int/float/table 等类型的 JSON schema 和 MongoDB 存储格式
+  - v2.2 - 补充 cc_ObjDes 和 cc_ObjAttDes 表的完整字段定义，包含所有 bson 标签字段对照，新增 ismultiple 字段说明
+  - v2.3 - 新增「原项目结构体与 MongoDB 表映射」章节，完整整理 Attribute 结构体所有 bson 标签对照

@@ -36,7 +36,7 @@
         </div>
         <div class="filter-value">
           <div v-if="filter.field && filter.field !== ''" class="search-input-wrapper">
-            <div v-if="isEnumField || isBoolField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
+            <div v-if="isEnumField || isBoolField || isListField || isEnumMultiField" class="enum-select-wrapper" :class="{ 'is-open': enumDropdownVisible }" @click.stop>
               <div class="enum-input-container">
                 <input
                   type="text"
@@ -151,7 +151,7 @@
         :label="column.name"
         :sortable="getColumnSortable(column.id)"
         :show-overflow-tooltip="true">
-        <template v-if="column.id === 'id'" #default="{ row }">
+        <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
           <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
             {{ row[column.id] }}
           </bk-button>
@@ -318,7 +318,9 @@ export default {
       columnsConfig: {
         show: false,
         selected: [],
-        disabledColumns: ['id']
+        // 与原项目保持一致: 禁用 bk_inst_id、bk_inst_name 列，这些是系统字段不能移除
+        // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue disabledColumns: ['bk_inst_id', 'bk_inst_name']
+        disabledColumns: ['bk_inst_id', 'bk_inst_name']
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null
@@ -330,7 +332,9 @@ export default {
       return model ? model.bk_obj_name : this.objId
     },
     searchableProperties() {
-      return this.allProperties.filter(property => property.bk_property_id !== 'id')
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)
+      // 参考: /workspace/bk-cmdb/src/ui/src/components/model-instance/property.vue
+      return this.allProperties.filter(property => !property.bk_isapi && property.bk_property_id !== 'id')
     },
     filterProperty() {
       if (!this.filter.field || !this.allProperties.length) return null
@@ -363,10 +367,20 @@ export default {
       if (!property) return false
       return property.bk_property_type === 'enum'
     },
+    isListField() {
+      const property = this.filterProperty
+      if (!property) return false
+      return property.bk_property_type === 'list'
+    },
     isBoolField() {
       const property = this.filterProperty
       if (!property) return false
       return property.bk_property_type === 'bool'
+    },
+    isEnumMultiField() {
+      const property = this.filterProperty
+      if (!property) return false
+      return property.bk_property_type === 'enummulti'
     },
     isDateField() {
       const property = this.filterProperty
@@ -389,9 +403,19 @@ export default {
         ]
       }
 
-      const option = property.option || property.bk_property_option
+      const option = property.option
       if (option && Array.isArray(option)) {
-        return option.map(opt => ({ id: opt, name: opt }))
+        if (option.length > 0 && option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
+          return option.map(opt => ({
+            id: opt.id,
+            name: opt.name
+          }))
+        } else {
+          return option.map(opt => ({
+            id: opt,
+            name: opt
+          }))
+        }
       }
 
       return []
@@ -770,16 +794,17 @@ export default {
           this.columnsConfig.selected = []
         }
 
-        const validField = this.allProperties.find(p => p.bk_property_id === currentField)
-        if (!validField && this.allProperties.length > 0) {
-          const firstField = this.allProperties.find(p => p.bk_property_id !== 'id')
+        // 与原项目保持一致: 使用 searchableProperties 的过滤逻辑，排除 bk_isapi=true 和 id 字段
+        const validField = this.searchableProperties.find(p => p.bk_property_id === currentField)
+        if (!validField && this.searchableProperties.length > 0) {
+          const firstField = this.searchableProperties[0]
           if (firstField) {
             this.filter.field = firstField.bk_property_id
           }
         }
 
         // 只有在非多选场景下才设置 filter.value，避免与 filter.values 冲突
-        if (!(this.isEnumField || this.isBoolField) || this.filter.values.length === 0) {
+        if (!(this.isEnumField || this.isBoolField || this.isEnumMultiField) || this.filter.values.length === 0) {
           this.filter.value = currentValue
         }
         this.filter.fuzzyQuery = currentFuzzy
@@ -800,7 +825,7 @@ export default {
           })
         } else {
           // 否则使用原有的简单搜索方式
-          const isMultiSelectEnum = this.isEnumField || this.isBoolField
+          const isMultiSelectEnum = this.isEnumField || this.isBoolField || this.isEnumMultiField
           const isDateTimeField = this.isDateField || this.isTimeField
           const searchValues = (isMultiSelectEnum || isDateTimeField) && this.filter.values.length > 0
             ? this.filter.values
@@ -850,58 +875,125 @@ export default {
         this.table.loading = false
       }
     },
+    /**
+     * 与原项目 getHeaderProperties 保持一致的表头生成逻辑
+     * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js
+     * - getPropertyPriority(property): 基于 bk_property_index，isonly(is only/unique)，isrequired 计算优先级，越小越高
+     * - getDefaultHeaderProperties(properties): 过滤系统字段后按优先级排序取前6个
+     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性，过滤系统字段
+     * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 合并固定字段+自定义/默认列
+     * 
+     * 系统字段判断规则：
+     * - bk_isapi=true 的字段（API 字段）应隐藏
+     * - bk_property_id === 'id' 的字段（内部数据库ID）应隐藏
+     * - 固定字段（fixedPropertyIds）如 bk_inst_id、bk_inst_name 始终保留
+     */
+    getPropertyPriority(property) {
+      let priority = property.bk_property_index ?? 0
+      if (property.isonly) {
+        priority = priority - 1
+      }
+      if (property.isrequired) {
+        priority = priority - 1
+      }
+      return priority
+    },
+    getDefaultHeaderProperties(properties, fixedPropertyIds = []) {
+      // 与原项目一致: 过滤系统字段，然后按优先级排序取前6个
+      const filteredProperties = properties.filter(p => {
+        // 保留固定字段
+        if (fixedPropertyIds.includes(p.bk_property_id)) {
+          return true
+        }
+        // 过滤 API 字段
+        if (p.bk_isapi) {
+          return false
+        }
+        // 过滤内部数据库 ID 字段
+        if (p.bk_property_id === 'id') {
+          return false
+        }
+        return true
+      })
+      return [...filteredProperties]
+        .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
+        .slice(0, 6)
+    },
+    getCustomHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
+      // 与原项目一致: 按自定义列ID查找属性，过滤系统字段
+      const columnProperties = []
+      customColumns.forEach((propertyId) => {
+        const columnProperty = properties.find(property => property.bk_property_id === propertyId)
+        if (!columnProperty) {
+          return
+        }
+        // 保留固定字段
+        if (fixedPropertyIds.includes(columnProperty.bk_property_id)) {
+          columnProperties.push(columnProperty)
+          return
+        }
+        // 过滤 API 字段
+        if (columnProperty.bk_isapi) {
+          return
+        }
+        // 过滤内部数据库 ID 字段
+        if (columnProperty.bk_property_id === 'id') {
+          return
+        }
+        columnProperties.push(columnProperty)
+      })
+      return columnProperties
+    },
+    getHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
+      // 与原项目保持一致
+      let headerProperties
+      if (customColumns && customColumns.length) {
+        headerProperties = this.getCustomHeaderProperties(properties, customColumns, fixedPropertyIds)
+      } else {
+        headerProperties = this.getDefaultHeaderProperties(properties, fixedPropertyIds)
+      }
+      if (fixedPropertyIds.length) {
+        // 过滤掉 headerProperties 中已有的固定字段，避免重复
+        headerProperties = headerProperties.filter(property => !fixedPropertyIds.includes(property.bk_property_id))
+        const fixedProperties = []
+        fixedPropertyIds.forEach((id) => {
+          const property = properties.find(property => property.bk_property_id === id)
+          if (property) {
+            fixedProperties.push(property)
+          }
+        })
+        return [...fixedProperties, ...headerProperties]
+      }
+      return headerProperties
+    },
     setTableHeader() {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
       console.log('[Debug] columnsConfig.selected:', this.columnsConfig.selected)
-      
-      const maxDefaultColumns = 8
-      let selectedIds = null
-      
-      // 检查是否有有效的用户配置
-      if (this.columnsConfig.selected && Array.isArray(this.columnsConfig.selected) && this.columnsConfig.selected.length > 0) {
-        selectedIds = this.columnsConfig.selected
-        console.log('[Debug] Use user config:', selectedIds)
-      } else {
-        console.log('[Debug] Use default config')
-      }
+      console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
 
-      if (!selectedIds) {
-        // 从属性中获取排序后的默认列
-        selectedIds = this.allProperties
-          .filter(p => p.bk_property_index >= 0)
-          .sort((a, b) => a.bk_property_index - b.bk_property_index)
-          .slice(0, maxDefaultColumns)
-          .map(p => p.bk_property_id)
+      // 与原项目保持一致: 优先使用用户自定义列，否则使用默认规则
+      const customColumns = this.columnsConfig.selected || []
+      const fixedPropertyIds = this.columnsConfig.disabledColumns || []
 
-        // 确保 id 始终在第一位
-        selectedIds = ['id', ...selectedIds.filter(id => id !== 'id')]
-        console.log('[Debug] Default selectedIds:', selectedIds)
-      } else if (!selectedIds.includes('id')) {
-        // 确保 id 在自定义配置中
-        selectedIds = ['id', ...selectedIds]
-      }
+      // 调用与原项目一致的 getHeaderProperties 函数
+      const headerProperties = this.getHeaderProperties(
+        this.allProperties,
+        customColumns,
+        fixedPropertyIds
+      )
 
-      const selectedProperties = this.allProperties
-        .filter(p => selectedIds.includes(p.bk_property_id))
-        .sort((a, b) => {
-          // 强制 id 在第一位
-          if (a.bk_property_id === 'id') return -1
-          if (b.bk_property_id === 'id') return 1
-          // 其他按 selectedIds 顺序排列
-          const indexA = selectedIds.indexOf(a.bk_property_id)
-          const indexB = selectedIds.indexOf(b.bk_property_id)
-          return indexA - indexB
-        })
+      console.log('[Debug] headerProperties:', headerProperties.length)
 
-      console.log('[Debug] selectedProperties:', selectedProperties.length)
-      
-      this.table.header = selectedProperties.map(property => ({
+      this.table.header = headerProperties.map(property => ({
         id: property.bk_property_id,
         name: property.bk_property_name,
         property
       }))
-      
+
+      // 同步更新 columnsConfig.selected，与原项目一致
+      this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
+
       console.log('[Debug] table.header:', this.table.header.length)
     },
     formatCellValue(value, column) {
@@ -1744,10 +1836,10 @@ export default {
         filter_adv: filterAdv,
         s: filterAdv ? s : undefined
       })
-      this.prevInstanceId = instance.id
+      this.prevInstanceId = instance.bk_inst_id
       this.$router.push({
         name: 'ResourceInstanceDetails',
-        params: { objId: this.objId, instId: instance.id }
+        params: { objId: this.objId, instId: instance.bk_inst_id }
       })
     },
     handlePageChange(page) {
@@ -1865,7 +1957,7 @@ export default {
         const tagData = {
           id: property.bk_property_id,
           propertyName: property.bk_property_name,
-          operator: (this.isEnumField || this.isBoolField) ? '$in' : ((this.isDateField || this.isTimeField) ? '$range' : (this.filter.fuzzyQuery ? '$regex' : '$eq')),
+          operator: (this.isEnumField || this.isBoolField || this.isEnumMultiField) ? '$in' : ((this.isDateField || this.isTimeField) ? '$range' : (this.filter.fuzzyQuery ? '$regex' : '$eq')),
           value: [...this.filter.values],
           values: [...this.filter.values],
           property

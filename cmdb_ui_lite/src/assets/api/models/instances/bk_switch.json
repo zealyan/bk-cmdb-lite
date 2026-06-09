@@ -17,7 +17,8 @@
       "bk_disk": 128,
       "bk_mem": 4096,
       "power_type": "AC",
-      "os_version": "Comware V7"
+      "os_version": "Comware V7",
+      "bk_regions": "北京"
     },
     {
       "id": 2,
@@ -36,7 +37,8 @@
       "bk_disk": 128,
       "bk_mem": 4096,
       "power_type": "AC",
-      "os_version": "Comware V7"
+      "os_version": "Comware V7",
+      "bk_regions": "上海"
     },
     {
       "id": 3,
@@ -55,7 +57,8 @@
       "bk_disk": 64,
       "bk_mem": 512,
       "power_type": "AC",
-      "os_version": "IOS 15.2"
+      "os_version": "IOS 15.2",
+      "bk_regions": "深圳"
     },
     {
       "id": 4,
@@ -74,7 +77,8 @@
       "bk_disk": 64,
       "bk_mem": 1024,
       "power_type": "DC",
-      "os_version": "VRP 5.20"
+      "os_version": "VRP 5.20",
+      "bk_regions": "成都"
     },
     {
       "id": 5,
@@ -93,7 +97,8 @@
       "bk_disk": 256,
       "bk_mem": 8192,
       "power_type": "AC/DC",
-      "os_version": "EOS 4.28"
+      "os_version": "EOS 4.28",
+      "bk_regions": "新加坡"
     },
     {
       "id": 6,
@@ -112,7 +117,8 @@
       "bk_disk": 128,
       "bk_mem": 4096,
       "power_type": "AC/DC",
-      "os_version": "EOS 4.28"
+      "os_version": "EOS 4.28",
+      "bk_regions": "广州"
     },
     {
       "id": 7,
@@ -131,7 +137,8 @@
       "bk_disk": 512,
       "bk_mem": 16384,
       "power_type": "DC",
-      "os_version": "JUNOS 21.4"
+      "os_version": "JUNOS 21.4",
+      "bk_regions": "香港"
     },
     {
       "id": 8,
@@ -150,7 +157,8 @@
       "bk_disk": 64,
       "bk_mem": 2048,
       "power_type": "AC",
-      "os_version": "OS10 10.5"
+      "os_version": "OS10 10.5",
+      "bk_regions": "西安"
     },
     {
       "id": 9,
@@ -169,7 +177,8 @@
       "bk_disk": 256,
       "bk_mem": 8192,
       "power_type": "AC/DC",
-      "os_version": "NX-OS 10.2"
+      "os_version": "NX-OS 10.2",
+      "bk_regions": "上海"
     },
     {
       "id": 10,
@@ -188,7 +197,8 @@
       "bk_disk": 512,
       "bk_mem": 16384,
       "power_type": "AC",
-      "os_version": "Comware V7.1"
+      "os_version": "Comware V7.1",
+      "bk_regions": "北京"
     }
   ]
 }

@@ -155,14 +155,95 @@
       "width": 100
     },
     {
+      "bk_property_id": "bk_supported_protocols",
+      "bk_property_name": "支持的协议",
+      "bk_property_type": "enummulti",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 14,
+      "width": 150,
+      "option": [
+        "HTTP",
+        "HTTPS",
+        "TCP",
+        "UDP",
+        "WebSocket"
+      ]
+    },
+    {
+      "bk_property_id": "bk_server_tags",
+      "bk_property_name": "服务器标签",
+      "bk_property_type": "enummulti",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 15,
+      "width": 180,
+      "option": [
+        "生产环境",
+        "测试环境",
+        "开发环境",
+        "核心业务",
+        "边缘节点",
+        "高可用"
+      ]
+    },
+    {
+      "bk_property_id": "bk_server_roles",
+      "bk_property_name": "服务器角色",
+      "bk_property_type": "enummulti",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 16,
+      "width": 150,
+      "option": [
+        "Web服务器",
+        "应用服务器",
+        "数据库服务器",
+        "缓存服务器",
+        "消息队列"
+      ]
+    },
+    {
       "bk_property_id": "description",
       "bk_property_name": "描述",
       "bk_property_type": "longchar",
       "isrequired": false,
       "isreadonly": false,
       "editable": true,
-      "bk_property_index": 14,
+      "bk_property_index": 17,
       "width": 250
+    },
+    {
+      "bk_property_id": "bk_backend_ips",
+      "bk_property_name": "后端IP列表",
+      "bk_property_type": "list",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 18,
+      "width": 200,
+      "option": []
+    },
+    {
+      "bk_property_id": "bk_server_groups",
+      "bk_property_name": "服务器分组",
+      "bk_property_type": "list",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 19,
+      "width": 180,
+      "option": [
+        "Web服务器",
+        "应用服务器",
+        "数据库服务器",
+        "缓存服务器",
+        "消息队列",
+        "负载均衡器"
+      ]
     }
   ]
 }

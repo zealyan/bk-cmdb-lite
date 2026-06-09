@@ -55,10 +55,10 @@
                 :title="op.desc">
               </bk-option>
             </bk-select>
-            <div class="item-value" :class="{ 'is-full': withoutOperator.includes(item.property.bk_property_type), 'r0': ['cmdb-search-enum', 'cmdb-search-list', 'cmdb-search-date', 'cmdb-search-time'].includes(getComponentType(item)) }">
+            <div class="item-value" :class="{ 'is-full': withoutOperator.includes(item.property.bk_property_type), 'r0': ['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-date', 'cmdb-search-time'].includes(getComponentType(item)) }">
               <component
                 :is="getComponentType(item)"
-                v-if="['cmdb-search-enum', 'cmdb-search-list'].includes(getComponentType(item))"
+                v-if="['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list'].includes(getComponentType(item))"
                 v-model="item.valueText"
                 :options="getSelectOptions(item.property)"
                 :property="item.property"
@@ -139,6 +139,7 @@
 import { QUERY_OPERATOR } from '@/utils/query-operator'
 import ConditionPicker from '../condition-picker/index.vue'
 import EnumSearch from '../search/enum.vue'
+import EnumMultiSearch from '../search/enummulti.vue'
 import ListSearch from '../search/list.vue'
 import DateSearch from '../search/date.vue'
 import TimeSearch from '../search/time.vue'
@@ -152,6 +153,7 @@ export default {
   components: {
     ConditionPicker,
     'cmdb-search-enum': EnumSearch,
+    'cmdb-search-enummulti': EnumMultiSearch,
     'cmdb-search-list': ListSearch,
     'cmdb-search-date': DateSearch,
     'cmdb-search-time': TimeSearch
@@ -232,7 +234,9 @@ export default {
       })
     },
     showAddButton() {
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
       const availableProperties = this.properties.filter(p => {
+        if (p.bk_property_id === 'id' || p.bk_isapi) return false
         const usedIds = this.filterItems.map(item => item.property.bk_property_id)
         return !usedIds.includes(p.bk_property_id)
       })
@@ -303,9 +307,10 @@ export default {
         // 添加项
         const propType = property.bk_property_type
         const isEnum = propType === 'enum'
+        const isEnumMulti = propType === 'enummulti'
         const isBool = propType === 'bool'
         const isList = propType === 'list'
-        const isEnumOrList = isEnum || isList || isBool
+        const isEnumOrList = isEnum || isEnumMulti || isList || isBool
         const isDateTime = ['date', 'time'].includes(propType)
         
         let valueText = ''
@@ -355,9 +360,10 @@ export default {
     getItemValue(item) {
       const propType = item.property.bk_property_type
       const isEnum = propType === 'enum'
+      const isEnumMulti = propType === 'enummulti'
       const isBool = propType === 'bool'
       const isList = propType === 'list'
-      const isEnumOrList = isEnum || isList || isBool
+      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
       const isDateTime = ['date', 'time'].includes(propType)
       
       if (this.isRangeOperator(item.operator)) {
@@ -376,9 +382,10 @@ export default {
       return item.valueText || ''
     },
     initDefaultItem() {
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
       if (this.properties.length > 0) {
         const sortedProperties = [...this.properties]
-          .filter(p => p.bk_property_index >= 0)
+          .filter(p => p.bk_property_index >= 0 && p.bk_property_id !== 'id' && !p.bk_isapi)
           .sort((a, b) => a.bk_property_index - b.bk_property_index)
         
         if (sortedProperties.length > 0) {
@@ -407,6 +414,10 @@ export default {
 
       if (type === 'enum') {
         return 'cmdb-search-enum'
+      }
+
+      if (type === 'enummulti') {
+        return 'cmdb-search-enummulti'
       }
 
       if (type === 'list') {
@@ -452,15 +463,19 @@ export default {
           { id: 'false', name: 'false' }
         ]
       }
-      const option = property.option || property.bk_property_option
+      const option = property.option
       if (option && Array.isArray(option)) {
-        if (property.bk_property_type === 'enum') {
+        if (option.length > 0 && option[0] && typeof option[0] === 'object' && option[0].id !== undefined) {
+          return option.map(opt => ({
+            id: opt.id,
+            name: opt.name
+          }))
+        } else {
           return option.map(opt => ({
             id: opt,
             name: opt
           }))
         }
-        return option
       }
       return []
     },
@@ -502,9 +517,10 @@ export default {
       const operator = operators.length > 0 ? operators.find(op => op.id === defaultOperator)?.id || operators[0].id : defaultOperator
 
       const isEnum = property.bk_property_type === 'enum'
+      const isEnumMulti = property.bk_property_type === 'enummulti'
       const isBool = property.bk_property_type === 'bool'
       const isList = property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isList || isBool
+      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
       const isDateTime = ['date', 'time'].includes(property.bk_property_type)
       this.filterItems.push({
         id: this.nextItemId++,
@@ -522,6 +538,7 @@ export default {
         int: EQ,
         float: EQ,
         enum: IN,
+        enummulti: IN,
         list: IN,
         bool: EQ,
         date: RANGE,
@@ -556,9 +573,10 @@ export default {
     },
     handleOperatorChange(item) {
       const isEnum = item.property.bk_property_type === 'enum'
+      const isEnumMulti = item.property.bk_property_type === 'enummulti'
       const isBool = item.property.bk_property_type === 'bool'
       const isList = item.property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isList || isBool
+      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
@@ -570,9 +588,10 @@ export default {
         const value = this.getItemValue(item)
         const propType = item.property.bk_property_type
         const isEnum = propType === 'enum'
+        const isEnumMulti = propType === 'enummulti'
         const isBool = propType === 'bool'
         const isList = propType === 'list'
-        const isEnumOrList = isEnum || isList || isBool
+        const isEnumOrList = isEnum || isEnumMulti || isList || isBool
         const isDateTime = ['date', 'time'].includes(propType)
 
         if (isEnumOrList || isDateTime) {
@@ -671,7 +690,7 @@ export default {
         const condition = newConditionMap[fieldId]
         const { operator, value } = condition
         
-        const isEnumOrList = ['enum', 'list'].includes(property.bk_property_type)
+        const isEnumOrList = ['enum', 'enummulti', 'list'].includes(property.bk_property_type)
         const isDateTime = ['date', 'time'].includes(property.bk_property_type)
         
         let valueText = ''

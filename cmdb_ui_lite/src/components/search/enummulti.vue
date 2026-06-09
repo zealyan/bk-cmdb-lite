@@ -1,12 +1,12 @@
 <template>
   <div class="g-expand">
     <bk-select
-      multiple
-      display-tag
-      selected-style="checkbox"
       searchable
       v-model="localValue"
       v-bind="$attrs"
+      :multiple="true"
+      display-tag
+      selected-style="checkbox"
       :show-select-all="true"
       @clear="() => $emit('clear')">
       <bk-option v-for="option in normalizedOptions"
@@ -20,10 +20,10 @@
 
 <script>
 export default {
-  name: 'cmdb-search-list',
+  name: 'cmdb-search-enummulti',
   props: {
     value: {
-      type: Array,
+      type: [String, Array],
       default: () => ([])
     },
     options: {
@@ -63,3 +63,10 @@ export default {
   }
 }
 </script>
+<style lang="scss" scoped>
+.g-expand {
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+</style>

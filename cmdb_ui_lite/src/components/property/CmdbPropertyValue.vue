@@ -39,6 +39,7 @@ export default {
 
       switch (propertyType) {
         case 'enum':
+        case 'enummulti':
           return this.formatEnum(value)
         case 'bool':
           return this.formatBool(value)
@@ -63,13 +64,47 @@ export default {
     },
 
     formatEnum(value) {
-      if (typeof value === 'number' || typeof value === 'string') {
-        const option = this.property?.option
-        if (option && typeof option === 'object') {
-          return option[value] || String(value)
+      const option = this.property?.option
+      if (!option) {
+        return String(value)
+      }
+
+      // 解析 option
+      let parsedOption = option
+      if (typeof option === 'string') {
+        try {
+          parsedOption = JSON.parse(option)
+        } catch (e) {
+          return String(value)
         }
       }
+
+      // 新格式: [{id: "xxx", name: "显示名", type: "text", is_default: false}]
+      if (Array.isArray(parsedOption)) {
+        // 支持多选枚举和多选枚举：value 可能是字符串或数组
+        if (Array.isArray(value)) {
+          // 多选枚举：返回多个选项名称
+          const names = value.map(v => this.findEnumName(parsedOption, v)).filter(n => n)
+          return names.join(', ') || String(value)
+        } else {
+          // 单选枚举
+          const name = this.findEnumName(parsedOption, value)
+          return name || String(value)
+        }
+      }
+
+      // 旧格式: { "key1": "name1", "key2": "name2" }
+      if (parsedOption && typeof parsedOption === 'object') {
+        const name = parsedOption[value]
+        return name || String(value)
+      }
+
       return String(value)
+    },
+
+    findEnumName(options, value) {
+      const optionItem = options.find(opt => opt.id === value || opt.id === String(value))
+      return optionItem?.name
     },
 
     formatBool(value) {
@@ -85,18 +120,9 @@ export default {
     },
 
     formatList(value) {
-      if (Array.isArray(value)) {
-        return value.join(', ')
-      }
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value)
-          if (Array.isArray(parsed)) {
-            return parsed.join(', ')
-          }
-        } catch (e) {
-          // ignore
-        }
+      // list 类型是单选，值是单个字符串，不需要解析
+      if (value === null || value === undefined || value === '') {
+        return '-'
       }
       return String(value)
     },

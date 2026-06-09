@@ -39,19 +39,26 @@ export default {
       if (!option) {
         return []
       }
-      if (Array.isArray(option)) {
-        return option
-      }
-      if (typeof option === 'string') {
+      let parsedOption = option
+      
+      if (typeof parsedOption === 'string') {
         try {
-          return JSON.parse(option)
-        } catch (e) {
-          return option.split(',').map(opt => ({
-            id: opt.trim(),
-            name: opt.trim()
-          }))
-        }
+          parsedOption = JSON.parse(parsedOption)
+        } catch (e) {}
       }
+      
+      if (Array.isArray(parsedOption)) {
+        return parsedOption.map(opt => {
+          if (typeof opt === 'object' && opt.id && opt.name) {
+            return opt
+          }
+          return {
+            id: opt,
+            name: opt
+          }
+        })
+      }
+      
       return []
     }
   },
@@ -59,7 +66,7 @@ export default {
     value: {
       immediate: true,
       handler(val) {
-        this.localValue = val
+        this.localValue = val || ''
       }
     }
   },

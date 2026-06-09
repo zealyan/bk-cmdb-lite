@@ -32,6 +32,8 @@
                       :value="values[property.bk_property_id]"
                       :disabled="checkDisabled(property)"
                       :readonly="property.isreadonly"
+                      :multiple="property.bk_property_type === 'enummulti'"
+                      :options="getPropertyOptions(property)"
                       @input="handleInput(property.bk_property_id, $event)"
                       @change="handleInput(property.bk_property_id, $event)">
                     </component>
@@ -148,15 +150,19 @@ export default {
       return properties.some(p => this.checkEditable(p))
     },
     filterGroupProperties(properties) {
+      // 与原项目保持一致: 只过滤关联类型和 BUILTIN_UNEDITABLE_FIELDS
+      // 参考: /workspace/bk-cmdb/src/ui/src/components/ui/form/form.vue (groupedProperties computed)
       return properties.filter(property => {
         const isAsst = UNEDITABLE_ASSOCIATION_TYPES.includes(property.bk_property_type)
         const isBuiltinUneditable = BUILTIN_UNEDITABLE_FIELDS.includes(property.bk_property_id)
-        const isHidden = property.bk_ishidden
-        const isSystem = property.bk_issystem
-        return !isAsst && !isBuiltinUneditable && !isHidden && !isSystem
+        return !isAsst && !isBuiltinUneditable
       })
     },
     checkEditable(property) {
+      // 过滤内部数据库 ID 字段
+      if (property.bk_property_id === 'id') {
+        return false
+      }
       if (this.type === 'create') {
         return !property.bk_isapi
       }
@@ -171,6 +177,38 @@ export default {
     isFullWidth(property) {
       return ['innerTable', 'table', 'text', 'longchar'].includes(property.bk_property_type)
     },
+    getPropertyOptions(property) {
+      const option = property.option
+      if (!option) {
+        return []
+      }
+      
+      let parsedOption = option
+      
+      if (typeof option === 'string') {
+        try {
+          parsedOption = JSON.parse(option)
+        } catch (e) {
+          return []
+        }
+      }
+      
+      if (Array.isArray(parsedOption)) {
+        return parsedOption.map(opt => {
+          if (typeof opt === 'string') {
+            return { id: opt, name: opt, type: 'text', is_default: false }
+          }
+          return {
+            id: opt.id !== undefined ? opt.id : opt,
+            name: opt.name !== undefined ? opt.name : opt,
+            type: opt.type || 'text',
+            is_default: opt.is_default || false
+          }
+        })
+      }
+      
+      return []
+    },
     getComponentName(type) {
       const componentMap = {
         'singlechar': 'cmdb-form-singlechar',
@@ -179,7 +217,7 @@ export default {
         'float': 'cmdb-form-float',
         'bool': 'cmdb-form-bool',
         'enum': 'cmdb-form-enum',
-        'enumMulti': 'cmdb-form-enummulti',
+        'enummulti': 'cmdb-form-enummulti',
         'date': 'cmdb-form-date',
         'time': 'cmdb-form-time',
         'datetime': 'cmdb-form-datetime',

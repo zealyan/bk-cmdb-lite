@@ -75,7 +75,8 @@ export default {
   },
   computed: {
     availableProperties() {
-      return this.properties.filter(p => p.bk_property_id !== 'id')
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
+      return this.properties.filter(p => p.bk_property_id !== 'id' && !p.bk_isapi)
     },
     disabledPropertyIds() {
       return this.selected.map(p => p.bk_property_id)

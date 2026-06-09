@@ -34,16 +34,41 @@
       @blur="handleBlur">
     </bk-input>
 
-    <!-- 枚举类型 -->
-    <bk-select
+    <!-- 枚举类型（单选） -->
+    <cmdb-form-enum
       v-else-if="property.bk_property_type === 'enum'"
+      ref="inputRef"
+      :value="localValue"
+      :property="property"
+      :multiple="false"
+      :placeholder="placeholder"
+      @input="handleSelect"
+      @on-selected="handleSelect">
+    </cmdb-form-enum>
+
+    <!-- 多选枚举类型 -->
+    <cmdb-form-enummulti
+      v-else-if="property.bk_property_type === 'enummulti'"
+      ref="inputRef"
+      :value="localValue"
+      :property="property"
+      :multiple="true"
+      :placeholder="placeholder"
+      @input="handleMultiSelect"
+      @on-selected="handleMultiSelect"
+      @change="handleMultiSelect">
+    </cmdb-form-enummulti>
+
+    <!-- list类型（单选） -->
+    <bk-select
+      v-else-if="property.bk_property_type === 'list'"
       ref="inputRef"
       :value="localValue"
       :placeholder="placeholder"
       @change="handleSelect"
       @selected="handleSelect">
       <bk-option
-        v-for="option in enumOptions"
+        v-for="option in listOptions"
         :key="option.id"
         :id="String(option.id)"
         :name="String(option.name)">
@@ -92,8 +117,15 @@
 </template>
 
 <script>
+import CmdbFormEnum from '../ui/form/enum.vue'
+import CmdbFormEnummulti from '../ui/form/enummulti.vue'
+
 export default {
   name: 'PropertyFormElement',
+  components: {
+    CmdbFormEnum,
+    CmdbFormEnummulti
+  },
   props: {
     property: {
       type: Object,
@@ -116,15 +148,15 @@ export default {
     isNumberType() {
       return ['int', 'float'].includes(this.property.bk_property_type)
     },
-    enumOptions() {
-      const option = this.property.option || this.property.bk_property_option
+    placeholder() {
+      return this.property.placeholder || `请输入${this.property.bk_property_name}`
+    },
+    listOptions() {
+      const option = this.property.option
       
       if (!option) {
-        console.log('[enumOptions] No option found for property:', this.property.bk_property_id)
         return []
       }
-      
-      console.log('[enumOptions] Raw option:', { option, type: typeof option })
       
       let parsedOption = option
       
@@ -132,50 +164,22 @@ export default {
       if (typeof parsedOption === 'string') {
         try {
           parsedOption = JSON.parse(parsedOption)
-          console.log('[enumOptions] Parsed option:', parsedOption)
         } catch (e) {
-          console.error('[enumOptions] JSON parse error:', e)
           return []
         }
       }
       
-      let result = []
-      
-      try {
-        // 如果是对象格式 { "key1": "name1", "key2": "name2" }
-        if (parsedOption && typeof parsedOption === 'object' && !Array.isArray(parsedOption)) {
-          result = Object.entries(parsedOption).map(([key, name]) => ({
-            id: String(key),
-            name: String(name)
-          }))
-        }
-        // 数组格式 [{ id: "1", name: "选项1" }] 或 ["a", "b"]
-        else if (Array.isArray(parsedOption)) {
-          result = parsedOption.map(item => {
-            if (typeof item === 'string' || typeof item === 'number') {
-              return { id: String(item), name: String(item) }
-            }
-            if (item && typeof item === 'object') {
-              const id = item.id || item.key || item.value
-              const name = item.name || item.label || item.text || id
-              if (id) {
-                return { id: String(id), name: String(name || id) }
-              }
-            }
-            return null
-          }).filter(item => item && item.id)
-        }
-        
-        console.log('[enumOptions] Processed result:', result)
-      } catch (e) {
-        console.error('[enumOptions] processing error:', e)
-        return []
+      // list类型的option格式通常是简单的字符串数组
+      if (Array.isArray(parsedOption)) {
+        return parsedOption.map(opt => {
+          if (typeof opt === 'string' || typeof opt === 'number') {
+            return { id: String(opt), name: String(opt) }
+          }
+          return null
+        }).filter(item => item && item.id)
       }
       
-      return result
-    },
-    placeholder() {
-      return this.property.placeholder || `请输入${this.property.bk_property_name}`
+      return []
     }
   },
   watch: {
@@ -201,6 +205,12 @@ export default {
       this.$emit('selected', value)
       this.$emit('change', value)
     },
+    handleMultiSelect(value) {
+      console.log('[handleMultiSelect]', value)
+      this.localValue = value
+      this.$emit('input', value)
+      this.$emit('change', value)
+    },
     handleSwitchChange(value) {
       this.localValue = value
       this.$emit('change', value)
@@ -213,9 +223,9 @@ export default {
     },
     focus() {
       this.$nextTick(() => {
-        const input = this.$refs.inputRef?.$refs?.input
+        const input = this.$refs.inputRef?.focus
         if (input) {
-          input.focus()
+          input()
         }
       })
     }

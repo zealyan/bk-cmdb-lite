@@ -185,6 +185,28 @@
       "editable": true,
       "bk_property_index": 15,
       "width": 250
+    },
+    {
+      "bk_property_id": "bk_domains",
+      "bk_property_name": "域名列表",
+      "bk_property_type": "list",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 16,
+      "width": 200,
+      "option": []
+    },
+    {
+      "bk_property_id": "bk_cert_ids",
+      "bk_property_name": "证书ID",
+      "bk_property_type": "list",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 17,
+      "width": 180,
+      "option": []
     }
   ]
 }

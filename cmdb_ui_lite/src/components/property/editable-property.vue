@@ -83,6 +83,30 @@ export default {
         return '-'
       }
       
+      const { bk_property_type } = this.property
+      
+      // 处理布尔类型
+      if (bk_property_type === 'bool') {
+        if (typeof value === 'boolean') return value ? '是' : '否'
+        if (typeof value === 'string') {
+          const lowerValue = value.toLowerCase()
+          if (lowerValue === 'true' || lowerValue === '1') return '是'
+          if (lowerValue === 'false' || lowerValue === '0') return '否'
+        }
+        return value ? '是' : '否'
+      }
+      
+      // 处理枚举类型（单选）
+      if (bk_property_type === 'enum') {
+        return this.formatEnumValue(value)
+      }
+      
+      // 处理多选枚举类型
+      if (bk_property_type === 'enummulti') {
+        return this.formatEnumMultiValue(value)
+      }
+      
+      // 处理对象类型
       if (typeof value === 'object' && !Array.isArray(value)) {
         if (value.id !== undefined) value = value.id
         else if (value.value !== undefined) value = value.value
@@ -98,19 +122,15 @@ export default {
       }
       
       if (typeof value === 'string' || typeof value === 'number') {
-        const { bk_property_type } = this.property
-        if (bk_property_type === 'bool') {
-          return value ? '是' : '否'
-        }
         return String(value)
       }
       
-      if (typeof value === 'boolean') {
-        const { bk_property_type } = this.property
-        if (bk_property_type === 'bool') {
-          return value ? '是' : '否'
+      if (Array.isArray(value)) {
+        // 尝试解析多选枚举数组
+        if (bk_property_type === 'enummulti') {
+          return this.formatEnumMultiValue(value)
         }
-        return value ? '是' : '否'
+        return value.join(', ')
       }
       
       try {
@@ -121,6 +141,84 @@ export default {
     }
   },
   methods: {
+    // 格式化枚举值
+    formatEnumValue(value) {
+      const option = this.property?.option
+      if (!option) {
+        return String(value)
+      }
+      
+      let parsedOption = option
+      if (typeof option === 'string') {
+        try {
+          parsedOption = JSON.parse(option)
+        } catch (e) {
+          return String(value)
+        }
+      }
+      
+      // 新格式: [{id: "xxx", name: "显示名"}]
+      if (Array.isArray(parsedOption)) {
+        const optionItem = parsedOption.find(opt => opt.id === value || opt.id === String(value))
+        return optionItem?.name || String(value)
+      }
+      
+      // 旧格式: { "key1": "name1" }
+      if (parsedOption && typeof parsedOption === 'object') {
+        return parsedOption[value] || String(value)
+      }
+      
+      return String(value)
+    },
+    
+    // 格式化多选枚举值
+    formatEnumMultiValue(value) {
+      const option = this.property?.option
+      if (!option) {
+        return Array.isArray(value) ? value.join(', ') : String(value)
+      }
+      
+      let parsedOption = option
+      if (typeof option === 'string') {
+        try {
+          parsedOption = JSON.parse(option)
+        } catch (e) {
+          return Array.isArray(value) ? value.join(', ') : String(value)
+        }
+      }
+      
+      // 解析值为数组
+      let values = value
+      if (typeof value === 'string') {
+        try {
+          values = JSON.parse(value)
+        } catch (e) {
+          return String(value)
+        }
+      }
+      
+      if (!Array.isArray(values)) {
+        return String(value)
+      }
+      
+      // 新格式: [{id: "xxx", name: "显示名"}]
+      if (Array.isArray(parsedOption)) {
+        const names = values.map(v => {
+          const optionItem = parsedOption.find(opt => opt.id === v || opt.id === String(v))
+          return optionItem?.name
+        }).filter(n => n)
+        return names.join(', ') || values.join(', ')
+      }
+      
+      // 旧格式: { "key1": "name1" }
+      if (parsedOption && typeof parsedOption === 'object') {
+        const names = values.map(v => parsedOption[v] || v).filter(n => n)
+        return names.join(', ') || values.join(', ')
+      }
+      
+      return values.join(', ')
+    },
+    
     startEdit() {
       if (!this.isEditable) return
       

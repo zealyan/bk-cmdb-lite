@@ -2,31 +2,36 @@
   <div class="model-details-page">
     <div class="details-layout">
       <bk-tab :active.sync="activeTab" type="unborder-card" class="details-tab">
-        <bk-tab-panel name="info" label="基本信息">
+      <bk-tab-panel name="property" label="属性">
           <div class="info-card">
-            <div class="info-grid">
-              <div
-                v-for="property in displayProperties"
-                :key="property.bk_property_id"
-                class="info-item">
-                <span class="property-label">{{ property.bk_property_name }}</span>
-                <span class="property-colon">：</span>
-                <span class="property-value-wrap">
-                  <template v-if="property.bk_property_id === 'id'">
-                    <bk-button :text="true" @click="viewInstance">{{ instanceData[property.bk_property_id] }}</bk-button>
-                  </template>
-                  <template v-else>
-                    <editable-property
-                      :property="property"
-                      :value="instanceData[property.bk_property_id]"
-                      :editable="property.editable !== false && !property.bk_isapi"
-                      :editing-property-id="editingPropertyId"
-                      @start-edit="editingPropertyId = $event"
-                      @end-edit="editingPropertyId = null"
-                      @confirm="handlePropertyConfirm">
-                    </editable-property>
-                  </template>
-                </span>
+            <div class="property-groups">
+              <div v-for="group in propertyGroups" :key="group.bk_group_id" class="property-group">
+                <h3 class="group-title">{{ group.bk_group_name }}</h3>
+                <div class="info-grid">
+                  <div
+                    v-for="property in getPropertiesByGroup(group.bk_group_id)"
+                    :key="property.bk_property_id"
+                    class="info-item">
+                    <span class="property-label">{{ property.bk_property_name }}</span>
+                    <span class="property-colon">：</span>
+                    <span class="property-value-wrap">
+                      <template v-if="property.bk_property_id === 'id'">
+                        <bk-button :text="true" @click="viewInstance">{{ instanceData[property.bk_property_id] }}</bk-button>
+                      </template>
+                      <template v-else>
+                        <editable-property
+                          :property="property"
+                          :value="instanceData[property.bk_property_id]"
+                          :editable="property.editable !== false && !property.bk_isapi"
+                          :editing-property-id="editingPropertyId"
+                          @start-edit="editingPropertyId = $event"
+                          @end-edit="editingPropertyId = null"
+                          @confirm="handlePropertyConfirm">
+                        </editable-property>
+                      </template>
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -73,9 +78,9 @@ export default {
     InstanceAssociation,
     EditableProperty
   },
-  data () {
+  data() {
     return {
-      activeTab: 'info',
+      activeTab: 'property',
       objId: '',
       instId: null,
       instanceData: {},
@@ -84,6 +89,7 @@ export default {
       apiRelations: [],
       apiInstances: {},
       apiAttributes: {},
+      propertyGroups: [], // 属性分组数据
       isDataReady: false,
       associationLoading: false,
       editingPropertyId: null // 当前正在编辑的属性ID
@@ -111,9 +117,12 @@ export default {
       return map
     },
     displayProperties () {
+      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段
+      // 参考: /workspace/bk-cmdb/src/ui/src/components/model-instance/property.vue
       return this.properties.filter(p =>
         p.bk_property_index !== -1 &&
-        p.bk_property_id !== 'id'
+        p.bk_property_id !== 'id' &&
+        !p.bk_isapi
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
     },
     modelName () {
@@ -153,6 +162,21 @@ export default {
     this.loadInstanceData()
   },
   methods: {
+    // 获取指定分组的属性
+    getPropertiesByGroup (groupId) {
+      const props = this.properties.filter(p => {
+        // 不显示 id 字段
+        if (p.bk_property_id === 'id') return false
+        // 不显示 bk_isapi=true 的系统字段
+        if (p.bk_isapi) return false
+        // 检查分组，默认为 'default'
+        const propGroup = p.bk_property_group || 'default'
+        return propGroup === groupId && p.bk_property_index !== -1
+      }).sort((a, b) => a.bk_property_index - b.bk_property_index)
+      
+      return props
+    },
+
     async loadInstanceData () {
       this.associationLoading = true
       try {
@@ -171,6 +195,24 @@ export default {
             objId: this.objId,
             instId: this.instId
           })
+        }
+        
+        // 加载属性分组
+        try {
+          const groupsResponse = await modelAPI.getModelPropertyGroups(this.objId)
+          if (groupsResponse && groupsResponse.groups) {
+            this.propertyGroups = groupsResponse.groups
+          }
+        } catch (err) {
+          console.warn('加载属性分组失败:', err)
+          // 如果没有分组，创建默认分组
+          this.propertyGroups = [{
+            id: 1,
+            bk_group_id: 'default',
+            bk_group_name: '默认',
+            bk_group_index: 0,
+            bk_isdefault: true
+          }]
         }
         
         const assocResponse = await modelAPI.getInstanceAssociations(this.instId)
@@ -295,11 +337,26 @@ export default {
     min-height: 400px;
 
     :deep(.bk-tab-header) {
-      padding: 0;
-      margin: 0 20px;
+      padding: 0 20px;
+      height: 58px;
+      background-image: linear-gradient(transparent 57px, #dcdee5 0);
+
+      .bk-tab-label-list {
+        height: 58px;
+
+        .bk-tab-label-item {
+          line-height: 58px;
+          min-width: auto;
+
+          &.active {
+            background-color: transparent;
+          }
+        }
+      }
     }
 
     :deep(.bk-tab-section) {
+      padding: 0 20px;
       padding-bottom: 10px;
     }
   }
@@ -307,6 +364,25 @@ export default {
 
 .info-card {
   padding: 20px;
+}
+
+.property-groups {
+  .property-group {
+    margin-bottom: 24px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .group-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #313238;
+      margin: 0 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e8eaec;
+    }
+  }
 }
 
 .info-grid {

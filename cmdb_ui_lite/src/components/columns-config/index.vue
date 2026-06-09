@@ -111,16 +111,38 @@ export default {
     }
   },
   computed: {
+    /**
+     * 获取可配置的属性列表（过滤掉系统字段）
+     * 与原项目保持一致：排除 bk_isapi=true 和 id 字段，但保留 disabledColumns 中的字段
+     */
     sortedProperties() {
-      return [...this.properties].sort((propertyA, propertyB) => 
-        propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
-      )
+      return [...this.properties]
+        .filter(p => {
+          // 保留固定字段（如 bk_inst_id, bk_inst_name）
+          if (this.disabledColumns.includes(p.bk_property_id)) {
+            return true
+          }
+          // 过滤 API 字段
+          if (p.bk_isapi) {
+            return false
+          }
+          // 过滤内部数据库 ID 字段
+          if (p.bk_property_id === 'id') {
+            return false
+          }
+          return true
+        })
+        .sort((propertyA, propertyB) => 
+          propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
+        )
     },
     unselectedProperties() {
+      // 与原项目保持一致: 排除 disabledColumns 中的属性，不能选择系统字段
       return this.sortedProperties.filter((property) => {
+        const isDisabled = this.disabledColumns.includes(property.bk_property_id)
         const unselected = !this.localSelected.includes(property.bk_property_id)
         const includesFilter = property.bk_property_name.toLowerCase().indexOf(this.filter.toLowerCase()) !== -1
-        return unselected && includesFilter
+        return !isDisabled && unselected && includesFilter
       })
     },
     undragbbleProperties() {
@@ -172,6 +194,10 @@ export default {
       )
     },
     selectProperty(property) {
+      // 与原项目保持一致: 不能选择 disabledColumns 中的属性
+      if (this.disabledColumns.includes(property.bk_property_id)) {
+        return
+      }
       if (this.localSelected.length < this.max) {
         this.localSelected.push(property.bk_property_id)
       } else {
