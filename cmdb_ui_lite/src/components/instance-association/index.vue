@@ -82,37 +82,33 @@
     <bk-sideslider
       :is-show.sync="showDetailsSlider"
       :title="detailsTitle"
-      :width="800
+      :width="800"
       transfer
       @update:isShow="handleCloseDetails"
     >
       <div slot="content" class="details-content" v-bkloading="{ isLoading: detailsLoading }">
-        <div v-if="!detailsLoading" :key="detailsInstance.bk_inst_id">
-          <!-- 基础信息
-          -->
+        <template v-if="detailsInstance && Object.keys(detailsInstance).length > 0">
           <div class="detail-section">
             <div class="detail-title">基础信息</div>
             <ul class="property-list clearfix">
               <li class="property-item fl">
-              <span class="property-name">实例ID</span>
-              <span class="property-value">{{ detailsInstance.id }}</span>
-            </li>
-            <li class="property-item fl">
-              <span class="property-name">蓝鲸ID</span>
-              <span class="property-value">{{ detailsInstance.bk_inst_id }}</span>
-            </li>
-            <li class="property-item fl">
-              <span class="property-name">实例名称</span>
-              <span class="property-value">{{ detailsInstance.bk_inst_name }}</span>
-            </li>
-            <li class="property-item fl">
-              <span class="property-name">所属模型</span>
-              <span class="property-value">{{ getModelDisplayName(detailsObjId) }}</span>
-            </li>
+                <span class="property-name">实例ID</span>
+                <span class="property-value">{{ detailsInstance.id }}</span>
+              </li>
+              <li class="property-item fl">
+                <span class="property-name">蓝鲸ID</span>
+                <span class="property-value">{{ detailsInstance.bk_inst_id }}</span>
+              </li>
+              <li class="property-item fl">
+                <span class="property-name">实例名称</span>
+                <span class="property-value">{{ detailsInstance.bk_inst_name }}</span>
+              </li>
+              <li class="property-item fl">
+                <span class="property-name">所属模型</span>
+                <span class="property-value">{{ getModelDisplayName(detailsObjId) }}</span>
+              </li>
+            </ul>
           </div>
-
-          <!-- 自定义属性
-          -->
           <div class="detail-section" v-if="detailColumns.length">
             <div class="detail-title">详细信息</div>
             <ul class="property-list clearfix">
@@ -124,12 +120,12 @@
               </li>
             </ul>
           </div>
-        </div>
+        </template>
         <div v-else-if="!detailsLoading" class="details-empty">
-          正在加载实例详情...
+          未找到实例信息
         </div>
         <div v-else class="details-empty">
-          未找到实例信息
+          正在加载实例详情...
         </div>
       </div>
     </bk-sideslider>
