@@ -893,23 +893,40 @@ export default {
       }
       return priority
     },
+    /**
+     * 判断属性是否为系统字段（应从用户界面隐藏）
+     * 与原项目保持一致：
+     * - bk_isapi=true 的字段是 API 字段，应隐藏
+     * - bk_property_id === 'id' 是内部数据库字段，应隐藏
+     */
+    isSystemProperty(property, fixedPropertyIds = []) {
+      // 如果在固定字段列表中，则不视为系统字段
+      if (fixedPropertyIds.includes(property.bk_property_id)) {
+        return false
+      }
+      // API 字段应隐藏
+      if (property.bk_isapi) {
+        return true
+      }
+      // 内部数据库 ID 字段应隐藏
+      if (property.bk_property_id === 'id') {
+        return true
+      }
+      return false
+    },
     getDefaultHeaderProperties(properties, fixedPropertyIds = []) {
-      // 与原项目一致: 过滤 bk_isapi=true 的字段，然后按优先级排序取前6个
-      // 但保留 fixedPropertyIds 中的字段（如 bk_inst_id、bk_inst_name）
-      const filteredProperties = properties.filter(p => 
-        !p.bk_isapi || fixedPropertyIds.includes(p.bk_property_id)
-      )
+      // 与原项目一致: 过滤系统字段，然后按优先级排序取前6个
+      const filteredProperties = properties.filter(p => !this.isSystemProperty(p, fixedPropertyIds))
       return [...filteredProperties]
         .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
         .slice(0, 6)
     },
     getCustomHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
-      // 与原项目一致: 按自定义列ID查找属性，过滤 bk_isapi=true 的字段
+      // 与原项目一致: 按自定义列ID查找属性，过滤系统字段
       const columnProperties = []
       customColumns.forEach((propertyId) => {
         const columnProperty = properties.find(property => property.bk_property_id === propertyId)
-        // 过滤掉 bk_isapi=true 的字段，但保留固定字段
-        if (columnProperty && (!columnProperty.bk_isapi || fixedPropertyIds.includes(propertyId))) {
+        if (columnProperty && !this.isSystemProperty(columnProperty, fixedPropertyIds)) {
           columnProperties.push(columnProperty)
         }
       })
