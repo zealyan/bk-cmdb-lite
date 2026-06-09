@@ -199,10 +199,20 @@ export default {
         const targetInstId = isSource ? asst.bk_asst_inst_id : asst.bk_inst_id
         const instances = this.instancesMap[relatedObjId] || []
         
-        const instance = instances.find(inst => inst.id === targetInstId)
+        // 使用 bk_inst_id 作为主要匹配字段，同时兼容 id 字段
+        const instance = instances.find(inst => {
+          const instId = inst.bk_inst_id !== undefined ? inst.bk_inst_id : inst.id
+          return Number(instId) === Number(targetInstId)
+        })
         
-        if (instance && !group.allInstances.find(i => i.id === instance.id)) {
-          group.allInstances.push(instance)
+        if (instance) {
+          const existingId = instance.bk_inst_id !== undefined ? instance.bk_inst_id : instance.id
+          if (!group.allInstances.find(i => {
+            const iId = i.bk_inst_id !== undefined ? i.bk_inst_id : i.id
+            return Number(iId) === Number(existingId)
+          })) {
+            group.allInstances.push(instance)
+          }
         }
       })
       
