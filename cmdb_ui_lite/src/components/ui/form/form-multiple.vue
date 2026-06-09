@@ -165,27 +165,15 @@ export default {
     isPropertyEditable(property) {
       // 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/components/ui/form/form-multiple.vue
       const BUILTIN_UNEDITABLE_FIELDS = ['bk_updated_by', 'bk_updated_at', 'bk_created_by', 'bk_created_at']
-      const UNEDITABLE_TYPES = ['singleasst', 'multiasst', 'foreignkey', 'innerTable', 'table']
       
-      if (BUILTIN_UNEDITABLE_FIELDS.includes(property.bk_property_id)) {
-        return false
-      }
-      if (this.uneditableProperties.includes(property.bk_property_id)) {
-        return false
-      }
-      if (UNEDITABLE_TYPES.includes(property.bk_property_type)) {
-        return false
-      }
-      if (property.bk_ishidden) {
-        return false
-      }
-      if (property.bk_issystem) {
-        return false
-      }
-      if (property.bk_isapi) {
-        return false
-      }
-      return property.editable !== false && !property.isreadonly
+      const { editable } = property
+      const isapi = property.bk_isapi
+      const { isonly } = property
+      const isAsst = ['singleasst', 'multiasst'].includes(property.bk_property_type)
+      const isUneditable = this.uneditableProperties.includes(property.bk_property_id)
+      const isBuiltinUneditable = BUILTIN_UNEDITABLE_FIELDS.includes(property.bk_property_id)
+      
+      return editable && !isapi && !isonly && !isAsst && !isUneditable && !isBuiltinUneditable
     },
     isDisabledForbidden(property) {
       return !this.isPropertyEditable(property)
