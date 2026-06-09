@@ -147,12 +147,21 @@ export default {
       // 过滤掉空分组并排序
       return Object.values(groups).sort((a, b) => a.bk_group_index - b.bk_group_index)
     },
-    // 实际使用的分组：优先使用动态分组
+    // 实际使用的分组：优先使用后端返回的分组数据（已按 bk_group_index 排序）
+    // 后端 cc_PropertyGroup 表有 bk_group_index 字段控制排序
+    // 只有后端没有返回分组时才使用动态生成的分组
     effectivePropertyGroups () {
+      if (this.propertyGroups && this.propertyGroups.length > 0) {
+        return this.propertyGroups.sort((a, b) => {
+          const indexA = a.bk_group_index ?? 99
+          const indexB = b.bk_group_index ?? 99
+          return indexA - indexB
+        })
+      }
       if (this.dynamicPropertyGroups && this.dynamicPropertyGroups.length > 0) {
         return this.dynamicPropertyGroups
       }
-      return this.propertyGroups
+      return []
     },
     modelName () {
       const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)
