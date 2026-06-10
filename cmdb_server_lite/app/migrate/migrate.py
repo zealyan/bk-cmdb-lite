@@ -191,7 +191,7 @@ CLASSIFICATIONS = [
 
 # 属性分组定义
 PROPERTY_GROUPS = [
-    {"id": 1, "bk_group_id": "default", "bk_group_name": "default", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
+    {"id": 1, "bk_group_id": "default", "bk_group_name": "默认", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
     {"id": 2, "bk_group_id": "base", "bk_group_name": "基础信息", "bk_isdefault": False, "is_collapse": False, "ispre": True, "bk_group_index": 1},
 ]
 
@@ -408,6 +408,9 @@ class DatabaseMigrator:
                     bk_asst_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_asst_name VARCHAR NOT NULL,
                     bk_asst_icon VARCHAR,
+                    src_des VARCHAR DEFAULT '',
+                    dest_des VARCHAR DEFAULT '',
+                    direction VARCHAR DEFAULT 'forward',
                     ispre BOOLEAN DEFAULT false,
                     creator VARCHAR DEFAULT 'admin',
                     modifier VARCHAR DEFAULT 'admin',
@@ -847,16 +850,23 @@ class DatabaseMigrator:
         ui_project = self.workspace_root / "cmdb_ui_lite" / "src" / "assets" / "api"
 
         # 1. 先添加关联类型到 cc_AsstDes
+        # src_des: 从源→目标的描述，dest_des: 从目标→源的描述
         asst_types = [
             {
                 "bk_asst_id": "slb_to_server",
                 "bk_asst_name": "指向",
+                "src_des": "指向",
+                "dest_des": "被指向",
+                "direction": "forward",
                 "bk_supplier_account": "0",
                 "ispre": True
             },
             {
                 "bk_asst_id": "slb_to_listener",
                 "bk_asst_name": "指向",
+                "src_des": "指向",
+                "dest_des": "被指向",
+                "direction": "forward",
                 "bk_supplier_account": "0",
                 "ispre": True
             }
@@ -865,12 +875,15 @@ class DatabaseMigrator:
         for idx, asst_type in enumerate(asst_types, 1):
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_AsstDes 
-                (id, bk_asst_id, bk_asst_name, ispre, bk_supplier_account, creator, modifier)
-                VALUES (:id, :bk_asst_id, :bk_asst_name, :ispre, :bk_supplier_account, 'admin', 'admin')
+                (id, bk_asst_id, bk_asst_name, src_des, dest_des, direction, ispre, bk_supplier_account, creator, modifier)
+                VALUES (:id, :bk_asst_id, :bk_asst_name, :src_des, :dest_des, :direction, :ispre, :bk_supplier_account, 'admin', 'admin')
             """, {
                 "id": idx,
                 "bk_asst_id": asst_type["bk_asst_id"],
                 "bk_asst_name": asst_type["bk_asst_name"],
+                "src_des": asst_type["src_des"],
+                "dest_des": asst_type["dest_des"],
+                "direction": asst_type["direction"],
                 "ispre": asst_type["ispre"],
                 "bk_supplier_account": asst_type["bk_supplier_account"]
             })

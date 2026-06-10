@@ -46,17 +46,21 @@
           v-show="item.expanded"
           :data="item.displayInstances"
           :max-height="462"
-          @row-click="(row, event, column) => handleRowClick(row, event, column, item)"
         >
           <bk-table-column
-            v-for="column in item.columns"
+            v-for="(column, colIndex) in item.columns"
             :key="column.bk_property_id"
             :prop="column.bk_property_id"
             :label="column.bk_property_name"
             :show-overflow-tooltip="true"
           >
             <template #default="{ row }">
-              <span class="cell-value">{{ formatValue(row[column.bk_property_id], column, row) }}</span>
+              <span
+                v-if="colIndex === 0"
+                class="cell-value clickable"
+                @click="handleRowClick(row, $event, column, item)"
+              >{{ formatValue(row[column.bk_property_id], column, row) }}</span>
+              <span v-else>{{ formatValue(row[column.bk_property_id], column, row) }}</span>
             </template>
           </bk-table-column>
           <bk-table-column label="操作" width="100">
@@ -147,11 +151,15 @@ export default {
         if (isSource) {
           groupKey = `to_${asst.bk_asst_obj_id}`
           relatedObjId = asst.bk_asst_obj_id
-          relationTypeName = relation.bk_relation_type_name || relation.bk_obj_asst_name || asst.bk_asst_obj_id
+          // 原项目规则：作为源时使用 src_des-模型名称
+          const desc = relation.src_des || relation.bk_relation_type_name
+          relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         } else {
           groupKey = `from_${asst.bk_obj_id}`
           relatedObjId = asst.bk_obj_id
-          relationTypeName = `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
+          // 原项目规则：作为目标时使用 dest_des-模型名称
+          const desc = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
+          relationTypeName = `${desc}-${this.getModelDisplayName(this.objId)}`
         }
 
         if (!groupedMap.has(groupKey)) {
@@ -485,12 +493,21 @@ export default {
 
     :deep(.bk-table-body) {
       tr {
-        cursor: pointer;
         &:hover td {
           background-color: #f5f7fa;
         }
       }
     }
+  }
+}
+
+.cell-value.clickable {
+  cursor: pointer;
+  color: #3a84ff;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
   }
 }
 
@@ -506,9 +523,5 @@ export default {
 
 .fr {
   float: right;
-}
-
-.cell-value {
-  color: #3a84ff;
 }
 </style>

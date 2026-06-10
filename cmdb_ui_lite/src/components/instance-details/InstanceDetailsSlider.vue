@@ -27,6 +27,7 @@ import Vue from 'vue'
 import CmdbDetails from '../ui/details/CmdbDetails.vue'
 import instanceAPI from '@/api/instance'
 import modelAttributeAPI from '@/api/modelAttribute'
+import { modelAPI } from '@/api/client'
 
 export default {
   name: 'InstanceDetailsSlider',
@@ -99,19 +100,27 @@ export default {
 
     async loadProperties() {
       try {
-        const data = await modelAttributeAPI.getModelAttributes(this.objId)
+        const [attributes, groups] = await Promise.all([
+          modelAttributeAPI.getModelAttributes(this.objId),
+          modelAPI.getModelPropertyGroups(this.objId)
+        ])
 
-        if (Array.isArray(data)) {
-          this.properties = data
-        } else if (data && data.info) {
-          this.properties = data.info
-        } else if (data && data.attributes) {
-          this.properties = data.attributes
+        if (Array.isArray(attributes)) {
+          this.properties = attributes
+        } else if (attributes && attributes.info) {
+          this.properties = attributes.info
+        } else if (attributes && attributes.attributes) {
+          this.properties = attributes.attributes
+        }
+
+        if (groups && groups.groups) {
+          this.propertyGroups = groups.groups.sort((a, b) => (a.bk_group_index || 0) - (b.bk_group_index || 0))
         }
 
         console.log('[InstanceDetails] 加载属性成功:', {
           objId: this.objId,
-          propertyCount: this.properties.length
+          propertyCount: this.properties.length,
+          groupCount: this.propertyGroups.length
         })
       } catch (error) {
         console.error('[InstanceDetails] 加载属性失败:', error)

@@ -26,8 +26,13 @@ class AssociationService:
             'target_obj_name', 'bk_asst_id', 'bk_obj_asst_id', 
             'bk_obj_asst_name', 'mapping', 'on_delete', 
             'creator', 'modifier', 'create_time', 'last_time', 
-            'bk_supplier_account'
+            'bk_supplier_account', 'bk_asst_obj_id'
         ]
+        
+        # 字段别名映射（前端使用的字段名 -> 数据库实际字段名）
+        field_aliases = {
+            'bk_asst_obj_id': 'target_obj_id'  # 前端字段名 -> 数据库字段名
+        }
         
         base_sql = """
             SELECT 
@@ -41,8 +46,10 @@ class AssociationService:
             where_clauses = []
             params = {}
             for field, value in conditions.items():
-                if field in valid_fields:
-                    where_clauses.append(f"oa.{field} = :{field}")
+                # 处理字段别名
+                actual_field = field_aliases.get(field, field)
+                if actual_field in valid_fields:
+                    where_clauses.append(f"oa.{actual_field} = :{field}")
                     params[field] = value
             if where_clauses:
                 sql = base_sql + " WHERE " + " AND ".join(where_clauses)

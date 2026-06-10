@@ -1,6 +1,5 @@
 <template>
-  <div class="g-expand">
-    <bk-select class="form-enummulti-selector"
+  <bk-select class="form-enummulti-selector"
       v-model="selected"
       :clearable="allowClear"
       :searchable="true"
@@ -23,7 +22,6 @@
         :name="option.name">
       </bk-option>
     </bk-select>
-  </div>
 </template>
 
 <script>
