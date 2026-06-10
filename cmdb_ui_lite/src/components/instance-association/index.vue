@@ -60,7 +60,7 @@
                 class="cell-value clickable"
                 @click="handleRowClick(row, $event, column, item)"
               >{{ formatValue(row[column.bk_property_id], column, row) }}</span>
-              <span v-else class="cell-value">{{ formatValue(row[column.bk_property_id], column, row) }}</span>
+              <span v-else>{{ formatValue(row[column.bk_property_id], column, row) }}</span>
             </template>
           </bk-table-column>
           <bk-table-column label="操作" width="100">
@@ -495,10 +495,6 @@ export default {
       }
     }
   }
-}
-
-.cell-value {
-  color: #3a84ff;
 }
 
 .cell-value.clickable {
