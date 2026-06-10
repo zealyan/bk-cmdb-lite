@@ -149,7 +149,13 @@ export default {
       }
 
       this.properties.forEach(property => {
-        const groupId = property.bk_property_group_id || 'default'
+        // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
+        // 参考: /workspace/bk-cmdb/src/ui/src/components/model-instance/property.vue
+        if (property.bk_isapi || property.bk_property_id === 'id') {
+          return
+        }
+        
+        const groupId = property.bk_property_group_id || property.bk_property_group || 'default'
         if (!groups[groupId]) {
           groups[groupId] = []
         }
