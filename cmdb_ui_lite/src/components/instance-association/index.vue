@@ -46,17 +46,21 @@
           v-show="item.expanded"
           :data="item.displayInstances"
           :max-height="462"
-          @row-click="(row, event, column) => handleRowClick(row, event, column, item)"
         >
           <bk-table-column
-            v-for="column in item.columns"
+            v-for="(column, colIndex) in item.columns"
             :key="column.bk_property_id"
             :prop="column.bk_property_id"
             :label="column.bk_property_name"
             :show-overflow-tooltip="true"
           >
             <template #default="{ row }">
-              <span class="cell-value">{{ formatValue(row[column.bk_property_id], column, row) }}</span>
+              <span
+                v-if="colIndex === 0"
+                class="cell-value clickable"
+                @click="handleRowClick(row, $event, column, item)"
+              >{{ formatValue(row[column.bk_property_id], column, row) }}</span>
+              <span v-else class="cell-value">{{ formatValue(row[column.bk_property_id], column, row) }}</span>
             </template>
           </bk-table-column>
           <bk-table-column label="操作" width="100">
@@ -485,12 +489,25 @@ export default {
 
     :deep(.bk-table-body) {
       tr {
-        cursor: pointer;
         &:hover td {
           background-color: #f5f7fa;
         }
       }
     }
+  }
+}
+
+.cell-value {
+  color: #3a84ff;
+}
+
+.cell-value.clickable {
+  cursor: pointer;
+  color: #3a84ff;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
   }
 }
 
@@ -506,9 +523,5 @@ export default {
 
 .fr {
   float: right;
-}
-
-.cell-value {
-  color: #3a84ff;
 }
 </style>
