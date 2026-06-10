@@ -5,7 +5,7 @@
       <bk-tab-panel name="property" label="属性">
           <div class="info-card">
             <div class="property-groups">
-              <div v-for="group in propertyGroups" :key="group.bk_group_id" class="property-group">
+              <div v-for="group in effectivePropertyGroups" :key="group.bk_group_id" class="property-group">
                 <h3 class="group-title">{{ group.bk_group_name }}</h3>
                 <div class="info-grid">
                   <div
@@ -124,6 +124,44 @@ export default {
         p.bk_property_id !== 'id' &&
         !p.bk_isapi
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
+    },
+    // 从属性数据动态生成分组
+    dynamicPropertyGroups () {
+      const groupNameMap = {
+        'base': '基本信息',
+        'default': '默认',
+        'extend': '扩展信息'
+      }
+      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
+      const groups = {}
+      this.displayProperties.forEach(prop => {
+        const groupId = prop.bk_property_group || 'default'
+        if (!groups[groupId]) {
+          groups[groupId] = {
+            bk_group_id: groupId,
+            bk_group_name: groupNameMap[groupId] || groupId,
+            bk_group_index: groupOrder[groupId] !== undefined ? groupOrder[groupId] : 99
+          }
+        }
+      })
+      // 过滤掉空分组并排序
+      return Object.values(groups).sort((a, b) => a.bk_group_index - b.bk_group_index)
+    },
+    // 实际使用的分组：优先使用后端返回的分组数据（已按 bk_group_index 排序）
+    // 后端 cc_PropertyGroup 表有 bk_group_index 字段控制排序
+    // 只有后端没有返回分组时才使用动态生成的分组
+    effectivePropertyGroups () {
+      if (this.propertyGroups && this.propertyGroups.length > 0) {
+        return this.propertyGroups.sort((a, b) => {
+          const indexA = a.bk_group_index ?? 99
+          const indexB = b.bk_group_index ?? 99
+          return indexA - indexB
+        })
+      }
+      if (this.dynamicPropertyGroups && this.dynamicPropertyGroups.length > 0) {
+        return this.dynamicPropertyGroups
+      }
+      return []
     },
     modelName () {
       const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)

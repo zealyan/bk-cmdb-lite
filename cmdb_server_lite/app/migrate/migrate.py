@@ -108,7 +108,7 @@ SYSTEM_PROPERTIES = [
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": False,
+        "bk_isapi": True,   # 内部数据库字段，与原项目保持一致：设置为API字段，在表单和搜索中过滤
         "bk_issystem": True,
         "ispre": True,
         "bk_property_index": -1,
@@ -144,7 +144,7 @@ SYSTEM_PROPERTIES = [
         "editable": True,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": True,
+        "bk_isapi": False,
         "bk_issystem": True,
         "ispre": True,
         "bk_property_index": 1,

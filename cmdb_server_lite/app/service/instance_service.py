@@ -292,13 +292,11 @@ class InstanceService:
         if not instance:
             return instance
 
-        # 与原项目保持一致: 过滤掉数据库内部字段，只返回 bk_inst_id
-        # 原项目 MongoDB 中 _id 是 ObjectID，id 是内部主键，都不应该返回给前端
-        # API 应该只返回 bk_inst_id（或内置模型的特定 ID 字段）
+        # 保留 id 字段：数据库内部主键 id 用于关联匹配
+        # 前端 instance-association 组件使用 inst.id 来匹配关联记录中的 bk_inst_id/bk_asst_inst_id
+        # 同时也保留 bk_inst_id 作为蓝鲸标准实例ID字段
         if '_id' in instance:
             del instance['_id']
-        if 'id' in instance:
-            del instance['id']
 
         # 获取模型的所有属性，确定哪些是需要解析JSON的字段
         attributes = ModelService.get_model_attributes(model_id)
