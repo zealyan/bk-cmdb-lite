@@ -102,7 +102,7 @@ export default {
       try {
         const [attributes, groups] = await Promise.all([
           modelAttributeAPI.getModelAttributes(this.objId),
-          modelAPI.getPropertyGroups(this.objId)
+          modelAPI.getModelPropertyGroups(this.objId)
         ])
 
         if (Array.isArray(attributes)) {
