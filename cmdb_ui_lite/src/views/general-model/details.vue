@@ -42,9 +42,6 @@
             <div v-if="!isDataReady" class="empty-state">
               <span>数据加载中...</span>
             </div>
-            <div v-else-if="!hasAssociations" class="empty-state">
-              <span>暂无关联关系</span>
-            </div>
             <instance-association
               v-else
               :obj-id="objId"
