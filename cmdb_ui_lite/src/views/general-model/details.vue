@@ -125,23 +125,20 @@ export default {
         !p.bk_isapi
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
     },
-    // 从属性数据动态生成分组
+    // 从属性数据动态生成分组（仅作为回退方案）
+    // 与原项目一致：名称直接使用 groupId，索引根据在属性列表中出现的顺序
     dynamicPropertyGroups () {
-      const groupNameMap = {
-        'base': '基本信息',
-        'default': '默认',
-        'extend': '扩展信息'
-      }
-      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
       const groups = {}
+      let orderIndex = 0
       this.displayProperties.forEach(prop => {
         const groupId = prop.bk_property_group || 'default'
         if (!groups[groupId]) {
           groups[groupId] = {
             bk_group_id: groupId,
-            bk_group_name: groupNameMap[groupId] || groupId,
-            bk_group_index: groupOrder[groupId] !== undefined ? groupOrder[groupId] : 99
+            bk_group_name: groupId,
+            bk_group_index: orderIndex
           }
+          orderIndex += 1
         }
       })
       // 过滤掉空分组并排序

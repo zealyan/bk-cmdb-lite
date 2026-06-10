@@ -191,7 +191,7 @@ CLASSIFICATIONS = [
 
 # 属性分组定义
 PROPERTY_GROUPS = [
-    {"id": 1, "bk_group_id": "default", "bk_group_name": "default", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
+    {"id": 1, "bk_group_id": "default", "bk_group_name": "默认", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
     {"id": 2, "bk_group_id": "base", "bk_group_name": "基础信息", "bk_isdefault": False, "is_collapse": False, "ispre": True, "bk_group_index": 1},
 ]
 
