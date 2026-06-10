@@ -448,6 +448,7 @@ class InstanceService:
         instance_id = generate_id()
         data['id'] = instance_id
         data['_id'] = instance_id
+        data['bk_inst_id'] = instance_id  # 与蓝鲸原项目一致，使用相同的ID作为标准实例ID
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
         data.setdefault('last_time', now)
