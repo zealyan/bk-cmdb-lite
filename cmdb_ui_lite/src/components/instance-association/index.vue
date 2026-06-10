@@ -151,13 +151,15 @@ export default {
         if (isSource) {
           groupKey = `to_${asst.bk_asst_obj_id}`
           relatedObjId = asst.bk_asst_obj_id
-          // 原项目规则：作为源时使用 src_des
-          relationTypeName = relation.src_des || relation.bk_relation_type_name || relation.bk_obj_asst_name || asst.bk_asst_obj_id
+          // 原项目规则：作为源时使用 src_des-模型名称
+          const desc = relation.src_des || relation.bk_relation_type_name
+          relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         } else {
           groupKey = `from_${asst.bk_obj_id}`
           relatedObjId = asst.bk_obj_id
-          // 原项目规则：作为目标时使用 dest_des
-          relationTypeName = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
+          // 原项目规则：作为目标时使用 dest_des-模型名称
+          const desc = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
+          relationTypeName = `${desc}-${this.getModelDisplayName(this.objId)}`
         }
 
         if (!groupedMap.has(groupKey)) {
