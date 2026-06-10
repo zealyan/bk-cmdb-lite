@@ -163,6 +163,8 @@ export default {
       })
 
       Object.keys(groups).forEach(groupId => {
+        // 按 bk_property_index 排序属性，与原项目保持一致
+        groups[groupId].sort((a, b) => (a.bk_property_index || 0) - (b.bk_property_index || 0))
         result.push(groups[groupId])
       })
 
