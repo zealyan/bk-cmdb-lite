@@ -138,7 +138,7 @@
       :pagination="table.pagination"
       :sort="tableSort"
       :selected-data.sync="selectedIds"
-      :row-key="row => row.id"
+      :row-key="row => row.bk_inst_id"
       @selection-change="handleSelectionChange"
       @page-change="handlePageChange"
       @page-limit-change="handleLimitChange"
@@ -1627,10 +1627,10 @@ export default {
       }
     },
     handleSelectionChange(selection) {
-      this.selectedIds = selection.map(row => row.id)
+      this.selectedIds = selection.map(row => row.bk_inst_id)
     },
     handleDeleteSingle(row) {
-      this.handleDelete([row.id])
+      this.handleDelete([row.bk_inst_id])
     },
     handleBatchDelete() {
       if (this.selectedIds.length === 0) {

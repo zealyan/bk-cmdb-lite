@@ -13,9 +13,9 @@ class InstanceService:
     
     @staticmethod
     def get_instance(model_id, instance_id):
-        """获取单个实例"""
+        """获取单个实例（使用 bk_inst_id 作为标准实例ID，与蓝鲸原项目保持一致）"""
         table_name = InstanceService._get_table_name(model_id)
-        sql = f'SELECT * FROM "{table_name}" WHERE id = :instance_id'
+        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id = :instance_id'
         instance = query_one(sql, {'instance_id': instance_id})
         if instance:
             instance = InstanceService._parse_json_fields(instance, model_id)
@@ -511,7 +511,7 @@ class InstanceService:
         if not update_fields:
             return InstanceService.get_instance(model_id, instance_id)
         
-        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE id = :instance_id'
+        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id = :instance_id'
         execute(sql, params)
         
         return InstanceService.get_instance(model_id, instance_id)
@@ -561,7 +561,7 @@ class InstanceService:
             id_params.append(f':{param_name}')
             params[param_name] = inst_id
         
-        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE id IN ({",".join(id_params)})'
+        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id IN ({",".join(id_params)})'
         execute(sql, params)
         
         return len(ids)
@@ -587,7 +587,7 @@ class InstanceService:
         
         # 删除实例表中的记录
         id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
-        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE id IN ({id_placeholders})'
+        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE bk_inst_id IN ({id_placeholders})'
         execute(delete_instance_sql, id_params)
         
         return len(ids)
