@@ -21,11 +21,9 @@ $PROJECT_ROOT/                          # 项目根目录
 ├── bk-cmdb/              # 原项目（蓝鲸 CMDB 源码）
 │   ├── src/             # 源代码
 │   │   ├── common/      # 公共模块
-│   │   ├── ui/          # 原项目 UI
-│   │   └── .../
-│   └── docs/            # 原项目文档
-├── cmdb_ui_lite/         # 前端子项目 (Vue 2 + bk-magic-vue)
-└── cmdb_server_lite/    # 后端子项目 (Python + Flask + SQLAlchemy)
+│   │   └── ui/          # 原项目 UI
+├── cmdb_ui_lite/         # 前端子项目 (Vue 2 + bk-magic-vue + Vue CLI)
+└── cmdb_server_lite/    # 后端子项目 (Python 3.14.4 + Flask 2.3.3 + SQLAlchemy)
 ```
 
 ---
@@ -36,18 +34,20 @@ $PROJECT_ROOT/                          # 项目根目录
 
 | 项目 | 说明 |
 |------|------|
-| 技术栈 | Vue 2 + bk-magic-vue + Vue Router + Vuex + Axios |
-| 构建工具 | Vue CLI |
-| 端口 | 3000 (预览)、开发服务器动态端口 |
+| 技术栈 | Vue 2.7.0 + bk-magic-vue 2.5.9-beta.39 + Vue Router 3.0.1 + Vuex 3.0.1 + Axios 1.6.8 |
+| 构建工具 | Vue CLI 5.x (@vue/cli-service ~5.0.0) |
+| 端口 | 3000 (预览 + API 代理)、8080 (Vue CLI dev server) |
+| E2E 测试 | Playwright 1.59.1 |
 
 ### 后端项目 (cmdb_server_lite)
 
 | 项目 | 说明 |
 |------|------|
-| 技术栈 | Python 3.9.20 + Flask 2.3.3 + SQLAlchemy 2.0.35 |
-| 数据库 | SQLite (开发) / PostgreSQL (生产) / MySQL (可选) |
+| 技术栈 | Python 3.14.4 + Flask 2.3.3 + SQLAlchemy >=2.0.35 |
+| 数据库 | SQLite (开发) / PostgreSQL (生产) / MySQL (可选) / DuckDB (兼容) |
+| 方言处理 | sqlglot 19.8.0 |
 | 端口 | 5000 |
-| API 前缀 | `/api/v1` |
+| API 前缀 | `/api/v1`（主要）、无前缀（旧版兼容路由 `/find`、`/create`、`/delete`）、`/api`（用户自定义配置） |
 | 健康检查 | `http://localhost:5000/api/v1/common/health` |
 
 ---
@@ -58,26 +58,33 @@ $PROJECT_ROOT/                          # 项目根目录
 
 | 组件 | 技术 | 版本 | 说明 |
 |------|------|------|------|
-| **Python** | Python | 3.9.20 | 固定版本（见 .python-version） |
-| **Web框架** | Flask | 2.3.3 | 轻量级 Web 框架 |
-| **数据库ORM** | SQLAlchemy | >=2.0.35 | 仅使用连接池，不使用 ORM Model |
+| **Python** | Python | 3.14.4（`.python-version` 固定） | Python 版本 |
+| **Web 框架** | Flask | 2.3.3 | 轻量级 Web 框架 |
+| **数据库连接池** | SQLAlchemy | >=2.0.35 | 仅使用连接池与原生 SQL 执行，**禁用 ORM Model** |
 | **方言转换** | sqlglot | 19.8.0 | 多数据库 SQL 方言处理 |
-| **环境变量** | python-dotenv | 1.0.0 | 环境变量管理 |
+| **环境变量** | python-dotenv | 1.0.0 | `.env` 文件加载 |
 | **日志** | coloredlogs | 15.0.1 | 彩色日志输出 |
-| **PostgreSQL驱动** | psycopg2-binary | 2.9.7 | PostgreSQL 数据库驱动 |
-| **MySQL驱动** | pymysql | 1.1.0 | MySQL 数据库驱动 |
-| **测试** | pytest | 7.4.2 | Python 单元测试框架 |
+| **PostgreSQL 驱动** | psycopg2-binary | 2.9.7 | PostgreSQL 数据库驱动 |
+| **MySQL 驱动** | pymysql | 1.1.0 | MySQL 数据库驱动 |
+| **SQLite** | 标准库 | 3.14+ | Python 内置 sqlite3 模块 |
+| **CORS** | Flask-Cors | 4.0.0 | 跨域支持 |
+| **单元测试** | pytest | 7.4.2 | Python 单元测试框架 |
+| **Flask 测试** | pytest-flask | 1.2.0 | Flask 测试插件 |
 
 ### 3.2 前端技术栈
 
 | 组件 | 技术 | 版本 |
 |------|------|------|
-| **框架** | Vue | 2.x |
-| **UI库** | bk-magic-vue | 最新 |
-| **路由** | Vue Router | 3.x |
-| **状态管理** | Vuex | 3.x |
-| **HTTP客户端** | Axios | 最新 |
-| **构建工具** | Vue CLI | 5.x |
+| **框架** | Vue | 2.7.0 |
+| **UI 库** | bk-magic-vue | 2.5.9-beta.39 |
+| **路由** | Vue Router | 3.0.1 |
+| **状态管理** | Vuex | 3.0.1 |
+| **HTTP 客户端** | Axios | 1.6.8 |
+| **构建工具** | @vue/cli-service | ~5.0.0 |
+| **E2E 测试** | Playwright | 1.59.1 |
+| **样式** | Sass/SCSS | 1.77.6 |
+| **拖拽** | vuedraggable | 2.24.3 |
+| **移动端调试** | vconsole | 3.15.1 |
 
 ---
 
@@ -87,53 +94,59 @@ $PROJECT_ROOT/                          # 项目根目录
 
 ```
 cmdb_server_lite/
-├── app/                        # 应用主目录
-│   ├── __init__.py            # Flask 应用工厂
-│   ├── config/                 # 配置目录
+├── app/                         # 应用主目录
+│   ├── __init__.py             # Flask 应用工厂 create_app()
+│   ├── api/                     # API 路由
+│   │   └── v1/                 # v1 版本 API
+│   │       ├── __init__.py     # register_v1_routes()
+│   │       ├── common.py       # 健康检查 / 统计
+│   │       ├── classification.py # 分类
+│   │       ├── model.py        # 模型 / 实例
+│   │       ├── instance.py     # 实例详情 / 关联
+│   │       ├── association.py  # 旧版兼容（/find、/create、/delete）
+│   │       ├── relation.py     # 对象关联
+│   │       └── user.py         # 用户自定义（/api/usercustom/...）
+│   ├── config/                  # 配置
+│   │   ├── settings.py         # BaseConfig + DevelopmentConfig/TestingConfig/ProductionConfig
+│   │   ├── dev.py / prod.py / test.py
+│   ├── db/                      # 数据库层
+│   │   ├── engine.py           # DatabaseEngine（SQLAlchemy 引擎，仅连接池）
+│   │   ├── executor.py         # 原生 SQL 执行器
+│   │   ├── dialect.py          # sqlglot 方言转换
+│   │   └── sql_loader.py       # .sql 文件加载器
+│   ├── sql/                     # SQL 语句目录
+│   │   ├── association/        # 关联相关 SQL
+│   │   ├── classification/     # 分类相关 SQL
+│   │   ├── common/             # 通用 SQL
+│   │   ├── instance/           # 实例相关 SQL
+│   │   ├── model/              # 模型相关 SQL
+│   │   ├── relation/           # 对象关联 SQL
+│   │   └── user/               # 用户自定义 SQL
+│   ├── service/                 # 业务逻辑
+│   │   ├── association_service.py
+│   │   ├── classification_service.py
+│   │   ├── instance_service.py
+│   │   ├── model_service.py
+│   │   ├── relation_service.py
+│   │   ├── statistics_service.py
+│   │   └── user_service.py
+│   ├── migrate/                 # 数据库迁移（唯一入口）
 │   │   ├── __init__.py
-│   │   └── settings.py        # 配置文件
-│   ├── db/                     # 数据库目录
-│   │   ├── __init__.py
-│   │   ├── engine.py          # SQLAlchemy 引擎管理
-│   │   ├── executor.py        # 原生 SQL 执行器
-│   │   └── sql/               # SQL 语句目录
-│   │       ├── model/         # 模型相关 SQL
-│   │       ├── instance/      # 实例相关 SQL
-│   │       ├── association/   # 关联相关 SQL
-│   │       ├── classification/ # 分类相关 SQL
-│   │       └── user/          # 用户相关 SQL
-│   ├── api/                    # API 目录
-│   │   └── v1/                # v1 版本 API
-│   │       ├── __init__.py    # 路由注册
-│   │       ├── common.py      # 通用 API
-│   │       ├── classification.py # 分类 API
-│   │       ├── model.py       # 模型 API
-│   │       ├── instance.py    # 实例 API
-│   │       ├── association.py # 关联 API
-│   │       ├── relation.py    # 关系 API
-│   │       └── user.py        # 用户 API
-│   ├── service/               # 业务逻辑目录
-│   │   ├── __init__.py
-│   │   ├── model_service.py   # 模型服务
-│   │   ├── instance_service.py # 实例服务
-│   │   ├── association_service.py # 关联服务
-│   │   └── user_service.py    # 用户服务
-│   ├── migrate/               # 迁移工具目录
-│   │   ├── __init__.py
-│   │   └── migrate.py        # 数据库迁移工具
-│   ├── middlewares/           # 中间件目录
-│   │   └── cors.py           # CORS 中间件
-│   └── utils/                 # 工具目录
-│       ├── logger.py          # 日志工具
-│       └── exceptions.py      # 自定义异常
-├── .venv/                     # Python 虚拟环境
-├── .env                       # 环境变量文件
-├── .env.prod                  # 生产环境变量
-├── .env.test                  # 测试环境变量
-├── .python-version            # Python 版本文件
-├── run.py                     # 启动入口（重要！）
-├── requirements.txt           # Python 依赖
-└── cmdb_dev.db               # 开发数据库文件
+│   │   └── migrate.py          # 建表 + 数据迁移 + 关联初始化
+│   ├── middlewares/             # 中间件
+│   │   ├── cors.py
+│   │   └── request_mw.py
+│   ├── utils/                   # 工具
+│   │   ├── logger.py
+│   │   ├── exceptions.py
+│   │   └── tools.py
+│   └── logs/                    # 运行日志（app.log）
+├── tests/                       # 单元测试
+├── .env / .env.prod / .env.test # 环境变量
+├── .python-version              # 3.14.4（关键！必须匹配）
+├── requirements.txt             # Python 依赖清单
+├── run.py                       # 后端启动入口（重要！不是 main.py）
+└── cmdb_dev.db                  # 开发数据库文件（运行 migrate 后生成）
 ```
 
 ### 4.2 前端项目结构 ($CMDB_UI_LITE)
@@ -141,32 +154,53 @@ cmdb_server_lite/
 ```
 cmdb_ui_lite/
 ├── src/
-│   ├── api/                # API 客户端
-│   │   ├── client.js       # API 统一入口
-│   │   ├── instance.js     # 实例相关 API
-│   │   ├── modelAttribute.js # 模型属性 API
-│   │   └── association.js  # 关联关系 API
-│   ├── assets/             # 静态资源
-│   │   ├── json/           # Mock 数据
-│   │   └── scss/           # 样式文件
-│   ├── components/         # 公共组件
-│   │   ├── filter/         # 筛选组件
-│   │   ├── property/       # 属性组件
-│   │   └── search/         # 搜索组件
-│   ├── views/              # 页面视图
-│   │   ├── business/       # 业务视图
-│   │   ├── general-model/  # 通用模型视图
-│   │   ├── host/           # 主机视图
-│   │   └── resource/       # 资源视图
-│   ├── router/             # 路由配置
-│   └── store/              # Vuex 状态
-├── tests/                  # 测试文件
-│   └── e2e/               # E2E 测试
-│       ├── specs/         # 测试用例
-│       └── page-objects/  # 页面对象
-├── dist/                   # 构建输出
-├── package.json
-└── server.js              # API 代理服务器
+│   ├── api/                     # API 客户端
+│   │   ├── client.js           # 统一入口（modelAPI、instanceAPI 等）
+│   │   ├── instance.js
+│   │   ├── modelAttribute.js
+│   │   ├── association.js
+│   │   └── user-custom.js
+│   ├── assets/                  # 静态资源
+│   │   ├── api/models/         # Mock 数据（模型/实例/关联 JSON）
+│   │   ├── icon/               # 图标资源
+│   │   ├── images/             # 图片资源
+│   │   ├── json/               # 配置 JSON
+│   │   └── scss/               # 样式文件
+│   ├── components/              # 公共组件
+│   │   ├── columns-config/     # 列配置
+│   │   ├── condition-picker/   # 条件选择器
+│   │   ├── filter/             # 筛选组件
+│   │   ├── filter-tag/         # 筛选标签
+│   │   ├── instance/           # 实例组件（details）
+│   │   ├── instance-association/ # 实例关联
+│   │   ├── instance-details/   # 实例详情侧滑
+│   │   ├── layout/             # 布局（header）
+│   │   ├── property/           # 属性组件
+│   │   ├── search/             # 搜索组件（按类型：int/bool/enum 等）
+│   │   └── ui/                 # 通用 UI（collapse、details、form）
+│   ├── views/                   # 页面视图
+│   │   ├── business/           # 业务列表 / 拓扑
+│   │   ├── general-model/      # 通用模型列表 / 详情
+│   │   ├── host/               # 主机视图
+│   │   └── resource/           # 资源模型入口
+│   ├── router/                  # Vue Router
+│   │   └── index.js
+│   ├── store/                   # Vuex 状态
+│   │   ├── modules/
+│   │   ├── filter-store.js
+│   │   └── index.js
+│   ├── utils/                   # 工具函数
+│   │   ├── query-builder.js
+│   │   ├── query-operator.js
+│   │   └── router-query.js     # 重要！RouterQuery 状态管理
+│   ├── App.vue
+│   └── main.js
+├── tests/                       # Playwright E2E 测试
+├── dist/                        # 构建输出（npm run build 后生成）
+├── public/                      # 静态模板
+├── package.json                 # Node.js 依赖与脚本
+├── vue.config.js                # Vue CLI 配置（devServer port=8080, proxy -> 5000）
+└── server.js                    # 前端预览 + API 代理（端口 3000）
 ```
 
 ---
@@ -190,32 +224,32 @@ cmdb_ui_lite/
 ### 2. 开发实现
 
 **前端开发规范**:
-- 使用 Vue 2 语法
-- 组件命名: PascalCase
+- 使用 Vue 2.7.0 语法（Options API）
+- 组件命名: PascalCase（`.vue` 文件名）
 - 方法命名: camelCase
 - CSS 类名: kebab-case
+- `src/utils/router-query.js` 提供 RouterQuery，用于 URL 参数与组件状态同步
 
 **后端开发规范**:
-- 使用 Python 3.9.20 + Flask 2.3.3
-- 数据库操作使用 SQLAlchemy 2.0+ 连接池
-- 原生 SQL 执行，不使用 ORM Model
-- RESTful API 设计
-- 返回 JSON 格式数据
+- 使用 Python 3.14.4 + Flask 2.3.3（Werkzeug 2.3.7）
+- 数据库操作通过 `app/db/executor.py`（原生 SQL + SQLAlchemy 连接池），**禁用 ORM Model**
+- 新建 SQL 语句放在 `app/sql/{模块}/` 下
+- 业务逻辑放入 `app/service/*.py`
+- RESTful API 设计，v1 版本放在 `app/api/v1/`，路由统一用 Blueprint
+- 返回 JSON 格式数据，使用 `APIException` 统一错误处理
 
 **代码注释规范**:
-所有代码必须添加注释，遵循以下规则：
-
-1. **函数和方法注释** - 必须标注输入参数和输出
-2. **条件判断注释** - 标注条件逻辑和数据变化
-3. **循环处理注释** - 标注数据转换过程
-4. **API端点注释** - 标注请求和响应格式
+- 函数和方法必须标注输入参数和返回值
+- 条件判断旁标注条件逻辑与数据变化
+- 复杂循环处标注数据转换过程
+- API endpoint 标注请求/响应格式
 
 **API 调用规范**:
 ```javascript
-// 前端 API 调用
+// 前端 API 调用统一入口
 import { modelAPI } from '@/api/client'
 
-// 获取模型实例列表
+// 获取模型实例列表（带分页和搜索）
 const result = await modelAPI.listInstances('bk_slb', {
   page: 1,
   page_size: 20,
@@ -230,14 +264,15 @@ const result = await modelAPI.listInstances('bk_slb', {
 **前端构建**:
 ```bash
 cd $CMDB_UI_LITE
-npm run build
+npm run build   # 输出到 dist/
 ```
 
 **后端验证**:
 ```bash
 cd $CMDB_SERVER_LITE
 # 检查依赖安装
-.venv/bin/pip list
+pip list | grep -i flask
+python -c "from app import create_app; print('OK')"
 ```
 
 ### 4. 服务启动
@@ -245,24 +280,28 @@ cd $CMDB_SERVER_LITE
 **启动后端**:
 ```bash
 cd $CMDB_SERVER_LITE
-source .venv/bin/activate
+# 迁移（首次运行或表结构变更时必跑）
+python3 -m app.migrate.migrate
+# 启动
 python3 run.py
 # 运行在 http://localhost:5000
 # 健康检查: http://localhost:5000/api/v1/common/health
 ```
 
-**启动前端开发服务器**:
+**启动前端开发服务器**（带 API 代理到后端 5000）:
 ```bash
 cd $CMDB_UI_LITE
 npm run dev
+# 运行在 http://localhost:8080
+# 代理规则: /api、/health、/find、/create、/delete -> http://localhost:5000
 ```
 
-**启动前端预览（SOLO Dev 环境）**:
+**启动前端预览（SOLO Dev 环境）**（重要！必须先构建）:
 ```bash
 cd $CMDB_UI_LITE
-npm run build
+npm run build     # 必须先构建到 dist/
 node server.js
-# 端口: 3000 (带 API 代理)
+# 端口: 3000（提供 dist/ 静态文件 + API 代理到 http://localhost:5000）
 ```
 
 ### 5. Web 智能体测试
@@ -274,14 +313,14 @@ node server.js
 ```bash
 cd $CMDB_UI_LITE
 
-# 1. 确保服务运行
+# 1. 确保服务运行（后端 5000 和前端 3000 都要跑起来）
 curl -s http://localhost:5000/api/v1/common/health
 curl -s http://localhost:3000/ -o /dev/null -w "%{http_code}"
 
 # 2. 使用本地 Playwright 执行测试
 ./node_modules/.bin/playwright test tests/demo.spec.js
 
-# 3. UI 模式运行
+# 3. UI 模式运行（可视化调试）
 ./node_modules/.bin/playwright test --ui
 ```
 
@@ -289,17 +328,15 @@ curl -s http://localhost:3000/ -o /dev/null -w "%{http_code}"
 
 ## 六、验收交付标准
 
-### 每次开发任务完成后必须完成以下步骤
-
-| 序号 | 步骤 | 前端命令 | 后端命令 | 说明 |
-|------|------|----------|----------|------|
-| 1 | 后端构建 | - | `.venv/bin/pip install -r requirements.txt` | 依赖安装验证 |
-| 2 | 数据库迁移 | - | `python3 -m app.migrate.migrate` | 数据迁移验证 |
-| 3 | 前端构建 | `npm run build` | - | 确保代码无编译错误 |
-| 4 | 后端启动 | - | `.venv/bin/python3 run.py` | API 服务运行 |
-| 5 | 前端预览 | `node server.js` | - | 预览服务运行 |
-| 6 | SOLO 预览 | 使用 `OpenPreview` | - | 报告实际预览地址给用户 |
-| 7 | 用户验收 | 用户确认功能 | - | 验证功能交互 |
+| 序号 | 步骤 | 命令 | 说明 |
+|------|------|------|------|
+| 1 | 后端依赖安装 | `cd $CMDB_SERVER_LITE && pip install -r requirements.txt` | 验证依赖安装 |
+| 2 | 数据库迁移 | `cd $CMDB_SERVER_LITE && python3 -m app.migrate.migrate` | 建表 + 初始化数据（包括 cc_AsstDes 标准值 default/belong/connect/group/run） |
+| 3 | 前端构建 | `cd $CMDB_UI_LITE && npm run build` | 确保代码无编译错误，输出到 dist/ |
+| 4 | 后端启动 | `cd $CMDB_SERVER_LITE && python3 run.py` | API 服务运行在 5000 |
+| 5 | 前端预览 | `cd $CMDB_UI_LITE && node server.js` | 预览服务 + API 代理在 3000 |
+| 6 | SOLO 预览 | `OpenPreview` 工具 | 实际预览地址通常是 http://localhost:3000 |
+| 7 | 用户验收 | 用户确认功能 | 验证功能交互 |
 
 ---
 
@@ -309,35 +346,32 @@ curl -s http://localhost:3000/ -o /dev/null -w "%{http_code}"
 
 后端使用 SQLAlchemy + sqlglot 进行数据库迁移：
 
-- **迁移入口**：`python3 -m app.migrate.migrate`
+- **唯一迁移入口**：`python3 -m app.migrate.migrate`（脚本路径：`app/migrate/migrate.py`）
 - **功能**：
   - 创建核心表（cc_ObjDes、cc_ObjAttDes、cc_AsstDes、cc_ObjAsst、cc_InstAsst_0_pub）
-  - 迁移模型数据
-  - 迁移属性数据（自动处理 option 字段序列化）
-  - 创建实例表
-  - 迁移实例数据
-  - 迁移关联关系数据
+  - 迁移模型、属性、实例数据
+  - 初始化标准关联类型（cc_AsstDes: default / belong / connect / group / run）
+  - 初始化对象关联（bk_obj_asst_id 格式：`{源模型ID}_{关联类型ID}_{目标模型ID}`）
+  - 迁移实例关联数据
 
 ### 7.2 迁移命令
 
 ```bash
 cd $CMDB_SERVER_LITE
 
-# 方法1: 使用 Python 模块方式
-.venv/bin/python3 -m app.migrate.migrate
+# 标准迁移方式（推荐）
+python3 -m app.migrate.migrate
 
-# 方法2: 直接运行迁移脚本
-.venv/bin/python3 app/migrate/migrate.py
-
-# 方法3: 单独迁移关联关系
-.venv/bin/python3 migrate_associations.py
+# 清空重建（数据变更后，推荐先删库）
+rm cmdb_dev.db
+python3 -m app.migrate.migrate
 ```
 
 ### 7.3 数据库配置
 
 **开发环境**（默认）：
 ```bash
-FLASK_ENV=development  # 或不设置
+FLASK_ENV=development   # 或不设置，默认 development
 DATABASE_TYPE=sqlite
 DATABASE_NAME=cmdb_dev.db
 ```
@@ -357,13 +391,19 @@ DATABASE_PASSWORD=your_password
 
 ## 八、API 端点
 
-### 8.1 API 版本
+### 8.1 API 路由注册结构
 
-| 版本 | 前缀 | 说明 |
-|------|------|------|
-| v1 | `/api/v1` | 当前版本 |
+| Blueprint | url_prefix | 路径模式 | 说明 |
+|-----------|-----------|---------|------|
+| `common_bp` | `/api/v1/common` | `/api/v1/common/*` | 健康检查、统计信息 |
+| `classification_bp` | `/api/v1/classifications` | `/api/v1/classifications/*` | 分类 |
+| `model_bp` | `/api/v1/models` | `/api/v1/models/*` | 模型列表 / 详情 / 属性 |
+| `instance_bp` | `/api/v1/instances` | `/api/v1/instances/*` | 实例关联 / 关联实例 |
+| `relation_bp` | `/api/v1/relations` | `/api/v1/relations/*` | 对象关联列表 |
+| `association_bp` | 无 | `/find/*`, `/create/*`, `/delete/*` | 旧版兼容路由 |
+| `user_bp` | 无 | `/api/usercustom/*` | 用户自定义列配置 |
 
-### 8.2 API 端点列表
+### 8.2 主要 API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -379,9 +419,18 @@ DATABASE_PASSWORD=your_password
 | GET | `/api/v1/models/{model_id}/instances/{id}` | 实例详情 |
 | GET | `/api/v1/instances/{id}/associations` | 实例关联关系 |
 | GET | `/api/v1/instances/{id}/related` | 关联实例 |
-| GET | `/api/v1/relations` | 关联关系列表 |
-| GET | `/api/usercustom/model/{model_id}` | 用户自定义配置 |
-| POST | `/api/usercustom/model/{model_id}` | 保存用户自定义配置 |
+| GET | `/api/v1/relations` | 对象关联关系列表 |
+| POST | `/find/{obj_id}` | 查询模型实例（旧版兼容） |
+| POST | `/find/associationtype` | 查询关联类型 |
+| POST | `/find/objectassociation` | 查询对象关联 |
+| POST | `/find/instassociation` | 查询实例关联 |
+| POST | `/create/instassociation` | 创建实例关联 |
+| DELETE | `/delete/instassociation/{obj_id}/{inst_asst_id}` | 删除实例关联 |
+| POST | `/api/usercustom/user/search` | 用户配置搜索 |
+| POST | `/api/usercustom` | 保存用户配置 |
+| GET | `/api/usercustom/model/{model_id}` | 获取模型自定义列配置 |
+| POST | `/api/usercustom/model/{model_id}` | 保存模型自定义列配置 |
+| GET | `/api/users` | 用户列表 |
 
 ---
 
@@ -392,23 +441,20 @@ DATABASE_PASSWORD=your_password
 ```bash
 cd $CMDB_SERVER_LITE
 
-# 激活虚拟环境
-source .venv/bin/activate
-
 # 启动 API 服务
 python3 run.py
 
 # 数据库迁移
 python3 -m app.migrate.migrate
 
-# 单独迁移关联关系
-python3 migrate_associations.py
-
 # 检查依赖
-.venv/bin/pip list
+pip list
 
 # 安装依赖
-.venv/bin/pip install -r requirements.txt
+pip install -r requirements.txt
+
+# 运行单元测试
+python -m pytest tests/ -v
 ```
 
 ### 前端命令
@@ -416,9 +462,10 @@ python3 migrate_associations.py
 ```bash
 cd $CMDB_UI_LITE
 
-npm run build                    # 生产构建（必须在预览前执行）
-node server.js                   # 带 API 代理的预览服务（端口 3000）
-npm run dev                      # 开发服务器（热重载）
+npm run build      # 生产构建（必须在预览前执行，输出到 dist/）
+node server.js     # 带 API 代理的预览服务（端口 3000）
+npm run dev        # Vue CLI 开发服务器（热重载，端口 8080）
+npm test           # Playwright E2E 测试
 ```
 
 ### 数据库调试
@@ -428,14 +475,19 @@ cd $CMDB_SERVER_LITE
 
 # 使用 SQLite 命令行（开发环境）
 sqlite3 cmdb_dev.db
+.tables  # 查看所有表
 
-# 使用 Python 脚本
-.venv/bin/python3 << 'EOF'
-from app.db.engine import get_connection
-conn = get_connection()
-result = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-print(result.fetchall())
-conn.close()
+# 使用 Python 脚本快速验证
+python3 << 'EOF'
+from app.db.engine import DatabaseEngine
+from app.config.settings import get_config
+config = get_config('development')
+de = DatabaseEngine()
+de.init_engine(config)
+from sqlalchemy import text
+with de._engine.connect() as conn:
+    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+    print(result.fetchall())
 EOF
 ```
 
@@ -448,7 +500,7 @@ EOF
 | 路径 | 说明 |
 |------|------|
 | `/workspace` | 项目根目录 |
-| `/workspace/bk-cmdb` | 原项目源码 |
+| `/workspace/bk-cmdb` | 原项目源码（参考用） |
 | `/workspace/cmdb_ui_lite` | 前端子项目 |
 | `/workspace/cmdb_server_lite` | 后端子项目 |
 | `/workspace/.trae/rules` | 项目规则文档 |
@@ -466,11 +518,11 @@ EOF
 
 ## 十一、当前运行服务状态
 
-| 服务 | 端口 | 状态 | 用途 |
-|------|------|------|------|
-| **后端API** | 5000 | ✅ 运行中 | 数据服务 |
-| **API代理** | 3000 | ✅ 运行中 | SOLO云端访问后端 |
-| **前端开发服务器** | 3001 | ✅ 运行中 | 本地热重载开发 |
+| 服务 | 端口 | 启动命令 | 用途 |
+|------|------|---------|------|
+| **后端 API** | 5000 | `python3 run.py` | 数据服务 |
+| **前端预览 + API 代理** | 3000 | `node server.js` | SOLO 云端访问 + 代理后端 |
+| **前端开发服务器** | 8080 | `npm run dev` | Vue CLI 热重载开发模式 |
 
 ---
 
@@ -478,9 +530,9 @@ EOF
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 5000 | 后端 API | Flask 服务（主端口） |
-| 3000 | 前端预览 + API代理 | `node server.js` 提供静态文件 + API 代理 |
-| 3001 | 开发服务器 | Vue CLI 开发模式（热重载） |
+| 5000 | 后端 Flask API | Flask 主服务，所有数据接口 |
+| 3000 | 前端预览 + API 代理 | `node server.js` 提供 dist/ 静态文件 + 代理到 5000 |
+| 8080 | Vue CLI dev server | `vue.config.js` devServer 配置，带 hot/live reload 及 API 代理 |
 
 ---
 
@@ -488,14 +540,18 @@ EOF
 
 | 文件路径 | 说明 |
 |---------|------|
-| `$CMDB_SERVER_LITE/run.py` | **后端启动入口**（不是 main.py） |
-| `$CMDB_SERVER_LITE/app/__init__.py` | Flask 应用工厂 |
-| `$CMDB_SERVER_LITE/app/config/settings.py` | 配置文件 |
-| `$CMDB_SERVER_LITE/app/db/engine.py` | 数据库引擎管理 |
-| `$CMDB_SERVER_LITE/app/migrate/migrate.py` | 数据库迁移工具 |
-| `$CMDB_SERVER_LITE/.python-version` | Python 版本（3.9.20） |
-| `$CMDB_SERVER_LITE/requirements.txt` | Python 依赖清单 |
-| `$CMDB_UI_LITE/server.js` | 前端代理服务器 |
+| `$CMDB_SERVER_LITE/run.py` | **后端启动入口**（不是 main.py），读 `.env` 后 create_app 并运行 |
+| `$CMDB_SERVER_LITE/app/__init__.py` | Flask 应用工厂 `create_app()`，注册所有 Blueprint + 全局错误处理 |
+| `$CMDB_SERVER_LITE/app/config/settings.py` | 配置文件（BaseConfig / DevelopmentConfig / TestingConfig / ProductionConfig） |
+| `$CMDB_SERVER_LITE/app/db/engine.py` | SQLAlchemy 引擎管理（DatabaseEngine 单例，仅连接池） |
+| `$CMDB_SERVER_LITE/app/db/executor.py` | 原生 SQL 执行器（`query_all`、`query_one`、`execute`） |
+| `$CMDB_SERVER_LITE/app/migrate/migrate.py` | **唯一数据库迁移入口**（建表 + 预置关联类型 + 数据初始化） |
+| `$CMDB_SERVER_LITE/requirements.txt` | Python 依赖清单（含 Flask 2.3.3、SQLAlchemy>=2.0.35、sqlglot 19.8.0） |
+| `$CMDB_SERVER_LITE/.python-version` | **3.14.4**，必须匹配当前 Python 版本 |
+| `$CMDB_UI_LITE/server.js` | 前端预览 + API 代理服务器（端口 3000） |
+| `$CMDB_UI_LITE/vue.config.js` | Vue CLI 配置（devServer 端口 8080，API 代理规则） |
+| `$CMDB_UI_LITE/package.json` | Node.js 依赖 + npm scripts（dev/build/test/serve 等） |
+| `$CMDB_UI_LITE/src/utils/router-query.js` | RouterQuery 状态管理（URL 参数与组件状态同步） |
 
 ---
 
@@ -503,7 +559,7 @@ EOF
 
 ### 概述
 
-RouterQuery 是 CMDB UI Lite 中的 URL 参数状态管理工具，用于实现组件状态与 URL 参数的同步。
+`src/utils/router-query.js` 提供 CMDB UI Lite 的 URL 参数状态管理工具，用于实现组件状态与 URL 参数的同步。
 
 ### API 方法
 
@@ -522,43 +578,77 @@ RouterQuery 是 CMDB UI Lite 中的 URL 参数状态管理工具，用于实现�
 
 ## 十五、常见问题排查
 
-### 1. 后端无法启动
+### 1. 后端无法启动 / 端口被占用
 
-**错误**：端口已被占用
 ```bash
 # 检查端口占用
 lsof -i :5000
+# 或
+netstat -tlnp | grep 5000
 
 # 杀死占用进程
 kill -9 <PID>
 ```
 
-### 2. 数据库连接失败
+### 2. Python 版本不匹配
 
-**检查**：
+**错误**: `ModuleNotFoundError`、`SyntaxError` 或导入失败
+
+**检查**:
+```bash
+python3 --version            # 应输出 3.14.4
+cat $CMDB_SERVER_LITE/.python-version
+```
+
+### 3. 数据库连接失败
+
+**检查**:
 ```bash
 # 检查数据库文件是否存在
-ls -la cmdb_dev.db
+ls -la $CMDB_SERVER_LITE/cmdb_dev.db
 
 # 检查数据库配置
-cat .env
+cat $CMDB_SERVER_LITE/.env
 ```
 
-### 3. 迁移失败
+### 4. 迁移失败 / 表已存在 / 数据不一致
 
-**错误**：表已存在
 ```bash
-# 删除数据库重新迁移
-rm cmdb_dev.db
-python3 -m app.migrate.migrate
+# 删除数据库重新迁移（推荐）
+rm $CMDB_SERVER_LITE/cmdb_dev.db
+cd $CMDB_SERVER_LITE && python3 -m app.migrate.migrate
 ```
 
-### 4. API 返回 500 错误
+### 5. 前端预览 404 / 白屏
 
-**检查日志**：
+**错误原因**: 忘记执行 `npm run build`，`dist/` 为空
+
+**解决**:
 ```bash
-# 查看后端控制台输出
-tail -f app.log
+cd $CMDB_UI_LITE
+npm run build    # 必须先生成 dist/
+node server.js   # 然后启动预览
+```
+
+### 6. API 返回 500 错误
+
+**检查日志**:
+```bash
+# 查看后端控制台输出（run.py 运行窗口）
+# 或查看文件日志
+tail -f $CMDB_SERVER_LITE/app/logs/app.log
+```
+
+### 7. 前端 API 请求失败（代理问题）
+
+**检查代理规则**:
+
+- Vue CLI dev（8080）: `vue.config.js` 的 `devServer.proxy`，代理路径 `/api`、`/health`、`/find`、`/create`、`/delete`
+- Node 预览（3000）: `server.js` 的 `proxyToBackend()`，同样代理上述路径
+
+**确保后端在 5000 正常运行**:
+```bash
+curl -s http://localhost:5000/api/v1/common/health
 ```
 
 ---
@@ -586,7 +676,7 @@ tail -f app.log
 ### 国内镜像源
 
 | 依赖 | 镜像名称 | URL |
-|------|----------|-----|
+|------|---------|-----|
 | **pip/PyPI** | 清华 | https://pypi.tuna.tsinghua.edu.cn/simple |
 | **pip/PyPI** | 阿里云 | https://mirrors.aliyun.com/pypi/simple/ |
 | **npm** | npmmirror | https://registry.npmmirror.com |
@@ -597,15 +687,20 @@ tail -f app.log
 ## 十七、注意事项
 
 1. **后端启动**：必须使用 `python3 run.py`，不要使用 `python3 main.py`
-2. **数据库迁移**：先激活虚拟环境 `.venv/bin/activate`，再执行迁移
-3. **前端构建**：预览前必须先执行 `npm run build`
-4. **API 端口**：后端在 5000 端口，前端代理在 3000 端口
-5. **环境变量**：使用 `.env` 文件管理环境变量，不要硬编码
-6. **版本固定**：Python 版本必须使用 3.9.20（见 .python-version）
-7. **依赖版本**：所有依赖版本见 requirements.txt，禁止随意升级
+2. **Python 版本**：`.python-version` 固定为 `3.14.4`，SQLAlchemy 需 `>=2.0.35` 才支持
+3. **数据库迁移**：`python3 -m app.migrate.migrate`；变更数据模型后，删除旧 `cmdb_dev.db` 重新迁移更干净
+4. **前端构建**：预览前必须先执行 `npm run build`，否则 `dist/` 为空，预览全 404
+5. **API 端口**：后端 5000，前端代理 3000，Vue CLI dev 模式 8080；所有 API 最终都发往后端 5000
+6. **环境变量**：使用 `.env`（开发）、`.env.prod`、`.env.test` 管理，不要硬编码
+7. **关联关系**：
+   - `cc_AsstDes.bk_asst_id` 标准值：`default` / `belong` / `connect` / `group` / `run`
+   - `bk_obj_asst_id` 格式：`{源模型ID}_{关联类型ID}_{目标模型ID}`（例：`bk_slb_default_bk_slb_server`）
+   - 关联描述：`src_des`（源→目标）、`dest_des`（目标→源）、`direction`（方向）
+8. **路由前缀**：v1 主要 API 使用 `/api/v1/*`，旧版兼容路由 `/find|/create|/delete` 无前缀，用户自定义走 `/api/usercustom/*`
+9. **依赖版本**：所有依赖版本见 `requirements.txt` 和 `package.json`，禁止随意升级（尤其是 Flask / SQLAlchemy / Vue / bk-magic-vue）
 
 ---
 
 **文档维护**：本文档随代码更新，请保持同步。
-- **最后更新**：2026-05-29
-- **更新内容**：后端重构，从 FastAPI/DuckDB 迁移到 Flask/SQLAlchemy，多数据库支持
+- **最后更新**：2026-06-08
+- **更新内容**：修正 Python 版本为 3.14.4，更正前后端目录结构与实际一致，补充 Blueprint 路由注册结构与 API 端点，修正端口说明、迁移命令、关联 ID 格式等。
