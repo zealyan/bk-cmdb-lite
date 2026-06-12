@@ -361,9 +361,9 @@ export default {
       const propType = item.property.bk_property_type
       const isEnum = propType === 'enum'
       const isEnumMulti = propType === 'enummulti'
-      const isBool = propType === 'bool'
       const isList = propType === 'list'
-      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+      const isBool = propType === 'bool'
+      const isEnumOrList = isEnum || isEnumMulti || isList
       const isDateTime = ['date', 'time'].includes(propType)
       
       if (this.isRangeOperator(item.operator)) {
@@ -373,6 +373,10 @@ export default {
       
       if (isEnumOrList || isDateTime) {
         return item.valueText || []
+      }
+      
+      if (isBool) {
+        return item.valueText || ''
       }
       
       if (this.isInOperator(item.operator)) {
@@ -518,15 +522,15 @@ export default {
 
       const isEnum = property.bk_property_type === 'enum'
       const isEnumMulti = property.bk_property_type === 'enummulti'
-      const isBool = property.bk_property_type === 'bool'
       const isList = property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+      const isBool = property.bk_property_type === 'bool'
+      const isEnumOrList = isEnum || isEnumMulti || isList
       const isDateTime = ['date', 'time'].includes(property.bk_property_type)
       this.filterItems.push({
         id: this.nextItemId++,
         property,
         operator,
-        valueText: isEnumOrList || isDateTime ? [] : '',
+        valueText: isEnumOrList || isDateTime ? [] : (isBool ? '' : ''),
         valueRange: ''
       })
     },
@@ -574,9 +578,9 @@ export default {
     handleOperatorChange(item) {
       const isEnum = item.property.bk_property_type === 'enum'
       const isEnumMulti = item.property.bk_property_type === 'enummulti'
-      const isBool = item.property.bk_property_type === 'bool'
       const isList = item.property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+      const isBool = item.property.bk_property_type === 'bool'
+      const isEnumOrList = isEnum || isEnumMulti || isList
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
@@ -589,9 +593,9 @@ export default {
         const propType = item.property.bk_property_type
         const isEnum = propType === 'enum'
         const isEnumMulti = propType === 'enummulti'
-        const isBool = propType === 'bool'
         const isList = propType === 'list'
-        const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+        const isBool = propType === 'bool'
+        const isEnumOrList = isEnum || isEnumMulti || isList
         const isDateTime = ['date', 'time'].includes(propType)
 
         if (isEnumOrList || isDateTime) {
@@ -601,10 +605,18 @@ export default {
               value
             }
           }
+        } else if (isBool) {
+          // bool 类型：值是 'true' 或 'false'（单个字符串）
+          if (value === 'true' || value === 'false') {
+            conditionMap[item.property.bk_property_id] = {
+              operator: item.operator,
+              value
+            }
+          }
         } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
           let processedValue = value
 
-          if (this.isInOperator(item.operator) && !isEnumOrList) {
+          if (this.isInOperator(item.operator)) {
             processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
           } else if (this.isRangeOperator(item.operator)) {
             processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
