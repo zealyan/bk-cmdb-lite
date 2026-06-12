@@ -37,7 +37,8 @@
                       :multiple="property.ismultiple"
                       :placeholder="getPropertyPlaceholder(property)"
                       @input="handleInput(property.bk_property_id, $event)"
-                      @change="handleInput(property.bk_property_id, $event)">
+                      @change="handleInput(property.bk_property_id, $event)"
+                      @blur="handleBlur(property.bk_property_id)">
                     </component>
                     <span v-if="errorMessages[property.bk_property_id]" class="form-error">
                       {{ errorMessages[property.bk_property_id] }}
@@ -65,6 +66,7 @@
 </template>
 
 <script>
+import { parseOption } from '@/utils/validate-utils'
 export default {
   name: 'cmdb-form-multiple',
   props: {
@@ -256,6 +258,12 @@ export default {
         this.validateProperty(propertyId, value)
       }
     },
+    handleBlur(propertyId) {
+      if (this.editable[propertyId]) {
+        const value = this.values[propertyId]
+        this.validateProperty(propertyId, value)
+      }
+    },
     validateProperty(propertyId, value) {
       if (!this.editable[propertyId]) {
         this.$delete(this.errorMessages, propertyId)
@@ -266,8 +274,76 @@ export default {
       if (!property) return true
 
       const errors = []
+      
+      // 必填校验
       if (property.isrequired && (value === undefined || value === null || value === '')) {
         errors.push(`${property.bk_property_name}不能为空`)
+      }
+
+      // 如果值不为空，进行类型校验
+      if (value !== undefined && value !== null && value !== '') {
+        const propertyType = property.bk_property_type
+        
+        // int 类型校验
+        if (propertyType === 'int') {
+          const numValue = Number(value)
+          
+          // 检查是否为整数
+          if (!Number.isInteger(numValue)) {
+            errors.push('请输入整数')
+          } else {
+            // 范围校验
+            const parsedOption = parseOption(property.option)
+            if (parsedOption) {
+              const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+              const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+              
+              if (min !== null && numValue < min) {
+                errors.push(`最小值为 ${min}`)
+              }
+              if (max !== null && numValue > max) {
+                errors.push(`最大值为 ${max}`)
+              }
+            }
+          }
+        }
+        
+        // float 类型校验
+        if (propertyType === 'float') {
+          const numValue = parseFloat(value)
+          
+          // 检查是否为有效数字
+          if (isNaN(numValue)) {
+            errors.push('请输入有效的数字')
+          } else {
+            // 范围校验
+            const parsedOption = parseOption(property.option)
+            if (parsedOption) {
+              const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+              const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+              
+              if (min !== null && numValue < min) {
+                errors.push(`最小值为 ${min}`)
+              }
+              if (max !== null && numValue > max) {
+                errors.push(`最大值为 ${max}`)
+              }
+            }
+          }
+        }
+        
+        // 字符串正则校验
+        if (['singlechar', 'longchar'].includes(propertyType)) {
+          const parsedOption = parseOption(property.option)
+          if (parsedOption && typeof parsedOption === 'string') {
+            try {
+              const regex = new RegExp(parsedOption)
+              if (!regex.test(value)) {
+                errors.push('请输入符合自定义校验规则的内容')
+              }
+            } catch (e) {}
+          }
+        }
       }
 
       if (errors.length > 0) {
