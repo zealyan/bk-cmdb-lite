@@ -11,9 +11,6 @@
         <span class="input-unit">{{ unit }}</span>
       </template>
     </bk-input>
-    <div class="error-hint" v-if="errorMessage">
-      {{ errorMessage }}
-    </div>
   </div>
 </template>
 
@@ -35,8 +32,7 @@ export default {
   },
   data() {
     return {
-      localValue: null,
-      errorMessage: ''
+      localValue: null
     }
   },
   computed: {
@@ -67,7 +63,6 @@ export default {
       immediate: true,
       handler(val) {
         this.localValue = val
-        this.errorMessage = ''
       }
     }
   },
@@ -75,44 +70,25 @@ export default {
     handleChange(val) {
       const numVal = val === '' || val === null ? null : Number(val)
       this.$emit('input', numVal)
-      if (numVal !== null) {
-        this.validateValue(numVal)
-      } else {
-        this.errorMessage = ''
-      }
     },
     handleBlur() {
-      if (this.localValue !== null && this.localValue !== '') {
-        this.validateValue(Number(this.localValue))
-      }
-    },
-    validateValue(value) {
-      if (!Number.isInteger(value)) {
-        this.errorMessage = '请输入整数'
-        return false
-      }
-      const errors = []
-      if (this.min !== -Infinity && value < this.min) {
-        errors.push(`最小值为 ${this.min}`)
-      }
-      if (this.max !== Infinity && value > this.max) {
-        errors.push(`最大值为 ${this.max}`)
-      }
-      if (errors.length > 0) {
-        this.errorMessage = errors[0]
-        return false
-      }
-      this.errorMessage = ''
-      return true
+      this.$emit('blur')
     },
     validate() {
       if (this.localValue === null || this.localValue === '') {
         return true
       }
-      return this.validateValue(Number(this.localValue))
-    },
-    clearError() {
-      this.errorMessage = ''
+      const numVal = Number(this.localValue)
+      if (!Number.isInteger(numVal)) {
+        return false
+      }
+      if (this.min !== -Infinity && numVal < this.min) {
+        return false
+      }
+      if (this.max !== Infinity && numVal > this.max) {
+        return false
+      }
+      return true
     }
   }
 }
@@ -131,12 +107,6 @@ export default {
     height: 100%;
     display: flex;
     align-items: center;
-  }
-  .error-hint {
-    font-size: 12px;
-    color: #ff5656;
-    margin-top: 4px;
-    line-height: 1.4;
   }
 }
 </style>

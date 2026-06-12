@@ -12,9 +12,6 @@
         <span class="input-unit">{{ unit }}</span>
       </template>
     </bk-input>
-    <div class="error-hint" v-if="errorMessage">
-      {{ errorMessage }}
-    </div>
   </div>
 </template>
 
@@ -36,8 +33,7 @@ export default {
   },
   data() {
     return {
-      localValue: null,
-      errorMessage: ''
+      localValue: null
     }
   },
   computed: {
@@ -71,7 +67,6 @@ export default {
       immediate: true,
       handler(val) {
         this.localValue = val
-        this.errorMessage = ''
       }
     }
   },
@@ -79,38 +74,9 @@ export default {
     handleChange(val) {
       const numVal = val === '' || val === null ? null : parseFloat(val)
       this.$emit('input', isNaN(numVal) ? null : numVal)
-      if (numVal !== null && !isNaN(numVal)) {
-        this.validateValue(numVal)
-      } else {
-        this.errorMessage = ''
-      }
     },
     handleBlur() {
-      if (this.localValue !== null && this.localValue !== '') {
-        const numVal = parseFloat(this.localValue)
-        if (!isNaN(numVal)) {
-          this.validateValue(numVal)
-        }
-      }
-    },
-    validateValue(value) {
-      if (isNaN(value)) {
-        this.errorMessage = '请输入有效的数字'
-        return false
-      }
-      const errors = []
-      if (this.min !== -Infinity && value < this.min) {
-        errors.push(`最小值为 ${this.min}`)
-      }
-      if (this.max !== Infinity && value > this.max) {
-        errors.push(`最大值为 ${this.max}`)
-      }
-      if (errors.length > 0) {
-        this.errorMessage = errors[0]
-        return false
-      }
-      this.errorMessage = ''
-      return true
+      this.$emit('blur')
     },
     validate() {
       if (this.localValue === null || this.localValue === '') {
@@ -118,13 +84,15 @@ export default {
       }
       const numVal = parseFloat(this.localValue)
       if (isNaN(numVal)) {
-        this.errorMessage = '请输入有效的数字'
         return false
       }
-      return this.validateValue(numVal)
-    },
-    clearError() {
-      this.errorMessage = ''
+      if (this.min !== -Infinity && numVal < this.min) {
+        return false
+      }
+      if (this.max !== Infinity && numVal > this.max) {
+        return false
+      }
+      return true
     }
   }
 }
@@ -143,12 +111,6 @@ export default {
     height: 100%;
     display: flex;
     align-items: center;
-  }
-  .error-hint {
-    font-size: 12px;
-    color: #ff5656;
-    margin-top: 4px;
-    line-height: 1.4;
   }
 }
 </style>
