@@ -130,21 +130,20 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <div class="table-wrapper" ref="tableWrapperRef">
-      <bk-table
-        ref="tableRef"
-        class="models-table"
-        v-bkloading="{ isLoading: table.loading }"
-        :data="table.list"
-        :pagination="table.pagination"
-        :max-height="tableMaxHeight"
-        :sort="tableSort"
-        :selected-data.sync="selectedIds"
-        :row-key="row => row.bk_inst_id"
-        @selection-change="handleSelectionChange"
-        @page-change="handlePageChange"
-        @page-limit-change="handleLimitChange"
-        @sort-change="handleSortChange">
+    <bk-table
+      ref="tableRef"
+      class="models-table"
+      v-bkloading="{ isLoading: table.loading }"
+      :data="table.list"
+      :pagination="table.pagination"
+      :max-height="tableMaxHeight"
+      :sort="tableSort"
+      :selected-data.sync="selectedIds"
+      :row-key="row => row.bk_inst_id"
+      @selection-change="handleSelectionChange"
+      @page-change="handlePageChange"
+      @page-limit-change="handleLimitChange"
+      @sort-change="handleSortChange">
       <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
       <bk-table-column
         v-for="column in table.header"
@@ -167,8 +166,7 @@
           <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
         </template>
       </bk-table-column>
-      </bk-table>
-    </div>
+    </bk-table>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -2541,33 +2539,8 @@ export default {
   }
 }
 
-.table-wrapper {
-  margin-top: 14px;
-  position: relative;
-  max-height: calc(100vh - 200px);
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-}
-
 .models-table {
-  flex: 1;
-  overflow: auto;
-
-  :deep(.bk-table-wrapper) {
-    display: flex;
-    flex-direction: column;
-  }
-
-  :deep(.bk-table-pagination-wrapper) {
-    position: sticky;
-    bottom: 0;
-    background: #fff;
-    border-top: 1px solid #dcdee5;
-    padding: 10px 0;
-    z-index: 10;
-    flex-shrink: 0;
-  }
+  margin-top: 14px;
 }
 
 .icon-button {
