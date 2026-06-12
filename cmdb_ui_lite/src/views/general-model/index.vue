@@ -130,20 +130,21 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <bk-table
-      ref="tableRef"
-      class="models-table"
-      v-bkloading="{ isLoading: table.loading }"
-      :data="table.list"
-      :pagination="table.pagination"
-      :max-height="tableMaxHeight"
-      :sort="tableSort"
-      :selected-data.sync="selectedIds"
-      :row-key="row => row.bk_inst_id"
-      @selection-change="handleSelectionChange"
-      @page-change="handlePageChange"
-      @page-limit-change="handleLimitChange"
-      @sort-change="handleSortChange">
+    <div class="table-wrapper" ref="tableWrapperRef">
+      <bk-table
+        ref="tableRef"
+        class="models-table"
+        v-bkloading="{ isLoading: table.loading }"
+        :data="table.list"
+        :pagination="false"
+        :max-height="tableMaxHeight"
+        :sort="tableSort"
+        :selected-data.sync="selectedIds"
+        :row-key="row => row.bk_inst_id"
+        @selection-change="handleSelectionChange"
+        @page-change="handlePageChange"
+        @page-limit-change="handleLimitChange"
+        @sort-change="handleSortChange">
       <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
       <bk-table-column
         v-for="column in table.header"
@@ -166,7 +167,19 @@
           <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
         </template>
       </bk-table-column>
-    </bk-table>
+      </bk-table>
+
+      <bk-pagination
+        class="table-pagination"
+        :total="table.pagination.total"
+        :current="table.pagination.current"
+        :page-size="table.pagination.pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :layout="'total, sizes, prev, pager, next, jumper'"
+        @page-change="handlePageChange"
+        @page-size-change="handleLimitChange">
+      </bk-pagination>
+    </div>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -2539,28 +2552,29 @@ export default {
   }
 }
 
-.models-table {
+.table-wrapper {
   margin-top: 14px;
+  position: relative;
+}
 
-  :deep(.bk-table-wrapper) {
-    display: flex;
-    flex-direction: column;
-    height: auto;
-  }
+.models-table {
+  display: block;
+  overflow: auto;
+}
 
-  :deep(.bk-table) {
-    flex: 1;
-    overflow: auto;
-  }
+.table-pagination {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-top: 1px solid #dcdee5;
+  padding: 12px 20px;
+  margin: 0;
+  z-index: 10;
 
-  :deep(.bk-table-pagination-wrapper) {
-    flex-shrink: 0;
-    position: sticky;
-    bottom: 0;
-    background: #fff;
-    border-top: 1px solid #dcdee5;
-    padding: 10px 0;
-    z-index: 10;
+  :deep(.bk-pagination) {
+    justify-content: flex-end;
   }
 }
 
