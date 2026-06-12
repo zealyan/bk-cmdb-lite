@@ -394,9 +394,7 @@ export default {
     .property-value {
       color: #313238;
       font-size: 14px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      word-break: break-all;
       flex: 1;
     }
     

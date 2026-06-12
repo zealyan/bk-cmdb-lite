@@ -425,26 +425,33 @@ export default {
 
 .info-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
 
   .property-label {
     font-size: 14px;
     color: #63656e;
     white-space: nowrap;
+    line-height: 20px;
+    padding-top: 6px;
   }
 
   .property-colon {
     font-size: 14px;
     color: #63656e;
     margin: 0 4px;
+    line-height: 20px;
+    padding-top: 6px;
   }
 
   .property-value-wrap {
     font-size: 14px;
     color: #313238;
     word-break: break-all;
+    min-width: 0;
     flex: 1;
+    line-height: 20px;
+    padding-top: 6px;
   }
 }
 
