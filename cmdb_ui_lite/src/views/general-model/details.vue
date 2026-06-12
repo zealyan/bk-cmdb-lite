@@ -364,14 +364,16 @@ export default {
 
 .details-layout {
   overflow: hidden;
+  background-color: #fff;
 
   .details-tab {
     min-height: 400px;
+    background-color: transparent;
 
     :deep(.bk-tab-header) {
       padding: 0 20px;
       height: 58px;
-      background-color: #fff !important;
+      background-color: transparent !important;
       background-image: none !important;
       border-bottom: 1px solid #dcdee5;
 
@@ -392,7 +394,7 @@ export default {
     :deep(.bk-tab-section) {
       padding: 0 20px;
       padding-bottom: 10px;
-      background-color: #fff;
+      background-color: transparent;
     }
   }
 }
