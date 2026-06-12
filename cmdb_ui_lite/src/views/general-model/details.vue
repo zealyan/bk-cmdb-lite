@@ -371,7 +371,8 @@ export default {
     :deep(.bk-tab-header) {
       padding: 0 20px;
       height: 58px;
-      background-color: #fff;
+      background-color: #fff !important;
+      background-image: none !important;
       border-bottom: 1px solid #dcdee5;
 
       .bk-tab-label-list {
