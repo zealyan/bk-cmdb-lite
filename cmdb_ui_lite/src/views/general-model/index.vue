@@ -136,6 +136,7 @@
       v-bkloading="{ isLoading: table.loading }"
       :data="table.list"
       :pagination="table.pagination"
+      :max-height="tableMaxHeight"
       :sort="tableSort"
       :selected-data.sync="selectedIds"
       :row-key="row => row.bk_inst_id"
@@ -425,9 +426,11 @@ export default {
         return this.enumOptions
       }
       const query = this.enumSearchQuery.toLowerCase()
-      return this.enumOptions.filter(opt => 
-        opt.name.toLowerCase().includes(query)
-      )
+      return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
+    },
+    tableMaxHeight() {
+      // 计算表格最大高度：视口高度 - 顶部导航(60px) - 面包屑(40px) - 操作栏(60px) - 筛选标签(40px) - 分页(52px) - 边距(40px)
+      return window.innerHeight - 60 - 40 - 60 - 40 - 52 - 40
     },
     sidesliderWidth() {
       const screenWidth = window.innerWidth
@@ -2538,6 +2541,27 @@ export default {
 
 .models-table {
   margin-top: 14px;
+
+  :deep(.bk-table-wrapper) {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+
+  :deep(.bk-table) {
+    flex: 1;
+    overflow: auto;
+  }
+
+  :deep(.bk-table-pagination-wrapper) {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 1px solid #dcdee5;
+    padding: 10px 0;
+    z-index: 10;
+  }
 }
 
 .icon-button {
