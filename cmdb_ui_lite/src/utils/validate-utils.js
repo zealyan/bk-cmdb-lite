@@ -11,9 +11,9 @@
 
 /**
  * 解析属性的 option 字段
- * option 可能是字符串（JSON）或对象
+ * option 可能是字符串（JSON或正则表达式）或对象
  * @param {string|object} option - 属性选项
- * @returns {object} 解析后的选项对象
+ * @returns {object|string|null} 解析后的选项对象或原字符串（用于正则表达式）
  */
 export function parseOption(option) {
   if (!option) {
@@ -24,7 +24,8 @@ export function parseOption(option) {
     try {
       return JSON.parse(option)
     } catch (e) {
-      return null
+      // 如果不是有效的JSON，可能是正则表达式字符串，直接返回原字符串
+      return option
     }
   }
   
