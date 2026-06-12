@@ -371,7 +371,8 @@ export default {
     :deep(.bk-tab-header) {
       padding: 0 20px;
       height: 58px;
-      background-image: linear-gradient(transparent 57px, #dcdee5 0);
+      background-color: #fff;
+      border-bottom: 1px solid #dcdee5;
 
       .bk-tab-label-list {
         height: 58px;
@@ -390,6 +391,7 @@ export default {
     :deep(.bk-tab-section) {
       padding: 0 20px;
       padding-bottom: 10px;
+      background-color: #fff;
     }
   }
 }
