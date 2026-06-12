@@ -204,10 +204,13 @@ export default {
   display: flex;
   align-items: center;
   font-size: 14px;
+  overflow: hidden;
+  min-width: 0;
 
   .breadcrumb-item {
     color: #3a84ff;
     cursor: pointer;
+    white-space: nowrap;
 
     &:hover {
       text-decoration: underline;
@@ -217,10 +220,15 @@ export default {
   .breadcrumb-separator {
     margin: 0 8px;
     color: #c4c6cc;
+    flex-shrink: 0;
   }
 
   .breadcrumb-current {
     color: #63656e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 }
 </style>
