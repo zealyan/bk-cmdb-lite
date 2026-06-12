@@ -12,10 +12,12 @@ import { initRouterQuery } from '@/utils/router-query'
 import SearchComponents from '@/components/search'
 import CmdbFormComponents from '@/components/ui/form'
 import userCustom from '@/api/user-custom'
+import cmdbAppMixin from './mixins/app.js'
 
 Vue.use(bkMagic)
 Vue.use(SearchComponents)
 Vue.use(CmdbFormComponents)
+Vue.mixin(cmdbAppMixin)
 
 Vue.config.productionTip = false
 

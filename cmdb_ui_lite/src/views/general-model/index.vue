@@ -113,6 +113,7 @@
     </div>
 
     <filter-tag
+      ref="filterTagRef"
       v-if="hasFilterCondition"
       class="filter-tag-wrapper"
       :filter-tags="filterTags"
@@ -130,21 +131,20 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <div class="table-wrapper" :style="{ height: tableWrapperHeight + 'px' }">
-      <bk-table
-        ref="tableRef"
-        class="models-table"
-        v-bkloading="{ isLoading: table.loading }"
-        :data="table.list"
-        :pagination="table.pagination"
-        :max-height="tableContentHeight"
-        :sort="tableSort"
-        :selected-data.sync="selectedIds"
-        :row-key="row => row.bk_inst_id"
-        @selection-change="handleSelectionChange"
-        @page-change="handlePageChange"
-        @page-limit-change="handleLimitChange"
-        @sort-change="handleSortChange">
+    <bk-table
+      ref="tableRef"
+      class="models-table"
+      v-bkloading="{ isLoading: table.loading }"
+      :data="table.list"
+      :pagination="table.pagination"
+      :max-height="tableContentHeight"
+      :sort="tableSort"
+      :selected-data.sync="selectedIds"
+      :row-key="row => row.bk_inst_id"
+      @selection-change="handleSelectionChange"
+      @page-change="handlePageChange"
+      @page-limit-change="handleLimitChange"
+      @sort-change="handleSortChange">
         <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
         <bk-table-column
           v-for="column in table.header"
@@ -168,7 +168,6 @@
           </template>
         </bk-table-column>
       </bk-table>
-    </div>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -326,7 +325,8 @@ export default {
         disabledColumns: ['bk_inst_id', 'bk_inst_name']
       },
       isUrlUpdateTriggered: false,
-      searchTimeout: null
+      searchTimeout: null,
+      filterTagHeight: 0
     }
   },
   computed: {
@@ -430,17 +430,15 @@ export default {
       const query = this.enumSearchQuery.toLowerCase()
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
-    tableMaxHeight() {
-      // 计算表格最大高度：视口高度 - 顶部导航(60px) - 面包屑(40px) - 操作栏(60px) - 筛选标签(40px) - 分页(52px) - 边距(40px)
-      return window.innerHeight - 60 - 40 - 60 - 40 - 52 - 40
-    },
-    tableWrapperHeight() {
-      // 表格容器高度：视口高度 - 顶部导航(60px) - 面包屑(40px) - 操作栏(60px) - 筛选标签(40px) - 边距(20px)
-      return window.innerHeight - 60 - 40 - 60 - 40 - 20
-    },
     tableContentHeight() {
-      // 表格内容高度：容器高度 - 分页栏(52px)
-      return this.tableWrapperHeight - 52
+      const baseHeight = this.$APP?.height || window.innerHeight
+      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 190)
+    },
+    hasFilterCondition() {
+      return this.visibleFilterTags.length > 0
+    },
+    hasCondition() {
+      return this.filterTagHeight !== 0
     },
     sidesliderWidth() {
       const screenWidth = window.innerWidth
@@ -448,15 +446,9 @@ export default {
         return 600
       } else if (screenWidth >= 480) {
         return Math.floor(screenWidth * 0.8)
-      } else {
-        return Math.floor(screenWidth * 0.95)
       }
+      return Math.floor(screenWidth * 0.95)
     },
-    /**
-     * 将内部排序格式转换为 bk-table 组件所需的格式
-     * 内部格式: 'name' (升序) 或 '-name' (降序)
-     * 组件格式: { prop: 'name', order: 'ascending' | 'descending' }
-     */
     tableSort() {
       if (!this.table.sort) {
         return undefined
@@ -607,6 +599,7 @@ export default {
     console.log('[Index.mounted] Route query:', JSON.stringify(this.$route.query))
     this.restoreStateFromUrl()
     console.log('[Index.mounted] restoreStateFromUrl 后 filter.value:', this.filter.value, 'fuzzy:', this.filter.fuzzyQuery)
+    this.$nextTick(() => this.updateFilterTagHeight())
 
     this.clickOutsideHandler = (event) => {
       const wrapper = document.querySelector('.enum-select-wrapper')
@@ -650,6 +643,11 @@ export default {
     }
   },
   watch: {
+    filterTags: {
+      handler() {
+        this.$nextTick(() => this.updateFilterTagHeight())
+      }
+    },
     'filter.values': {
       handler(newValues, oldValues) {
         console.log('[Index.watch.filter.values] 变化:', { old: oldValues, new: newValues })
@@ -757,6 +755,17 @@ export default {
     }
   },
   methods: {
+    updateFilterTagHeight() {
+      setTimeout(() => {
+        const filterTagRef = this.$refs?.filterTagRef
+        const el = filterTagRef?.$el || filterTagRef
+        if (el && el.getBoundingClientRect) {
+          this.filterTagHeight = el.getBoundingClientRect().height
+        } else {
+          this.filterTagHeight = 0
+        }
+      }, 300)
+    },
     async loadModelData(searchParams = null) {
       this.table.loading = true
       try {

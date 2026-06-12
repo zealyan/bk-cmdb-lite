@@ -1,12 +1,14 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
 import objectModelClassify from './modules/objectModelClassify.js'
+import globalState from './modules/global.js'
 
 Vue.use(Vuex)
 
 export default new Vuex.Store({
   modules: {
-    objectModelClassify
+    objectModelClassify,
+    global: globalState
   },
   state: {
     userCustom: {
