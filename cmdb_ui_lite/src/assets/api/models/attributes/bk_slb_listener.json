@@ -85,13 +85,13 @@
     {
       "bk_property_id": "bk_bandwidth_limit",
       "bk_property_name": "带宽限制",
-      "bk_property_type": "int",
+      "bk_property_type": "float",
       "isrequired": false,
       "isreadonly": false,
       "editable": true,
       "bk_property_index": 7,
       "width": 100,
-      "option": {"min": 0, "max": 10000}
+      "option": {"min": 0.0, "max": 100.5}
     },
     {
       "bk_property_id": "bk_connection_drain",
