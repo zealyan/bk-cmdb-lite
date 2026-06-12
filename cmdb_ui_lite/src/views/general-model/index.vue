@@ -136,7 +136,7 @@
         class="models-table"
         v-bkloading="{ isLoading: table.loading }"
         :data="table.list"
-        :pagination="false"
+        :pagination="table.pagination"
         :max-height="tableMaxHeight"
         :sort="tableSort"
         :selected-data.sync="selectedIds"
@@ -168,17 +168,6 @@
         </template>
       </bk-table-column>
       </bk-table>
-
-      <bk-pagination
-        class="table-pagination"
-        :total="table.pagination.total"
-        :current="table.pagination.current"
-        :page-size="table.pagination.pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        :layout="'total, sizes, prev, pager, next, jumper'"
-        @page-change="handlePageChange"
-        @page-size-change="handleLimitChange">
-      </bk-pagination>
     </div>
 
     <bk-sideslider
@@ -2555,26 +2544,29 @@ export default {
 .table-wrapper {
   margin-top: 14px;
   position: relative;
+  max-height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
 }
 
 .models-table {
-  display: block;
+  flex: 1;
   overflow: auto;
-}
 
-.table-pagination {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #fff;
-  border-top: 1px solid #dcdee5;
-  padding: 12px 20px;
-  margin: 0;
-  z-index: 10;
+  :deep(.bk-table-wrapper) {
+    display: flex;
+    flex-direction: column;
+  }
 
-  :deep(.bk-pagination) {
-    justify-content: flex-end;
+  :deep(.bk-table-pagination-wrapper) {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 1px solid #dcdee5;
+    padding: 10px 0;
+    z-index: 10;
+    flex-shrink: 0;
   }
 }
 
