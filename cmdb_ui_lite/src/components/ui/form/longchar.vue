@@ -6,7 +6,8 @@
     :disabled="disabled || readonly"
     :rows="rows"
     @input="handleInput"
-    @change="handleChange">
+    @change="handleChange"
+    @blur="handleBlur">
   </bk-input>
 </template>
 
@@ -52,6 +53,12 @@ export default {
     },
     handleChange(val) {
       this.$emit('input', val)
+    },
+    handleBlur() {
+      this.$emit('blur')
+    },
+    validate() {
+      return true
     }
   }
 }
