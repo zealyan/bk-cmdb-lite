@@ -233,6 +233,12 @@ export default {
       this.editValue = value
     },
     confirmEdit() {
+      // 先进行校验
+      const isValid = this.$refs.propertyFormRef?.validate?.()
+      if (isValid === false) {
+        return
+      }
+      
       const changed = this.editValue !== this.value
       this.$emit('confirm', {
         property: this.property,
