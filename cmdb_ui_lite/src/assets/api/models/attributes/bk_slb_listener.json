@@ -90,7 +90,8 @@
       "isreadonly": false,
       "editable": true,
       "bk_property_index": 7,
-      "width": 100
+      "width": 100,
+      "option": {"min": 0, "max": 10000}
     },
     {
       "bk_property_id": "bk_connection_drain",

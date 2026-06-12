@@ -48,7 +48,8 @@
       "isreadonly": false,
       "editable": true,
       "bk_property_index": 4,
-      "width": 80
+      "width": 80,
+      "option": {"min": 0, "max": 100}
     },
     {
       "bk_property_id": "bk_server_type",

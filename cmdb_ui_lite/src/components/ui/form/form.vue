@@ -61,6 +61,8 @@
 </template>
 
 <script>
+import { parseOption, validateValue } from '@/utils/validate-utils'
+
 // 不能更新修改的字段(在可能发生编辑操作的页面里不显示出来)
 // 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/dictionary/model-constants.js
 const BUILTIN_UNEDITABLE_FIELDS = ['bk_updated_by', 'bk_updated_at', 'bk_created_by', 'bk_created_at']
@@ -250,17 +252,76 @@ export default {
       if (!property) return true
 
       const errors = []
+      
+      // 必填校验
       if (property.isrequired && (value === undefined || value === null || value === '')) {
         errors.push(`${property.bk_property_name}不能为空`)
       }
 
-      if (property.option && property.option.regex) {
-        try {
-          const regex = new RegExp(property.option.regex)
-          if (value && !regex.test(value)) {
-            errors.push(property.option.regex_message || '格式不正确')
+      // 如果值不为空，进行类型校验
+      if (value !== undefined && value !== null && value !== '') {
+        const propertyType = property.bk_property_type
+        
+        // int 类型校验
+        if (propertyType === 'int') {
+          const numValue = Number(value)
+          
+          // 检查是否为整数
+          if (!Number.isInteger(numValue)) {
+            errors.push('请输入整数')
+          } else {
+            // 范围校验
+            const parsedOption = parseOption(property.option)
+            if (parsedOption) {
+              const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+              const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+              
+              if (min !== null && numValue < min) {
+                errors.push(`最小值为 ${min}`)
+              }
+              if (max !== null && numValue > max) {
+                errors.push(`最大值为 ${max}`)
+              }
+            }
           }
-        } catch (e) {}
+        }
+        
+        // float 类型校验
+        if (propertyType === 'float') {
+          const numValue = parseFloat(value)
+          
+          // 检查是否为有效数字
+          if (isNaN(numValue)) {
+            errors.push('请输入有效的数字')
+          } else {
+            // 范围校验
+            const parsedOption = parseOption(property.option)
+            if (parsedOption) {
+              const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+              const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+              
+              if (min !== null && numValue < min) {
+                errors.push(`最小值为 ${min}`)
+              }
+              if (max !== null && numValue > max) {
+                errors.push(`最大值为 ${max}`)
+              }
+            }
+          }
+        }
+        
+        // 字符串正则校验
+        if (['singlechar', 'longchar'].includes(propertyType)) {
+          const parsedOption = parseOption(property.option)
+          if (parsedOption && typeof parsedOption === 'string') {
+            try {
+              const regex = new RegExp(parsedOption)
+              if (!regex.test(value)) {
+                errors.push('格式不正确')
+              }
+            } catch (e) {}
+          }
+        }
       }
 
       if (errors.length > 0) {
