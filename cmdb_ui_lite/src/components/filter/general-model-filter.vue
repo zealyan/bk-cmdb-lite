@@ -55,10 +55,10 @@
                 :title="op.desc">
               </bk-option>
             </bk-select>
-            <div class="item-value" :class="{ 'is-full': withoutOperator.includes(item.property.bk_property_type), 'r0': ['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-date', 'cmdb-search-time'].includes(getComponentType(item)) }">
+            <div class="item-value" :class="{ 'is-full': withoutOperator.includes(item.property.bk_property_type), 'r0': ['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-date', 'cmdb-search-time', 'cmdb-search-bool'].includes(getComponentType(item)) }">
               <component
                 :is="getComponentType(item)"
-                v-if="['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list'].includes(getComponentType(item))"
+                v-if="['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-bool'].includes(getComponentType(item))"
                 v-model="item.valueText"
                 :options="getSelectOptions(item.property)"
                 :property="item.property"
@@ -109,14 +109,6 @@
                 size="small"
                 @enter="handleSearch">
               </bk-input>
-              <bk-select
-                v-else-if="getComponentType(item) === 'select'"
-                v-model="item.valueText"
-                :placeholder="getPlaceholder(item)"
-                :options="getSelectOptions(item.property)"
-                searchable
-                size="small">
-              </bk-select>
             </div>
           </div>
         </div>
@@ -143,6 +135,7 @@ import EnumMultiSearch from '../search/enummulti.vue'
 import ListSearch from '../search/list.vue'
 import DateSearch from '../search/date.vue'
 import TimeSearch from '../search/time.vue'
+import BoolSearch from '../search/bool.vue'
 import { transformGeneralModelCondition, getOperatorSideEffect } from './utils'
 import { setSearchQueryByCondition, buildSearchParams } from '@/utils/query-builder'
 
@@ -156,7 +149,8 @@ export default {
     'cmdb-search-enummulti': EnumMultiSearch,
     'cmdb-search-list': ListSearch,
     'cmdb-search-date': DateSearch,
-    'cmdb-search-time': TimeSearch
+    'cmdb-search-time': TimeSearch,
+    'cmdb-search-bool': BoolSearch
   },
   props: {
     show: {
@@ -441,16 +435,12 @@ export default {
       }
 
       if (type === 'bool') {
-        return 'select'
+        return 'cmdb-search-bool'
       }
 
       const inputTypes = ['int', 'float', 'singlechar', 'longchar', 'objuser', 'organization', 'timezone', 'foreignkey', 'array', 'object', 'map', 'table']
       const textareaTypes = ['text']
-      const selectTypes = ['bool']
 
-      if (selectTypes.includes(type)) {
-        return 'select'
-      }
       if (textareaTypes.includes(type)) {
         return 'textarea'
       }

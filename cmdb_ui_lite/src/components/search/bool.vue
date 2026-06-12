@@ -1,11 +1,12 @@
 <template>
   <bk-select
     v-model="localValue"
-    v-bind="$attrs"
-    @change="handleChange"
-    @clear="() => $emit('clear')">
-    <bk-option id="true" name="true"></bk-option>
-    <bk-option id="false" name="false"></bk-option>
+    :placeholder="placeholder"
+    searchable
+    size="small"
+    @change="handleChange">
+    <bk-option id="true" name="是(true)"></bk-option>
+    <bk-option id="false" name="否(false)"></bk-option>
   </bk-select>
 </template>
 
@@ -17,9 +18,21 @@ export default {
       type: [String, Boolean],
       default: ''
     },
+    options: {
+      type: Array,
+      default: () => []
+    },
     property: {
       type: Object,
       default: () => ({})
+    },
+    placeholder: {
+      type: String,
+      default: '请选择'
+    },
+    size: {
+      type: String,
+      default: 'small'
     }
   },
   computed: {
