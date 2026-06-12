@@ -130,43 +130,45 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <bk-table
-      ref="tableRef"
-      class="models-table"
-      v-bkloading="{ isLoading: table.loading }"
-      :data="table.list"
-      :pagination="table.pagination"
-      :max-height="tableMaxHeight"
-      :sort="tableSort"
-      :selected-data.sync="selectedIds"
-      :row-key="row => row.bk_inst_id"
-      @selection-change="handleSelectionChange"
-      @page-change="handlePageChange"
-      @page-limit-change="handleLimitChange"
-      @sort-change="handleSortChange">
-      <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
-      <bk-table-column
-        v-for="column in table.header"
-        :key="column.id"
-        :prop="column.id"
-        :label="column.name"
-        :sortable="getColumnSortable(column.id)"
-        :show-overflow-tooltip="true">
-        <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-          <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
-            {{ row[column.id] }}
-          </bk-button>
-        </template>
-        <template v-else #default="{ row }">
-          {{ formatCellValue(row[column.id], column) }}
-        </template>
-      </bk-table-column>
-      <bk-table-column label="操作" width="150" fixed="right">
-        <template #default="{ row }">
-          <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
-        </template>
-      </bk-table-column>
-    </bk-table>
+    <div class="table-wrapper" :style="{ height: tableWrapperHeight + 'px' }">
+      <bk-table
+        ref="tableRef"
+        class="models-table"
+        v-bkloading="{ isLoading: table.loading }"
+        :data="table.list"
+        :pagination="table.pagination"
+        :max-height="tableContentHeight"
+        :sort="tableSort"
+        :selected-data.sync="selectedIds"
+        :row-key="row => row.bk_inst_id"
+        @selection-change="handleSelectionChange"
+        @page-change="handlePageChange"
+        @page-limit-change="handleLimitChange"
+        @sort-change="handleSortChange">
+        <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
+        <bk-table-column
+          v-for="column in table.header"
+          :key="column.id"
+          :prop="column.id"
+          :label="column.name"
+          :sortable="getColumnSortable(column.id)"
+          :show-overflow-tooltip="true">
+          <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
+            <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+              {{ row[column.id] }}
+            </bk-button>
+          </template>
+          <template v-else #default="{ row }">
+            {{ formatCellValue(row[column.id], column) }}
+          </template>
+        </bk-table-column>
+        <bk-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
+          </template>
+        </bk-table-column>
+      </bk-table>
+    </div>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -431,6 +433,14 @@ export default {
     tableMaxHeight() {
       // 计算表格最大高度：视口高度 - 顶部导航(60px) - 面包屑(40px) - 操作栏(60px) - 筛选标签(40px) - 分页(52px) - 边距(40px)
       return window.innerHeight - 60 - 40 - 60 - 40 - 52 - 40
+    },
+    tableWrapperHeight() {
+      // 表格容器高度：视口高度 - 顶部导航(60px) - 面包屑(40px) - 操作栏(60px) - 筛选标签(40px) - 边距(20px)
+      return window.innerHeight - 60 - 40 - 60 - 40 - 20
+    },
+    tableContentHeight() {
+      // 表格内容高度：容器高度 - 分页栏(52px)
+      return this.tableWrapperHeight - 52
     },
     sidesliderWidth() {
       const screenWidth = window.innerWidth
@@ -2536,6 +2546,31 @@ export default {
       border-left: 1px solid #c4c6cc;
       margin-top: 4px;
     }
+  }
+}
+
+.table-wrapper {
+  position: relative;
+  overflow: hidden;
+  margin-top: 14px;
+  background: #fff;
+  border-radius: 2px;
+  border: 1px solid #eaeaea;
+  
+  .models-table {
+    margin-top: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .bk-table-pagination-wrapper {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 1px solid #eaeaea;
+    padding: 8px 20px;
+    z-index: 10;
   }
 }
 
