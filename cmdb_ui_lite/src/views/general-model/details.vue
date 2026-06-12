@@ -359,11 +359,14 @@ export default {
 <style lang="scss" scoped>
 .model-details-page {
   background: #f5f7fa;
-  min-height: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .details-layout {
   overflow: hidden;
+  min-height: 100vh;
+  box-sizing: border-box;
   background-color: #fff;
 
   .details-tab {
