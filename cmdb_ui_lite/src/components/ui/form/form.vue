@@ -27,16 +27,17 @@
                 <div class="property-value">
                   <slot :name="property.bk_property_id">
                     <component
-                      :is="getComponentName(property.bk_property_type)"
-                      :property="property"
-                      :value="values[property.bk_property_id]"
-                      :disabled="checkDisabled(property)"
-                      :readonly="property.isreadonly"
-                      :multiple="property.bk_property_type === 'enummulti'"
-                      :options="getPropertyOptions(property)"
-                      @input="handleInput(property.bk_property_id, $event)"
-                      @change="handleInput(property.bk_property_id, $event)">
-                    </component>
+                    :is="getComponentName(property.bk_property_type)"
+                    :property="property"
+                    :value="values[property.bk_property_id]"
+                    :disabled="checkDisabled(property)"
+                    :readonly="property.isreadonly"
+                    :multiple="property.bk_property_type === 'enummulti'"
+                    :options="getPropertyOptions(property)"
+                    @input="handleInput(property.bk_property_id, $event)"
+                    @change="handleInput(property.bk_property_id, $event)"
+                    @blur="handleBlur(property)">
+                  </component>
                   </slot>
                   <span v-if="errorMessages[property.bk_property_id]" class="form-error">
                     {{ errorMessages[property.bk_property_id] }}
@@ -245,7 +246,10 @@ export default {
       const newValues = { ...this.values, [propertyId]: value }
       this.$emit('update:values', newValues)
       this.$emit('input', propertyId, value)
-      this.validateProperty(propertyId, value)
+    },
+    handleBlur(property) {
+      const value = this.values[property.bk_property_id]
+      this.validateProperty(property.bk_property_id, value)
     },
     validateProperty(propertyId, value) {
       const property = this.properties.find(p => p.bk_property_id === propertyId)
