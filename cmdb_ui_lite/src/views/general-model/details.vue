@@ -396,6 +396,9 @@ export default {
 
 .info-card {
   padding: 20px;
+  background-color: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
 
 .property-groups {
