@@ -66,7 +66,7 @@
 </template>
 
 <script>
-import { parseOption } from '@/utils/validate-utils'
+import { parseOption, utf8ByteLength, getMaxBytesByType } from '@/utils/validate-utils'
 export default {
   name: 'cmdb-form-multiple',
   props: {
@@ -332,16 +332,22 @@ export default {
           }
         }
         
-        // 字符串正则校验
+        // 字符串正则校验 + 字节长度校验
         if (['singlechar', 'longchar'].includes(propertyType)) {
-          const parsedOption = parseOption(property.option)
-          if (parsedOption && typeof parsedOption === 'string') {
-            try {
-              const regex = new RegExp(parsedOption)
-              if (!regex.test(value)) {
-                errors.push('请输入符合自定义校验规则的内容')
-              }
-            } catch (e) {}
+          const maxBytes = getMaxBytesByType(propertyType)
+          const byteLength = utf8ByteLength(value)
+          if (maxBytes !== null && byteLength > maxBytes) {
+            errors.push(`请输入${maxBytes}个字符以内的内容`)
+          } else {
+            const parsedOption = parseOption(property.option)
+            if (parsedOption && typeof parsedOption === 'string') {
+              try {
+                const regex = new RegExp(parsedOption)
+                if (!regex.test(value)) {
+                  errors.push('格式不正确')
+                }
+              } catch (e) {}
+            }
           }
         }
       }

@@ -3,6 +3,7 @@
     v-model="localValue"
     type="textarea"
     :placeholder="placeholder"
+    :maxlength="2000"
     :disabled="disabled || readonly"
     :rows="rows"
     @input="handleInput"

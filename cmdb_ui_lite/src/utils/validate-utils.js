@@ -7,7 +7,57 @@
  * - float: 浮点数类型，支持 min/max 范围限制
  * - singlechar/longchar: 字符串类型，支持正则校验
  * - enum/enummulti: 枚举类型
+ * 
+ * 字符长度限制(基于 UTF-8 字节数):
+ * - singlechar: 256 字节
+ * - longchar: 2000 字节
  */
+
+/**
+ * singlechar/longchar 的最大长度(按 UTF-8 字节数计算)
+ * 与原项目保持一致
+ */
+export const SINGLECHAR_MAX_BYTES = 256
+export const LONGCHAR_MAX_BYTES = 2000
+
+/**
+ * 计算字符串的 UTF-8 字节数
+ * 与原项目保持一致: singlechar 限制 256 字节, longchar 限制 2000 字节
+ * @param {string} str - 输入字符串
+ * @returns {number} UTF-8 字节数
+ */
+export function utf8ByteLength(str) {
+  if (str === undefined || str === null) return 0
+  const s = String(str)
+  let length = 0
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i)
+    if (code < 0x80) {
+      length += 1
+    } else if (code < 0x800) {
+      length += 2
+    } else if (code >= 0xD800 && code <= 0xDBFF) {
+      // 处理 UTF-16 代理对 (surrogate pair)
+      // 即一个字符由两个 16-bit code unit 组成
+      length += 4
+      i++ // 跳过下一个 code unit
+    } else {
+      length += 3
+    }
+  }
+  return length
+}
+
+/**
+ * 根据属性类型获取最大字节数
+ * @param {string} propertyType - 属性类型
+ * @returns {number|null} 最大字节数，非字符串类型返回 null
+ */
+export function getMaxBytesByType(propertyType) {
+  if (propertyType === 'singlechar') return SINGLECHAR_MAX_BYTES
+  if (propertyType === 'longchar') return LONGCHAR_MAX_BYTES
+  return null
+}
 
 /**
  * 解析属性的 option 字段
@@ -177,10 +227,12 @@ export function validateValue(value, property) {
   // 字符串类型校验
   if (['singlechar', 'longchar'].includes(propertyType)) {
     const strValue = String(value)
-    const maxLen = propertyType === 'singlechar' ? 256 : 2000
+    const maxBytes = propertyType === 'singlechar' ? SINGLECHAR_MAX_BYTES : LONGCHAR_MAX_BYTES
+    const byteLength = utf8ByteLength(strValue)
     
-    if (strValue.length > maxLen) {
-      errors.push(`长度不能超过 ${maxLen} 个字符`)
+    // UTF-8 字节数限制（与原项目保持一致）
+    if (byteLength > maxBytes) {
+      errors.push(`请输入${maxBytes}个字符以内的内容`)
     }
     
     // 正则校验
@@ -257,5 +309,9 @@ export default {
   getValidateRules,
   validateValue,
   getRangeHint,
-  getValidator
+  getValidator,
+  utf8ByteLength,
+  getMaxBytesByType,
+  SINGLECHAR_MAX_BYTES,
+  LONGCHAR_MAX_BYTES
 }

@@ -62,7 +62,7 @@
 </template>
 
 <script>
-import { parseOption, validateValue } from '@/utils/validate-utils'
+import { parseOption, validateValue, utf8ByteLength, getMaxBytesByType } from '@/utils/validate-utils'
 
 // 不能更新修改的字段(在可能发生编辑操作的页面里不显示出来)
 // 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/dictionary/model-constants.js
@@ -314,16 +314,22 @@ export default {
           }
         }
         
-        // 字符串正则校验
+        // 字符串正则校验 + 字节长度校验
         if (['singlechar', 'longchar'].includes(propertyType)) {
-          const parsedOption = parseOption(property.option)
-          if (parsedOption && typeof parsedOption === 'string') {
-            try {
-              const regex = new RegExp(parsedOption)
-              if (!regex.test(value)) {
-                errors.push('请输入符合自定义校验规则的内容')
-              }
-            } catch (e) {}
+          const maxBytes = getMaxBytesByType(propertyType)
+          const byteLength = utf8ByteLength(value)
+          if (maxBytes !== null && byteLength > maxBytes) {
+            errors.push(`请输入${maxBytes}个字符以内的内容`)
+          } else {
+            const parsedOption = parseOption(property.option)
+            if (parsedOption && typeof parsedOption === 'string') {
+              try {
+                const regex = new RegExp(parsedOption)
+                if (!regex.test(value)) {
+                  errors.push('格式不正确')
+                }
+              } catch (e) {}
+            }
           }
         }
       }

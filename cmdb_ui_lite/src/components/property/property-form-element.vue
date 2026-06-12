@@ -7,6 +7,7 @@
       type="text"
       :value="localValue"
       :placeholder="placeholder"
+      :maxlength="maxCharLength"
       @input="handleInput"
       @blur="handleBlurAndValidate">
     </bk-input>
@@ -18,6 +19,7 @@
       type="textarea"
       :value="localValue"
       :placeholder="placeholder"
+      :maxlength="maxCharLength"
       :rows="3"
       @input="handleInput"
       @blur="handleBlurAndValidate">
@@ -124,7 +126,7 @@
 <script>
 import CmdbFormEnum from '../ui/form/enum.vue'
 import CmdbFormEnummulti from '../ui/form/enummulti.vue'
-import { parseOption } from '@/utils/validate-utils'
+import { parseOption, utf8ByteLength, getMaxBytesByType } from '@/utils/validate-utils'
 
 export default {
   name: 'PropertyFormElement',
@@ -154,6 +156,14 @@ export default {
     },
     isNumberType() {
       return ['int', 'float'].includes(this.property.bk_property_type)
+    },
+    // 计算最大字符数(用于 maxlength 属性)
+    // 注意: maxlength 按字符数限制, 但实际校验按 UTF-8 字节数
+    maxCharLength() {
+      const maxBytes = getMaxBytesByType(this.property.bk_property_type)
+      if (maxBytes === null) return undefined
+      // 以最大字符数(按 UTF-8 单字节计算)作为 maxlength, 实际校验在 validate() 中按字节判断
+      return maxBytes
     },
     placeholder() {
       return this.property.placeholder || `请输入${this.property.bk_property_name}`
@@ -296,14 +306,20 @@ export default {
         }
       }
       
-      // 字符串正则校验
+      // 字符串正则校验 + 字节长度校验
       if (['singlechar', 'longchar'].includes(propertyType)) {
+        const maxBytes = getMaxBytesByType(propertyType)
+        const byteLength = utf8ByteLength(value)
+        if (maxBytes !== null && byteLength > maxBytes) {
+          this.errorMessage = `请输入${maxBytes}个字符以内的内容`
+          return false
+        }
         const parsedOption = parseOption(property.option)
         if (parsedOption && typeof parsedOption === 'string') {
           try {
             const regex = new RegExp(parsedOption)
             if (!regex.test(value)) {
-              this.errorMessage = '请输入符合自定义校验规则的内容'
+              this.errorMessage = '格式不正确'
               return false
             }
           } catch (e) {}

@@ -3,6 +3,7 @@
     v-model="localValue"
     type="text"
     :placeholder="placeholder"
+    :maxlength="256"
     :disabled="disabled || readonly"
     @input="handleInput"
     @change="handleChange"
