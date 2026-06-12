@@ -228,6 +228,7 @@ export default {
     },
     handleSwitchChange(value) {
       this.localValue = value
+      this.$emit('input', value)
       this.$emit('change', value)
     },
     handleDateChange(value) {

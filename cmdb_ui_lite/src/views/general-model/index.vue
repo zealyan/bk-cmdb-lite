@@ -1765,9 +1765,27 @@ export default {
       console.log('[DEBUG] handleCreateInstance - 开始打开新建弹窗')
       this.createForm = {}
       this.createDialogVisible = true
-      
+
       // 初始化表单默认值
       this.allProperties.forEach(attr => {
+        const propType = attr.bk_property_type
+
+        // bool 类型的默认值存储在 option 中（与原项目保持一致）
+        if (propType === 'bool') {
+          const option = attr.option
+          let defaultVal = false
+          if (typeof option === 'boolean') {
+            defaultVal = option
+          } else if (typeof option === 'string') {
+            defaultVal = option.toLowerCase() === 'true'
+          } else if (typeof option === 'number') {
+            defaultVal = Boolean(option)
+          }
+          this.$set(this.createForm, attr.bk_property_id, defaultVal)
+          return
+        }
+
+        // 其他类型优先使用 default，为默认值
         if (attr.default !== null && attr.default !== undefined) {
           this.$set(this.createForm, attr.bk_property_id, attr.default)
         }
