@@ -321,7 +321,7 @@ export default {
             try {
               const regex = new RegExp(parsedOption)
               if (!regex.test(value)) {
-                errors.push('格式不正确')
+                errors.push('请输入符合自定义校验规则的内容')
               }
             } catch (e) {}
           }
