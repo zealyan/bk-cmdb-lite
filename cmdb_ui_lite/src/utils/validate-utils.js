@@ -8,54 +8,39 @@
  * - singlechar/longchar: 字符串类型，支持正则校验
  * - enum/enummulti: 枚举类型
  * 
- * 字符长度限制(基于 UTF-8 字节数):
- * - singlechar: 256 字节
- * - longchar: 2000 字节
+ * 字符长度限制(按字符数,与 bk-input 内置计数器保持一致):
+ * - singlechar: 256 个字符
+ * - longchar: 2000 个字符
+ *
+ * 注意: 使用字符数而非字节数,因为 bk-input 的 maxlength 属性和
+ * 内置计数器 (bk-limit-box) 都按 JavaScript 字符数计算。若使用字节
+ * 数校验,会出现"计数器显示 1989/2000 但校验报错"的不一致问题。
  */
 
 /**
- * singlechar/longchar 的最大长度(按 UTF-8 字节数计算)
- * 与原项目保持一致
+ * singlechar/longchar 的最大字符数(与 bk-input maxlength 计数器对齐)
  */
-export const SINGLECHAR_MAX_BYTES = 256
-export const LONGCHAR_MAX_BYTES = 2000
+export const SINGLECHAR_MAX_CHARS = 256
+export const LONGCHAR_MAX_CHARS = 2000
 
 /**
- * 计算字符串的 UTF-8 字节数
- * 与原项目保持一致: singlechar 限制 256 字节, longchar 限制 2000 字节
+ * 计算字符串字符数(与 bk-input maxlength 计数器使用相同方式)
  * @param {string} str - 输入字符串
- * @returns {number} UTF-8 字节数
+ * @returns {number} 字符数
  */
-export function utf8ByteLength(str) {
+export function charLength(str) {
   if (str === undefined || str === null) return 0
-  const s = String(str)
-  let length = 0
-  for (let i = 0; i < s.length; i++) {
-    const code = s.charCodeAt(i)
-    if (code < 0x80) {
-      length += 1
-    } else if (code < 0x800) {
-      length += 2
-    } else if (code >= 0xD800 && code <= 0xDBFF) {
-      // 处理 UTF-16 代理对 (surrogate pair)
-      // 即一个字符由两个 16-bit code unit 组成
-      length += 4
-      i++ // 跳过下一个 code unit
-    } else {
-      length += 3
-    }
-  }
-  return length
+  return String(str).length
 }
 
 /**
- * 根据属性类型获取最大字节数
+ * 根据属性类型获取最大字符数
  * @param {string} propertyType - 属性类型
- * @returns {number|null} 最大字节数，非字符串类型返回 null
+ * @returns {number|null} 最大字符数,非字符串类型返回 null
  */
-export function getMaxBytesByType(propertyType) {
-  if (propertyType === 'singlechar') return SINGLECHAR_MAX_BYTES
-  if (propertyType === 'longchar') return LONGCHAR_MAX_BYTES
+export function getMaxCharsByType(propertyType) {
+  if (propertyType === 'singlechar') return SINGLECHAR_MAX_CHARS
+  if (propertyType === 'longchar') return LONGCHAR_MAX_CHARS
   return null
 }
 
@@ -227,14 +212,14 @@ export function validateValue(value, property) {
   // 字符串类型校验
   if (['singlechar', 'longchar'].includes(propertyType)) {
     const strValue = String(value)
-    const maxBytes = propertyType === 'singlechar' ? SINGLECHAR_MAX_BYTES : LONGCHAR_MAX_BYTES
-    const byteLength = utf8ByteLength(strValue)
-    
-    // UTF-8 字节数限制（与原项目保持一致）
-    if (byteLength > maxBytes) {
-      errors.push(`请输入${maxBytes}个字符以内的内容`)
+    const maxChars = propertyType === 'singlechar' ? SINGLECHAR_MAX_CHARS : LONGCHAR_MAX_CHARS
+    const count = charLength(strValue)
+
+    // 字符数限制(与 bk-input maxlength 计数器保持一致)
+    if (count > maxChars) {
+      errors.push(`请输入${maxChars}个字符以内的内容`)
     }
-    
+
     // 正则校验
     if (parsedOption && typeof parsedOption === 'string') {
       try {
@@ -310,8 +295,8 @@ export default {
   validateValue,
   getRangeHint,
   getValidator,
-  utf8ByteLength,
-  getMaxBytesByType,
-  SINGLECHAR_MAX_BYTES,
-  LONGCHAR_MAX_BYTES
+  charLength,
+  getMaxCharsByType,
+  SINGLECHAR_MAX_CHARS,
+  LONGCHAR_MAX_CHARS
 }

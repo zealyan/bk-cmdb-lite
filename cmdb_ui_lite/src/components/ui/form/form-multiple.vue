@@ -66,7 +66,7 @@
 </template>
 
 <script>
-import { parseOption, utf8ByteLength, getMaxBytesByType } from '@/utils/validate-utils'
+import { parseOption, charLength, getMaxCharsByType } from '@/utils/validate-utils'
 export default {
   name: 'cmdb-form-multiple',
   props: {
@@ -332,12 +332,12 @@ export default {
           }
         }
         
-        // 字符串正则校验 + 字节长度校验
+        // 字符串正则校验 + 字符长度校验(与 bk-input 计数器保持一致)
         if (['singlechar', 'longchar'].includes(propertyType)) {
-          const maxBytes = getMaxBytesByType(propertyType)
-          const byteLength = utf8ByteLength(value)
-          if (maxBytes !== null && byteLength > maxBytes) {
-            errors.push(`请输入${maxBytes}个字符以内的内容`)
+          const maxChars = getMaxCharsByType(propertyType)
+          const count = charLength(value)
+          if (maxChars !== null && count > maxChars) {
+            errors.push(`请输入${maxChars}个字符以内的内容`)
           } else {
             const parsedOption = parseOption(property.option)
             if (parsedOption && typeof parsedOption === 'string') {

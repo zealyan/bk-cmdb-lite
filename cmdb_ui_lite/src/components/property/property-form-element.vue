@@ -126,7 +126,7 @@
 <script>
 import CmdbFormEnum from '../ui/form/enum.vue'
 import CmdbFormEnummulti from '../ui/form/enummulti.vue'
-import { parseOption, utf8ByteLength, getMaxBytesByType } from '@/utils/validate-utils'
+import { parseOption, charLength, getMaxCharsByType } from '@/utils/validate-utils'
 
 export default {
   name: 'PropertyFormElement',
@@ -158,12 +158,11 @@ export default {
       return ['int', 'float'].includes(this.property.bk_property_type)
     },
     // 计算最大字符数(用于 maxlength 属性)
-    // 注意: maxlength 按字符数限制, 但实际校验按 UTF-8 字节数
+    // 与 bk-input 内置计数器的计算方式保持一致(按字符数)
     maxCharLength() {
-      const maxBytes = getMaxBytesByType(this.property.bk_property_type)
-      if (maxBytes === null) return undefined
-      // 以最大字符数(按 UTF-8 单字节计算)作为 maxlength, 实际校验在 validate() 中按字节判断
-      return maxBytes
+      const maxChars = getMaxCharsByType(this.property.bk_property_type)
+      if (maxChars === null) return undefined
+      return maxChars
     },
     placeholder() {
       return this.property.placeholder || `请输入${this.property.bk_property_name}`
@@ -306,12 +305,12 @@ export default {
         }
       }
       
-      // 字符串正则校验 + 字节长度校验
+      // 字符串正则校验 + 字符长度校验(与 bk-input 计数器保持一致)
       if (['singlechar', 'longchar'].includes(propertyType)) {
-        const maxBytes = getMaxBytesByType(propertyType)
-        const byteLength = utf8ByteLength(value)
-        if (maxBytes !== null && byteLength > maxBytes) {
-          this.errorMessage = `请输入${maxBytes}个字符以内的内容`
+        const maxChars = getMaxCharsByType(propertyType)
+        const count = charLength(value)
+        if (maxChars !== null && count > maxChars) {
+          this.errorMessage = `请输入${maxChars}个字符以内的内容`
           return false
         }
         const parsedOption = parseOption(property.option)
