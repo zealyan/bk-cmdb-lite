@@ -849,12 +849,18 @@ class DatabaseMigrator:
         """迁移关联关系数据"""
         ui_project = self.workspace_root / "cmdb_ui_lite" / "src" / "assets" / "api"
 
-        # 1. 先添加关联类型到 cc_AsstDes
-        # src_des: 从源→目标的描述，dest_des: 从目标→源的描述
+        # 1. 先添加原项目标准关联类型到 cc_AsstDes
+        # 原项目 bk_asst_id 标准值（来自 definitions.go）:
+        # - bk_mainline: 主线关联
+        # - belong: 属于
+        # - group: 分组
+        # - run: 运行
+        # - connect: 连接
+        # - default: 默认
         asst_types = [
             {
-                "bk_asst_id": "slb_to_server",
-                "bk_asst_name": "指向",
+                "bk_asst_id": "default",
+                "bk_asst_name": "默认",
                 "src_des": "指向",
                 "dest_des": "被指向",
                 "direction": "forward",
@@ -862,14 +868,41 @@ class DatabaseMigrator:
                 "ispre": True
             },
             {
-                "bk_asst_id": "slb_to_listener",
-                "bk_asst_name": "指向",
-                "src_des": "指向",
-                "dest_des": "被指向",
+                "bk_asst_id": "belong",
+                "bk_asst_name": "属于",
+                "src_des": "属于",
+                "dest_des": "包含",
                 "direction": "forward",
                 "bk_supplier_account": "0",
                 "ispre": True
-            }
+            },
+            {
+                "bk_asst_id": "connect",
+                "bk_asst_name": "连接",
+                "src_des": "连接",
+                "dest_des": "被连接",
+                "direction": "forward",
+                "bk_supplier_account": "0",
+                "ispre": True
+            },
+            {
+                "bk_asst_id": "group",
+                "bk_asst_name": "分组",
+                "src_des": "分组",
+                "dest_des": "被分组",
+                "direction": "forward",
+                "bk_supplier_account": "0",
+                "ispre": True
+            },
+            {
+                "bk_asst_id": "run",
+                "bk_asst_name": "运行",
+                "src_des": "运行于",
+                "dest_des": "运行",
+                "direction": "forward",
+                "bk_supplier_account": "0",
+                "ispre": True
+            },
         ]
 
         for idx, asst_type in enumerate(asst_types, 1):
@@ -891,13 +924,15 @@ class DatabaseMigrator:
         logger.info(f"迁移了 {len(asst_types)} 个关联类型")
 
         # 2. 添加对象关联到 cc_ObjAsst
+        # bk_obj_asst_id 格式: {源模型ID}_{AsstKindID}_{目标模型ID}
+        # 例如: bk_slb_default_bk_slb_server = bk_slb + default + bk_slb_server
         obj_associations = [
             {
                 "bk_obj_id": "bk_slb",
                 "target_obj_id": "bk_slb_server",
                 "target_obj_name": "后端服务器",
-                "bk_asst_id": "slb_to_server",
-                "bk_obj_asst_id": "bk_slb_to_bk_slb_server",
+                "bk_asst_id": "default",  # 使用标准关联类型
+                "bk_obj_asst_id": "bk_slb_default_bk_slb_server",  # {源}_{类型}_{目标}
                 "bk_obj_asst_name": "指向后端服务器",
                 "bk_supplier_account": "0",
                 "mapping": None,
@@ -907,8 +942,8 @@ class DatabaseMigrator:
                 "bk_obj_id": "bk_slb",
                 "target_obj_id": "bk_slb_listener",
                 "target_obj_name": "监听器",
-                "bk_asst_id": "slb_to_listener",
-                "bk_obj_asst_id": "bk_slb_to_bk_slb_listener",
+                "bk_asst_id": "default",  # 使用标准关联类型
+                "bk_obj_asst_id": "bk_slb_default_bk_slb_listener",  # {源}_{类型}_{目标}
                 "bk_obj_asst_name": "指向监听器",
                 "bk_supplier_account": "0",
                 "mapping": None,
@@ -949,10 +984,15 @@ class DatabaseMigrator:
             associations = inst_assoc_data.get("associations", [])
             
             for assoc in associations:
-                # 确定 bk_obj_asst_id
+                # 确定 bk_obj_asst_id 和 bk_relation_type_id
+                # 格式: {源模型ID}_{AsstKindID}_{目标模型ID}
+                # 例如: bk_slb_default_bk_slb_server
                 bk_obj_id = assoc.get("bk_obj_id")
                 bk_asst_obj_id = assoc.get("bk_asst_obj_id")
-                bk_obj_asst_id = f"{bk_obj_id}_to_{bk_asst_obj_id}"
+                # bk_relation_type_id 现在使用标准 bk_asst_id (default)
+                bk_relation_type_id = assoc.get("bk_relation_type_id")
+                # bk_obj_asst_id 格式: {源}_{类型}_{目标}
+                bk_obj_asst_id = f"{bk_obj_id}_{bk_relation_type_id}_{bk_asst_obj_id}"
                 
                 self.execute_sql("""
                     INSERT OR REPLACE INTO cc_InstAsst_0_pub 

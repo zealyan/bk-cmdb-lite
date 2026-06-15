@@ -6,12 +6,13 @@ const PORT = process.env.PORT || 3000;
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
 
 const mimeTypes = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
-  '.jpg': 'image/jpg',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.wav': 'audio/wav',
@@ -23,10 +24,8 @@ const mimeTypes = {
   '.wasm': 'application/wasm'
 };
 
-// API代理函数
 function proxyToBackend(req, res) {
   const url = BACKEND_URL + req.url;
-  console.log(`[PROXY] ${req.method} ${req.url} -> ${url}`);
 
   let body = '';
   req.on('data', chunk => {
@@ -41,18 +40,22 @@ function proxyToBackend(req, res) {
       method: req.method,
       headers: {
         ...req.headers,
+        host: 'localhost:5000',
         'Content-Length': Buffer.byteLength(body || '')
       }
     };
 
     const proxyReq = http.request(options, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      const proxyHeaders = { ...proxyRes.headers };
+      // 移除 HSTS 头，防止开发环境出现问题
+      delete proxyHeaders['strict-transport-security'];
+      res.writeHead(proxyRes.statusCode, proxyHeaders);
       proxyRes.pipe(res);
     });
 
     proxyReq.on('error', (err) => {
-      console.error(`[PROXY ERROR] ${err.message}`);
-      res.writeHead(502, { 'Content-Type': 'application/json' });
+      console.error(`[PROXY ERROR] ${req.url} -> ${err.message}`);
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: 'Backend server unavailable', message: err.message }));
     });
 
@@ -63,41 +66,83 @@ function proxyToBackend(req, res) {
   });
 }
 
-const server = http.createServer((req, res) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+function isStaticAsset(filename) {
+  const ext = String(path.extname(filename)).toLowerCase();
+  return ['/index.html', '/'].indexOf(filename) === -1 && (
+    ext === '.js' || ext === '.css' || ext === '.png' || ext === '.jpg' ||
+    ext === '.jpeg' || ext === '.gif' || ext === '.svg' || ext === '.woff' ||
+    ext === '.ttf' || ext === '.eot' || ext === '.otf' || ext === '.wasm' ||
+    ext === '.wav' || ext === '.mp4' || ext === '.ico' || ext === '.map'
+  );
+}
 
-  // API请求代理到后端
-  if (req.url.startsWith('/api') || req.url.startsWith('/health') || req.url.startsWith('/find') || req.url.startsWith('/create') || req.url.startsWith('/delete')) {
+function serveStaticFile(res, filePath, contentType) {
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      if (error.code === 'ENOENT') {
+        console.error(`[STATIC 404] ${filePath}`);
+        res.writeHead(404);
+        res.end('File not found: ' + filePath);
+      } else {
+        console.error(`[STATIC 500] ${filePath} - ${error.code}`);
+        res.writeHead(500);
+        res.end('Server error: ' + error.code);
+      }
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000'
+    });
+    res.end(content);
+  });
+}
+
+function serveIndexHtml(res) {
+  const indexPath = path.join(__dirname, 'dist', 'index.html');
+  fs.readFile(indexPath, (error, content) => {
+    if (error) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('index.html not found');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Expires': '0'
+    });
+    res.end(content, 'utf-8');
+  });
+}
+
+const server = http.createServer((req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${req.method} ${req.url}`);
+
+  // 解析 URL，移除 query 参数
+  const urlPath = req.url.split('?')[0].split('#')[0];
+
+  // API 请求代理到后端
+  if (urlPath.startsWith('/api') ||
+      urlPath.startsWith('/health') ||
+      urlPath.startsWith('/find') ||
+      urlPath.startsWith('/create') ||
+      urlPath.startsWith('/delete')) {
     proxyToBackend(req, res);
     return;
   }
 
-  let filePath = path.join(__dirname, 'dist', req.url === '/' ? 'index.html' : req.url);
-  
-  const extname = String(path.extname(filePath)).toLowerCase();
-  const contentType = mimeTypes[extname] || 'application/octet-stream';
+  // 处理静态资源
+  if (isStaticAsset(urlPath)) {
+    const filePath = path.join(__dirname, 'dist', urlPath);
+    const extname = String(path.extname(filePath)).toLowerCase();
+    const contentType = mimeTypes[extname] || 'application/octet-stream';
+    serveStaticFile(res, filePath, contentType);
+    return;
+  }
 
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
-      if (error.code === 'ENOENT') {
-        fs.readFile(path.join(__dirname, 'dist', 'index.html'), (error, content) => {
-          if (error) {
-            res.writeHead(404);
-            res.end('File not found');
-          } else {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(content, 'utf-8');
-          }
-        });
-      } else {
-        res.writeHead(500);
-        res.end('Sorry, check with the site admin for error: ' + error.code + ' ..\n');
-      }
-    } else {
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content, 'utf-8');
-    }
-  });
+  // 根路径和其他路由都返回 index.html (SPA)
+  serveIndexHtml(res);
 });
 
 server.listen(PORT, () => {

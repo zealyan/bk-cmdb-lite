@@ -27,16 +27,17 @@
                 <div class="property-value">
                   <slot :name="property.bk_property_id">
                     <component
-                      :is="getComponentName(property.bk_property_type)"
-                      :property="property"
-                      :value="values[property.bk_property_id]"
-                      :disabled="checkDisabled(property)"
-                      :readonly="property.isreadonly"
-                      :multiple="property.bk_property_type === 'enummulti'"
-                      :options="getPropertyOptions(property)"
-                      @input="handleInput(property.bk_property_id, $event)"
-                      @change="handleInput(property.bk_property_id, $event)">
-                    </component>
+                    :is="getComponentName(property.bk_property_type)"
+                    :property="property"
+                    :value="values[property.bk_property_id]"
+                    :disabled="checkDisabled(property)"
+                    :readonly="property.isreadonly"
+                    :multiple="property.bk_property_type === 'enummulti'"
+                    :options="getPropertyOptions(property)"
+                    @input="handleInput(property.bk_property_id, $event)"
+                    @change="handleInput(property.bk_property_id, $event)"
+                    @blur="handleBlur(property)">
+                  </component>
                   </slot>
                   <span v-if="errorMessages[property.bk_property_id]" class="form-error">
                     {{ errorMessages[property.bk_property_id] }}
@@ -61,6 +62,8 @@
 </template>
 
 <script>
+import { parseOption, validateValue, charLength, getMaxCharsByType } from '@/utils/validate-utils'
+
 // 不能更新修改的字段(在可能发生编辑操作的页面里不显示出来)
 // 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/dictionary/model-constants.js
 const BUILTIN_UNEDITABLE_FIELDS = ['bk_updated_by', 'bk_updated_at', 'bk_created_by', 'bk_created_at']
@@ -243,24 +246,92 @@ export default {
       const newValues = { ...this.values, [propertyId]: value }
       this.$emit('update:values', newValues)
       this.$emit('input', propertyId, value)
-      this.validateProperty(propertyId, value)
+    },
+    handleBlur(property) {
+      const value = this.values[property.bk_property_id]
+      this.validateProperty(property.bk_property_id, value)
     },
     validateProperty(propertyId, value) {
       const property = this.properties.find(p => p.bk_property_id === propertyId)
       if (!property) return true
 
       const errors = []
+      
+      // 必填校验
       if (property.isrequired && (value === undefined || value === null || value === '')) {
         errors.push(`${property.bk_property_name}不能为空`)
       }
 
-      if (property.option && property.option.regex) {
-        try {
-          const regex = new RegExp(property.option.regex)
-          if (value && !regex.test(value)) {
-            errors.push(property.option.regex_message || '格式不正确')
+      // 如果值不为空，进行类型校验
+      if (value !== undefined && value !== null && value !== '') {
+        const propertyType = property.bk_property_type
+        
+        // int 类型校验
+        if (propertyType === 'int') {
+          const numValue = Number(value)
+          
+          // 检查是否为整数
+          if (!Number.isInteger(numValue)) {
+            errors.push('请输入整数')
+          } else {
+            // 范围校验
+            const parsedOption = parseOption(property.option)
+            if (parsedOption) {
+              const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+              const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+              
+              if (min !== null && numValue < min) {
+                errors.push(`最小值为 ${min}`)
+              }
+              if (max !== null && numValue > max) {
+                errors.push(`最大值为 ${max}`)
+              }
+            }
           }
-        } catch (e) {}
+        }
+        
+        // float 类型校验
+        if (propertyType === 'float') {
+          const numValue = parseFloat(value)
+          
+          // 检查是否为有效数字
+          if (isNaN(numValue)) {
+            errors.push('请输入有效的数字')
+          } else {
+            // 范围校验
+            const parsedOption = parseOption(property.option)
+            if (parsedOption) {
+              const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+              const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+              
+              if (min !== null && numValue < min) {
+                errors.push(`最小值为 ${min}`)
+              }
+              if (max !== null && numValue > max) {
+                errors.push(`最大值为 ${max}`)
+              }
+            }
+          }
+        }
+        
+        // 字符串正则校验 + 字符长度校验(与 bk-input 计数器保持一致)
+        if (['singlechar', 'longchar'].includes(propertyType)) {
+          const maxChars = getMaxCharsByType(propertyType)
+          const count = charLength(value)
+          if (maxChars !== null && count > maxChars) {
+            errors.push(`请输入${maxChars}个字符以内的内容`)
+          } else {
+            const parsedOption = parseOption(property.option)
+            if (parsedOption && typeof parsedOption === 'string') {
+              try {
+                const regex = new RegExp(parsedOption)
+                if (!regex.test(value)) {
+                  errors.push('格式不正确')
+                }
+              } catch (e) {}
+            }
+          }
+        }
       }
 
       if (errors.length > 0) {

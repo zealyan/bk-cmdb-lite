@@ -359,19 +359,26 @@ export default {
 <style lang="scss" scoped>
 .model-details-page {
   background: #f5f7fa;
-  min-height: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .details-layout {
   overflow: hidden;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background-color: #fff;
 
   .details-tab {
     min-height: 400px;
+    background-color: transparent;
 
     :deep(.bk-tab-header) {
       padding: 0 20px;
       height: 58px;
-      background-image: linear-gradient(transparent 57px, #dcdee5 0);
+      background-color: transparent !important;
+      background-image: none !important;
+      border-bottom: 1px solid #dcdee5;
 
       .bk-tab-label-list {
         height: 58px;
@@ -390,12 +397,14 @@ export default {
     :deep(.bk-tab-section) {
       padding: 0 20px;
       padding-bottom: 10px;
+      background-color: transparent;
     }
   }
 }
 
 .info-card {
   padding: 20px;
+  background-color: #fff;
 }
 
 .property-groups {
@@ -425,26 +434,33 @@ export default {
 
 .info-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
 
   .property-label {
     font-size: 14px;
     color: #63656e;
     white-space: nowrap;
+    line-height: 20px;
+    padding-top: 6px;
   }
 
   .property-colon {
     font-size: 14px;
     color: #63656e;
     margin: 0 4px;
+    line-height: 20px;
+    padding-top: 6px;
   }
 
   .property-value-wrap {
     font-size: 14px;
     color: #313238;
     word-break: break-all;
+    min-width: 0;
     flex: 1;
+    line-height: 20px;
+    padding-top: 6px;
   }
 }
 

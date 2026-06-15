@@ -233,6 +233,12 @@ export default {
       this.editValue = value
     },
     confirmEdit() {
+      // 先进行校验
+      const isValid = this.$refs.propertyFormRef?.validate?.()
+      if (isValid === false) {
+        return
+      }
+      
       const changed = this.editValue !== this.value
       this.$emit('confirm', {
         property: this.property,
@@ -388,9 +394,7 @@ export default {
     .property-value {
       color: #313238;
       font-size: 14px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      word-break: break-all;
       flex: 1;
     }
     

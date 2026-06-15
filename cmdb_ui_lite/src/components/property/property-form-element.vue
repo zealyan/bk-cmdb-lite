@@ -7,8 +7,9 @@
       type="text"
       :value="localValue"
       :placeholder="placeholder"
+      :maxlength="maxCharLength"
       @input="handleInput"
-      @blur="handleBlur">
+      @blur="handleBlurAndValidate">
     </bk-input>
 
     <!-- 文本域 -->
@@ -18,9 +19,10 @@
       type="textarea"
       :value="localValue"
       :placeholder="placeholder"
+      :maxlength="maxCharLength"
       :rows="3"
       @input="handleInput"
-      @blur="handleBlur">
+      @blur="handleBlurAndValidate">
     </bk-input>
 
     <!-- 整数/浮点数 -->
@@ -31,7 +33,7 @@
       :value="localValue"
       :placeholder="placeholder"
       @input="handleInput"
-      @blur="handleBlur">
+      @blur="handleBlurAndValidate">
     </bk-input>
 
     <!-- 枚举类型（单选） -->
@@ -111,14 +113,20 @@
       :value="localValue"
       :placeholder="placeholder"
       @input="handleInput"
-      @blur="handleBlur">
+      @blur="handleBlurAndValidate">
     </bk-input>
+
+    <!-- 错误提示 -->
+    <span v-if="errorMessage" class="form-error">
+      {{ errorMessage }}
+    </span>
   </div>
 </template>
 
 <script>
 import CmdbFormEnum from '../ui/form/enum.vue'
 import CmdbFormEnummulti from '../ui/form/enummulti.vue'
+import { parseOption, charLength, getMaxCharsByType } from '@/utils/validate-utils'
 
 export default {
   name: 'PropertyFormElement',
@@ -138,7 +146,8 @@ export default {
   },
   data() {
     return {
-      localValue: ''
+      localValue: '',
+      errorMessage: ''
     }
   },
   computed: {
@@ -147,6 +156,13 @@ export default {
     },
     isNumberType() {
       return ['int', 'float'].includes(this.property.bk_property_type)
+    },
+    // 计算最大字符数(用于 maxlength 属性)
+    // 与 bk-input 内置计数器的计算方式保持一致(按字符数)
+    maxCharLength() {
+      const maxChars = getMaxCharsByType(this.property.bk_property_type)
+      if (maxChars === null) return undefined
+      return maxChars
     },
     placeholder() {
       return this.property.placeholder || `请输入${this.property.bk_property_name}`
@@ -195,31 +211,125 @@ export default {
       this.localValue = value
       this.$emit('input', value)
     },
-    handleBlur() {
+    handleBlurAndValidate() {
+      this.validate()
       this.$emit('blur', this.localValue)
     },
     handleSelect(value) {
-      console.log('[handleSelect]', value)
       this.localValue = value
       this.$emit('input', value)
       this.$emit('selected', value)
       this.$emit('change', value)
     },
     handleMultiSelect(value) {
-      console.log('[handleMultiSelect]', value)
       this.localValue = value
       this.$emit('input', value)
       this.$emit('change', value)
     },
     handleSwitchChange(value) {
       this.localValue = value
+      this.$emit('input', value)
       this.$emit('change', value)
     },
     handleDateChange(value) {
-      console.log('[handleDateChange]', value)
       this.localValue = value
       this.$emit('input', value)
       this.$emit('change', value)
+    },
+    validate() {
+      this.errorMessage = ''
+      
+      const value = this.localValue
+      const property = this.property
+      const propertyType = property.bk_property_type
+      
+      // 必填校验
+      if (property.isrequired && (value === undefined || value === null || value === '')) {
+        this.errorMessage = `${property.bk_property_name}不能为空`
+        return false
+      }
+      
+      // 如果值为空，则不进行后续类型校验
+      if (value === undefined || value === null || value === '') {
+        return true
+      }
+      
+      // int 类型校验
+      if (propertyType === 'int') {
+        const numValue = Number(value)
+        
+        if (!Number.isInteger(numValue)) {
+          this.errorMessage = '请输入整数'
+          return false
+        }
+        
+        // 范围校验
+        const parsedOption = parseOption(property.option)
+        if (parsedOption) {
+          const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+          const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+          
+          if (min !== null && numValue < min) {
+            this.errorMessage = `最小值为 ${min}`
+            return false
+          }
+          if (max !== null && numValue > max) {
+            this.errorMessage = `最大值为 ${max}`
+            return false
+          }
+        }
+      }
+      
+      // float 类型校验
+      if (propertyType === 'float') {
+        const numValue = parseFloat(value)
+        
+        if (isNaN(numValue)) {
+          this.errorMessage = '请输入有效的数字'
+          return false
+        }
+        
+        // 范围校验
+        const parsedOption = parseOption(property.option)
+        if (parsedOption) {
+          const min = parsedOption.min !== undefined && parsedOption.min !== '' && parsedOption.min !== null ? Number(parsedOption.min) : null
+          const max = parsedOption.max !== undefined && parsedOption.max !== '' && parsedOption.max !== null ? Number(parsedOption.max) : null
+          
+          if (min !== null && numValue < min) {
+            this.errorMessage = `最小值为 ${min}`
+            return false
+          }
+          if (max !== null && numValue > max) {
+            this.errorMessage = `最大值为 ${max}`
+            return false
+          }
+        }
+      }
+      
+      // 字符串正则校验 + 字符长度校验(与 bk-input 计数器保持一致)
+      if (['singlechar', 'longchar'].includes(propertyType)) {
+        const maxChars = getMaxCharsByType(propertyType)
+        const count = charLength(value)
+        if (maxChars !== null && count > maxChars) {
+          this.errorMessage = `请输入${maxChars}个字符以内的内容`
+          return false
+        }
+        const parsedOption = parseOption(property.option)
+        if (parsedOption && typeof parsedOption === 'string') {
+          try {
+            const regex = new RegExp(parsedOption)
+            if (!regex.test(value)) {
+              this.errorMessage = '格式不正确'
+              return false
+            }
+          } catch (e) {}
+        }
+      }
+      
+      return true
+    },
+    clearError() {
+      this.errorMessage = ''
     },
     focus() {
       this.$nextTick(() => {
@@ -251,6 +361,13 @@ export default {
   
   :deep(.bk-switcher) {
     margin-top: 4px;
+  }
+  
+  .form-error {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #ff5656;
   }
 }
 </style>

@@ -95,6 +95,14 @@ class InstanceService:
         search_end = search_data.get('search_end')
         
         logger.info(f'[advanced_search] conditions={conditions}, search_field={search_field}')
+
+        from app.service.model_service import ModelService
+        attributes = ModelService.get_model_attributes(model_id)
+        attr_type_map = {}
+        for attr in attributes:
+            pid = attr.get('bk_property_id')
+            if pid:
+                attr_type_map[pid] = attr.get('bk_property_type', '')
         
         offset = (page - 1) * page_size
         
@@ -126,7 +134,11 @@ class InstanceService:
                 op = cond.get('operator', '$eq')
                 value = cond.get('value', '')
                 is_fuzzy = cond.get('fuzzy', False) or fuzzy
-                
+
+                field_type = attr_type_map.get(field, '')
+                if field_type == 'bool':
+                    value = InstanceService._parse_bool_value_for_search(value)
+
                 # 映射前端操作符
                 op_mapping = {
                     'contains': '$regex',
@@ -152,7 +164,8 @@ class InstanceService:
         # 处理单条件搜索（兼容旧接口）
         elif search_field and (search_value or search_values or search_start or search_end):
             safe_field = search_field.strip()
-            
+            is_bool_field = attr_type_map.get(safe_field, '') == 'bool'
+
             # 处理日期范围
             if search_start or search_end:
                 if search_start:
@@ -166,9 +179,27 @@ class InstanceService:
             else:
                 # 处理普通搜索
                 if search_values:
-                    val_list = [str(v).strip() for v in search_values if v]
+                    # 兼容字符串（逗号分隔）和列表两种输入形式
+                    if isinstance(search_values, str):
+                        raw_values = [v.strip() for v in search_values.split(',') if v and v.strip()]
+                    else:
+                        raw_values = list(search_values)
+                    if is_bool_field:
+                        val_list = []
+                        for v in raw_values:
+                            if v is None or v == '':
+                                continue
+                            parsed_val = InstanceService._parse_bool_value_for_search(v)
+                            if parsed_val is not None:
+                                val_list.append(parsed_val)
+                    else:
+                        val_list = [str(v).strip() for v in raw_values if v]
                 elif search_value:
-                    val_list = [search_value.strip()]
+                    if is_bool_field:
+                        parsed = InstanceService._parse_bool_value_for_search(search_value)
+                        val_list = [parsed] if parsed is not None else []
+                    else:
+                        val_list = [search_value.strip()]
                 else:
                     val_list = []
                 
@@ -307,11 +338,33 @@ class InstanceService:
 
             if prop_id and prop_id in instance:
                 value = instance[prop_id]
+
+                # bool 类型：SQLite可能存储为 0/1 或 'true'/'false' 字符串
+                if prop_type == 'bool':
+                    if value is None:
+                        instance[prop_id] = False
+                    elif isinstance(value, bool):
+                        instance[prop_id] = value
+                    elif isinstance(value, int):
+                        instance[prop_id] = bool(value)
+                    elif isinstance(value, str):
+                        val_lower = value.lower().strip()
+                        if val_lower in ('true', '1', 'yes', 'on'):
+                            instance[prop_id] = True
+                        elif val_lower in ('false', '0', 'no', 'off', ''):
+                            instance[prop_id] = False
+                        else:
+                            instance[prop_id] = bool(value)
+                    else:
+                        instance[prop_id] = bool(value)
+                    continue
+
+                # 其他类型：按 JSON 解析
                 if value is not None and isinstance(value, str) and value.strip().startswith(('[', '{')):
                     try:
                         parsed = json.loads(value)
                         instance[prop_id] = parsed
-                        
+
                         # 对于list类型，如果解包是双重编码，则再解一次
                         if prop_type == 'list' and isinstance(parsed, str) and parsed.strip().startswith(('[', '{')):
                             try:
@@ -323,17 +376,50 @@ class InstanceService:
                         pass
 
         return instance
-    
+
+    @staticmethod
+    def _parse_bool_value_for_search(value):
+        """将各种形式的 bool 值转换为整数 1/0（与数据库存储一致）"""
+        if value is None or value == '':
+            return None
+        if isinstance(value, bool):
+            return 1 if value else 0
+        if isinstance(value, int):
+            return 1 if value else 0
+        if isinstance(value, float):
+            return 1 if value else 0
+        if isinstance(value, str):
+            v_lower = value.strip().lower()
+            if v_lower in ('true', '1', 'yes', 'on', 't'):
+                return 1
+            elif v_lower in ('false', '0', 'no', 'off', 'f', ''):
+                return 0
+            return None
+        return 1 if bool(value) else 0
+
     @staticmethod
     def _build_condition(field, op, value, params, param_counter):
         """构建单个条件（使用参数化查询）"""
         safe_field = field.strip()
         if not safe_field.replace('_', '').replace('-', '').isalnum():
             return None, param_counter
-        
-        # 解析多个值
+
+        # 解析多个值。如果值已经是整数/布尔类型，保持原样（避免 bool 的 1/0 被转成字符串）
         if isinstance(value, list):
-            val_list = [str(v).strip() for v in value if v]
+            val_list = []
+            for v in value:
+                if v is None or (isinstance(v, str) and v.strip() == ''):
+                    continue
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    val_list.append(v)
+                elif isinstance(v, bool):
+                    val_list.append(1 if v else 0)
+                else:
+                    val_list.append(str(v).strip())
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            val_list = [value]
+        elif isinstance(value, bool):
+            val_list = [1 if value else 0]
         elif isinstance(value, str):
             val_list = [v.strip() for v in value.split(',') if v.strip()]
         else:
@@ -442,80 +528,120 @@ class InstanceService:
     def create_instance(model_id, data):
         """创建实例"""
         table_name = InstanceService._get_table_name(model_id)
-        
+
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+
         instance_id = generate_id()
         data['id'] = instance_id
         data['_id'] = instance_id
-        data['bk_inst_id'] = instance_id  # 与蓝鲸原项目一致，使用相同的ID作为标准实例ID
-        data['bk_obj_id'] = model_id      # 添加模型ID
+        data['bk_inst_id'] = instance_id
+        data['bk_obj_id'] = model_id
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
         data.setdefault('last_time', now)
-        
+
         # 清理字段，只保留安全字段
         from app.service.model_service import ModelService
         attributes = ModelService.get_model_attributes(model_id)
+        # 构建属性ID到属性类型的映射
+        attr_type_map = {}
+        for attr in attributes:
+            pid = attr.get('bk_property_id')
+            if pid:
+                attr_type_map[pid] = attr.get('bk_property_type', '')
+
         valid_fields = set([attr.get('bk_property_id') for attr in attributes])
         valid_fields.update(SYSTEM_FIELDS)
-        
+
         clean_data = {}
         for key, value in data.items():
             if key in valid_fields:
-                # 处理JSON类型的字段
+                prop_type = attr_type_map.get(key, '')
+
                 if isinstance(value, (dict, list)):
                     clean_data[key] = json.dumps(value)
                 elif value is None:
                     clean_data[key] = None
+                elif prop_type == 'bool':
+                    # bool 类型保持原生布尔值
+                    if isinstance(value, bool):
+                        clean_data[key] = value
+                    elif isinstance(value, str):
+                        clean_data[key] = value.lower() == 'true'
+                    elif isinstance(value, int):
+                        clean_data[key] = bool(value)
+                    else:
+                        clean_data[key] = bool(value)
+                elif isinstance(value, (int, float)):
+                    clean_data[key] = value
                 else:
-                    clean_data[key] = str(value) if not isinstance(value, (int, float)) else value
-        
+                    clean_data[key] = str(value)
+
         if not clean_data:
             raise ValueError('No valid data to insert')
-        
+
         columns = list(clean_data.keys())
         placeholders = [f':{col}' for col in columns]
-        
+
         sql = f'INSERT INTO "{table_name}" ({",".join([f"{col}" for col in columns])}) VALUES ({",".join(placeholders)})'
         execute(sql, clean_data)
-        
+
         return InstanceService.get_instance(model_id, instance_id)
     
     @staticmethod
     def update_instance(model_id, instance_id, data):
         """更新实例"""
         table_name = InstanceService._get_table_name(model_id)
-        
+
         data['last_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+
         # 获取有效字段
         from app.service.model_service import ModelService
         attributes = ModelService.get_model_attributes(model_id)
+        # 构建属性ID到属性类型的映射
+        attr_type_map = {}
+        for attr in attributes:
+            pid = attr.get('bk_property_id')
+            if pid:
+                attr_type_map[pid] = attr.get('bk_property_type', '')
+
         valid_fields = set([attr.get('bk_property_id') for attr in attributes])
         valid_fields.update(SYSTEM_FIELDS)
         # 不允许修改系统字段
         system_fields_to_exclude = ['id', '_id', 'bk_supplier_account', 'create_time']
-        
+
         update_fields = []
         params = {'instance_id': instance_id}
-        
+
         for key, value in data.items():
             if key in valid_fields and key not in system_fields_to_exclude:
                 update_fields.append(f'"{key}" = :{key}')
+                prop_type = attr_type_map.get(key, '')
                 if isinstance(value, (dict, list)):
                     params[key] = json.dumps(value)
                 elif value is None:
                     params[key] = None
+                elif prop_type == 'bool':
+                    # bool 类型保持原生布尔值
+                    if isinstance(value, bool):
+                        params[key] = value
+                    elif isinstance(value, str):
+                        params[key] = value.lower() == 'true'
+                    elif isinstance(value, int):
+                        params[key] = bool(value)
+                    else:
+                        params[key] = bool(value)
+                elif isinstance(value, (int, float)):
+                    params[key] = value
                 else:
-                    params[key] = str(value) if not isinstance(value, (int, float)) else value
-        
+                    params[key] = str(value)
+
         if not update_fields:
             return InstanceService.get_instance(model_id, instance_id)
-        
+
         sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id = :instance_id'
         execute(sql, params)
-        
+
         return InstanceService.get_instance(model_id, instance_id)
     
     @staticmethod
@@ -523,49 +649,70 @@ class InstanceService:
         """批量更新实例"""
         if not ids:
             return 0
-        
+
         table_name = InstanceService._get_table_name(model_id)
-        
+
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data['last_time'] = now
-        
+
         # 获取有效字段
         from app.service.model_service import ModelService
         attributes = ModelService.get_model_attributes(model_id)
+        # 构建属性ID到属性类型的映射
+        attr_type_map = {}
+        for attr in attributes:
+            pid = attr.get('bk_property_id')
+            if pid:
+                attr_type_map[pid] = attr.get('bk_property_type', '')
+
         valid_fields = set([attr.get('bk_property_id') for attr in attributes])
         valid_fields.update(SYSTEM_FIELDS)
         # 不允许修改系统字段
         system_fields_to_exclude = ['id', '_id', 'bk_supplier_account', 'create_time']
-        
+
         update_fields = []
         params = {}
         param_idx = 0
-        
+
         for key, value in data.items():
             if key in valid_fields and key not in system_fields_to_exclude:
                 param_name = f'val_{param_idx}'
                 update_fields.append(f'"{key}" = :{param_name}')
+                prop_type = attr_type_map.get(key, '')
+
                 if isinstance(value, (dict, list)):
                     params[param_name] = json.dumps(value)
                 elif value is None:
                     params[param_name] = None
+                elif prop_type == 'bool':
+                    # bool 类型保持原生布尔值
+                    if isinstance(value, bool):
+                        params[param_name] = value
+                    elif isinstance(value, str):
+                        params[param_name] = value.lower() == 'true'
+                    elif isinstance(value, int):
+                        params[param_name] = bool(value)
+                    else:
+                        params[param_name] = bool(value)
+                elif isinstance(value, (int, float)):
+                    params[param_name] = value
                 else:
-                    params[param_name] = str(value) if not isinstance(value, (int, float)) else value
+                    params[param_name] = str(value)
                 param_idx += 1
-        
+
         if not update_fields:
             return len(ids)
-        
+
         # 构建IN子句的参数
         id_params = []
         for idx, inst_id in enumerate(ids):
             param_name = f'id_{idx}'
             id_params.append(f':{param_name}')
             params[param_name] = inst_id
-        
+
         sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id IN ({",".join(id_params)})'
         execute(sql, params)
-        
+
         return len(ids)
     
     @staticmethod

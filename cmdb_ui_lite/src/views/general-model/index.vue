@@ -113,6 +113,7 @@
     </div>
 
     <filter-tag
+      ref="filterTagRef"
       v-if="hasFilterCondition"
       class="filter-tag-wrapper"
       :filter-tags="filterTags"
@@ -136,6 +137,7 @@
       v-bkloading="{ isLoading: table.loading }"
       :data="table.list"
       :pagination="table.pagination"
+      :max-height="tableContentHeight"
       :sort="tableSort"
       :selected-data.sync="selectedIds"
       :row-key="row => row.bk_inst_id"
@@ -143,29 +145,29 @@
       @page-change="handlePageChange"
       @page-limit-change="handleLimitChange"
       @sort-change="handleSortChange">
-      <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
-      <bk-table-column
-        v-for="column in table.header"
-        :key="column.id"
-        :prop="column.id"
-        :label="column.name"
-        :sortable="getColumnSortable(column.id)"
-        :show-overflow-tooltip="true">
-        <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-          <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
-            {{ row[column.id] }}
-          </bk-button>
-        </template>
-        <template v-else #default="{ row }">
-          {{ formatCellValue(row[column.id], column) }}
-        </template>
-      </bk-table-column>
-      <bk-table-column label="操作" width="150" fixed="right">
-        <template #default="{ row }">
-          <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
-        </template>
-      </bk-table-column>
-    </bk-table>
+        <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
+        <bk-table-column
+          v-for="column in table.header"
+          :key="column.id"
+          :prop="column.id"
+          :label="column.name"
+          :sortable="getColumnSortable(column.id)"
+          :show-overflow-tooltip="true">
+          <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
+            <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+              {{ row[column.id] }}
+            </bk-button>
+          </template>
+          <template v-else #default="{ row }">
+            {{ formatCellValue(row[column.id], column) }}
+          </template>
+        </bk-table-column>
+        <bk-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
+          </template>
+        </bk-table-column>
+      </bk-table>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -323,7 +325,8 @@ export default {
         disabledColumns: ['bk_inst_id', 'bk_inst_name']
       },
       isUrlUpdateTriggered: false,
-      searchTimeout: null
+      searchTimeout: null,
+      filterTagHeight: 0
     }
   },
   computed: {
@@ -425,9 +428,17 @@ export default {
         return this.enumOptions
       }
       const query = this.enumSearchQuery.toLowerCase()
-      return this.enumOptions.filter(opt => 
-        opt.name.toLowerCase().includes(query)
-      )
+      return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
+    },
+    tableContentHeight() {
+      const baseHeight = this.$APP?.height || window.innerHeight
+      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 190)
+    },
+    hasFilterCondition() {
+      return this.visibleFilterTags.length > 0
+    },
+    hasCondition() {
+      return this.filterTagHeight !== 0
     },
     sidesliderWidth() {
       const screenWidth = window.innerWidth
@@ -435,15 +446,9 @@ export default {
         return 600
       } else if (screenWidth >= 480) {
         return Math.floor(screenWidth * 0.8)
-      } else {
-        return Math.floor(screenWidth * 0.95)
       }
+      return Math.floor(screenWidth * 0.95)
     },
-    /**
-     * 将内部排序格式转换为 bk-table 组件所需的格式
-     * 内部格式: 'name' (升序) 或 '-name' (降序)
-     * 组件格式: { prop: 'name', order: 'ascending' | 'descending' }
-     */
     tableSort() {
       if (!this.table.sort) {
         return undefined
@@ -594,6 +599,7 @@ export default {
     console.log('[Index.mounted] Route query:', JSON.stringify(this.$route.query))
     this.restoreStateFromUrl()
     console.log('[Index.mounted] restoreStateFromUrl 后 filter.value:', this.filter.value, 'fuzzy:', this.filter.fuzzyQuery)
+    this.$nextTick(() => this.updateFilterTagHeight())
 
     this.clickOutsideHandler = (event) => {
       const wrapper = document.querySelector('.enum-select-wrapper')
@@ -637,6 +643,11 @@ export default {
     }
   },
   watch: {
+    filterTags: {
+      handler() {
+        this.$nextTick(() => this.updateFilterTagHeight())
+      }
+    },
     'filter.values': {
       handler(newValues, oldValues) {
         console.log('[Index.watch.filter.values] 变化:', { old: oldValues, new: newValues })
@@ -744,6 +755,17 @@ export default {
     }
   },
   methods: {
+    updateFilterTagHeight() {
+      setTimeout(() => {
+        const filterTagRef = this.$refs?.filterTagRef
+        const el = filterTagRef?.$el || filterTagRef
+        if (el && el.getBoundingClientRect) {
+          this.filterTagHeight = el.getBoundingClientRect().height
+        } else {
+          this.filterTagHeight = 0
+        }
+      }, 300)
+    },
     async loadModelData(searchParams = null) {
       this.table.loading = true
       try {
@@ -1752,9 +1774,27 @@ export default {
       console.log('[DEBUG] handleCreateInstance - 开始打开新建弹窗')
       this.createForm = {}
       this.createDialogVisible = true
-      
+
       // 初始化表单默认值
       this.allProperties.forEach(attr => {
+        const propType = attr.bk_property_type
+
+        // bool 类型的默认值存储在 option 中（与原项目保持一致）
+        if (propType === 'bool') {
+          const option = attr.option
+          let defaultVal = false
+          if (typeof option === 'boolean') {
+            defaultVal = option
+          } else if (typeof option === 'string') {
+            defaultVal = option.toLowerCase() === 'true'
+          } else if (typeof option === 'number') {
+            defaultVal = Boolean(option)
+          }
+          this.$set(this.createForm, attr.bk_property_id, defaultVal)
+          return
+        }
+
+        // 其他类型优先使用 default，为默认值
         if (attr.default !== null && attr.default !== undefined) {
           this.$set(this.createForm, attr.bk_property_id, attr.default)
         }
@@ -2533,6 +2573,31 @@ export default {
       border-left: 1px solid #c4c6cc;
       margin-top: 4px;
     }
+  }
+}
+
+.table-wrapper {
+  position: relative;
+  overflow: hidden;
+  margin-top: 14px;
+  background: #fff;
+  border-radius: 2px;
+  border: 1px solid #eaeaea;
+  
+  .models-table {
+    margin-top: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .bk-table-pagination-wrapper {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 1px solid #eaeaea;
+    padding: 8px 20px;
+    z-index: 10;
   }
 }
 

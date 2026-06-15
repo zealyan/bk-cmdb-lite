@@ -55,10 +55,10 @@
                 :title="op.desc">
               </bk-option>
             </bk-select>
-            <div class="item-value" :class="{ 'is-full': withoutOperator.includes(item.property.bk_property_type), 'r0': ['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-date', 'cmdb-search-time'].includes(getComponentType(item)) }">
+            <div class="item-value" :class="{ 'is-full': withoutOperator.includes(item.property.bk_property_type), 'r0': ['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-date', 'cmdb-search-time', 'cmdb-search-bool'].includes(getComponentType(item)) }">
               <component
                 :is="getComponentType(item)"
-                v-if="['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list'].includes(getComponentType(item))"
+                v-if="['cmdb-search-enum', 'cmdb-search-enummulti', 'cmdb-search-list', 'cmdb-search-bool'].includes(getComponentType(item))"
                 v-model="item.valueText"
                 :options="getSelectOptions(item.property)"
                 :property="item.property"
@@ -109,14 +109,6 @@
                 size="small"
                 @enter="handleSearch">
               </bk-input>
-              <bk-select
-                v-else-if="getComponentType(item) === 'select'"
-                v-model="item.valueText"
-                :placeholder="getPlaceholder(item)"
-                :options="getSelectOptions(item.property)"
-                searchable
-                size="small">
-              </bk-select>
             </div>
           </div>
         </div>
@@ -143,6 +135,7 @@ import EnumMultiSearch from '../search/enummulti.vue'
 import ListSearch from '../search/list.vue'
 import DateSearch from '../search/date.vue'
 import TimeSearch from '../search/time.vue'
+import BoolSearch from '../search/bool.vue'
 import { transformGeneralModelCondition, getOperatorSideEffect } from './utils'
 import { setSearchQueryByCondition, buildSearchParams } from '@/utils/query-builder'
 
@@ -156,7 +149,8 @@ export default {
     'cmdb-search-enummulti': EnumMultiSearch,
     'cmdb-search-list': ListSearch,
     'cmdb-search-date': DateSearch,
-    'cmdb-search-time': TimeSearch
+    'cmdb-search-time': TimeSearch,
+    'cmdb-search-bool': BoolSearch
   },
   props: {
     show: {
@@ -361,9 +355,9 @@ export default {
       const propType = item.property.bk_property_type
       const isEnum = propType === 'enum'
       const isEnumMulti = propType === 'enummulti'
-      const isBool = propType === 'bool'
       const isList = propType === 'list'
-      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+      const isBool = propType === 'bool'
+      const isEnumOrList = isEnum || isEnumMulti || isList
       const isDateTime = ['date', 'time'].includes(propType)
       
       if (this.isRangeOperator(item.operator)) {
@@ -373,6 +367,10 @@ export default {
       
       if (isEnumOrList || isDateTime) {
         return item.valueText || []
+      }
+      
+      if (isBool) {
+        return item.valueText || ''
       }
       
       if (this.isInOperator(item.operator)) {
@@ -437,16 +435,12 @@ export default {
       }
 
       if (type === 'bool') {
-        return 'select'
+        return 'cmdb-search-bool'
       }
 
       const inputTypes = ['int', 'float', 'singlechar', 'longchar', 'objuser', 'organization', 'timezone', 'foreignkey', 'array', 'object', 'map', 'table']
       const textareaTypes = ['text']
-      const selectTypes = ['bool']
 
-      if (selectTypes.includes(type)) {
-        return 'select'
-      }
       if (textareaTypes.includes(type)) {
         return 'textarea'
       }
@@ -518,15 +512,15 @@ export default {
 
       const isEnum = property.bk_property_type === 'enum'
       const isEnumMulti = property.bk_property_type === 'enummulti'
-      const isBool = property.bk_property_type === 'bool'
       const isList = property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+      const isBool = property.bk_property_type === 'bool'
+      const isEnumOrList = isEnum || isEnumMulti || isList
       const isDateTime = ['date', 'time'].includes(property.bk_property_type)
       this.filterItems.push({
         id: this.nextItemId++,
         property,
         operator,
-        valueText: isEnumOrList || isDateTime ? [] : '',
+        valueText: isEnumOrList || isDateTime ? [] : (isBool ? '' : ''),
         valueRange: ''
       })
     },
@@ -574,9 +568,9 @@ export default {
     handleOperatorChange(item) {
       const isEnum = item.property.bk_property_type === 'enum'
       const isEnumMulti = item.property.bk_property_type === 'enummulti'
-      const isBool = item.property.bk_property_type === 'bool'
       const isList = item.property.bk_property_type === 'list'
-      const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+      const isBool = item.property.bk_property_type === 'bool'
+      const isEnumOrList = isEnum || isEnumMulti || isList
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
@@ -589,9 +583,9 @@ export default {
         const propType = item.property.bk_property_type
         const isEnum = propType === 'enum'
         const isEnumMulti = propType === 'enummulti'
-        const isBool = propType === 'bool'
         const isList = propType === 'list'
-        const isEnumOrList = isEnum || isEnumMulti || isList || isBool
+        const isBool = propType === 'bool'
+        const isEnumOrList = isEnum || isEnumMulti || isList
         const isDateTime = ['date', 'time'].includes(propType)
 
         if (isEnumOrList || isDateTime) {
@@ -601,10 +595,18 @@ export default {
               value
             }
           }
+        } else if (isBool) {
+          // bool 类型：值是 'true' 或 'false'（单个字符串）
+          if (value === 'true' || value === 'false') {
+            conditionMap[item.property.bk_property_id] = {
+              operator: item.operator,
+              value
+            }
+          }
         } else if (value !== null && value !== undefined && String(value).trim().length > 0) {
           let processedValue = value
 
-          if (this.isInOperator(item.operator) && !isEnumOrList) {
+          if (this.isInOperator(item.operator)) {
             processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)
           } else if (this.isRangeOperator(item.operator)) {
             processedValue = String(value).split(/[\n,，]/).map(v => v.trim()).filter(v => v.length > 0)

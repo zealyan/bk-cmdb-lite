@@ -1,5 +1,5 @@
 <template>
-  <div id="app" class="cmdb-app">
+  <div id="app" class="cmdb-app" ref="appRef">
     <CmdbHeader />
     <div class="views-layout">
       <div class="page-breadcrumbs" v-if="showBreadcrumbs">
@@ -24,6 +24,17 @@
 import CmdbHeader from '@/components/layout/header.vue'
 const STORAGE_KEY = 'cmdb_list_state'
 
+function throttle(fn, delay = 200) {
+  let timer = null
+  return function () {
+    if (timer) return
+    timer = setTimeout(() => {
+      fn.apply(this, arguments)
+      timer = null
+    }, delay)
+  }
+}
+
 export default {
   name: 'App',
   components: {
@@ -32,7 +43,8 @@ export default {
   data () {
     return {
       breadcrumbs: [],
-      isListPage: true
+      isListPage: true,
+      resizeHandler: null
     }
   },
   computed: {
@@ -55,10 +67,25 @@ export default {
       deep: true
     }
   },
+  created () {
+    this.resizeHandler = throttle(() => this.calculateAppHeight(), 200)
+  },
   mounted () {
+    this.calculateAppHeight()
+    window.addEventListener('resize', this.resizeHandler)
     this.updateBreadcrumbs(this.$route)
   },
+  beforeDestroy () {
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+    }
+  },
   methods: {
+    calculateAppHeight () {
+      const el = this.$refs.appRef || document.getElementById('app')
+      const height = el ? (el.getBoundingClientRect?.().height || el.offsetHeight) : window.innerHeight
+      this.$store.commit('setAppHeight', height)
+    },
     saveListState (to, from) {
       console.log('[App.saveListState] 保存列表状态', { from: from.name, to: to.name })
       if (from.name === 'ResourceInstanceList') {
@@ -204,10 +231,13 @@ export default {
   display: flex;
   align-items: center;
   font-size: 14px;
+  overflow: hidden;
+  min-width: 0;
 
   .breadcrumb-item {
     color: #3a84ff;
     cursor: pointer;
+    white-space: nowrap;
 
     &:hover {
       text-decoration: underline;
@@ -217,10 +247,15 @@ export default {
   .breadcrumb-separator {
     margin: 0 8px;
     color: #c4c6cc;
+    flex-shrink: 0;
   }
 
   .breadcrumb-current {
     color: #63656e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 }
 </style>
