@@ -432,7 +432,7 @@ export default {
     },
     tableContentHeight() {
       const baseHeight = this.$APP?.height || window.innerHeight
-      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 190)
+      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 210)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -2582,7 +2582,7 @@ export default {
 
 .bk-table-pagination-wrapper {
   position: sticky;
-  bottom: 0;
+  bottom: 20px;
   background: #fff;
   border-top: 1px solid #eaeaea;
   padding: 8px 20px;
