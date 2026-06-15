@@ -191,10 +191,11 @@ export default {
   height: 100%;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
 }
 
 .views-layout {
-  flex: 1;
+  height: calc(100% - 52px);
   overflow-y: auto;
   background: #f5f7fa;
   position: relative;
