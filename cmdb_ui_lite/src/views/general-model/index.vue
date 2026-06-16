@@ -432,7 +432,7 @@ export default {
     },
     tableContentHeight() {
       const baseHeight = this.$APP?.height || window.innerHeight
-      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 190)
+      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 210)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -2576,33 +2576,17 @@ export default {
   }
 }
 
-.table-wrapper {
-  position: relative;
-  overflow: hidden;
-  margin-top: 14px;
-  background: #fff;
-  border-radius: 2px;
-  border: 1px solid #eaeaea;
-  
-  .models-table {
-    margin-top: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .bk-table-pagination-wrapper {
-    position: sticky;
-    bottom: 0;
-    background: #fff;
-    border-top: 1px solid #eaeaea;
-    padding: 8px 20px;
-    z-index: 10;
-  }
-}
-
 .models-table {
   margin-top: 14px;
+}
+
+.bk-table-pagination-wrapper {
+  position: sticky;
+  bottom: 20px;
+  background: #fff;
+  border-top: 1px solid #eaeaea;
+  padding: 8px 20px;
+  z-index: 10;
 }
 
 .icon-button {
