@@ -459,6 +459,8 @@ export default {
       color: #63656e;
     }
     .required-asterisk {
+      display: inline-block;
+      vertical-align: middle;
       color: #ff5656;
       font-size: 14px;
       margin-left: -10px;
