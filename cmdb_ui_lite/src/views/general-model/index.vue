@@ -326,7 +326,8 @@ export default {
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null,
-      filterTagHeight: 0
+      filterTagHeight: 0,
+      tableMaxHeight: 600
     }
   },
   computed: {
@@ -431,9 +432,9 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
-      let contentHeight = this.$APP?.height || window.innerHeight
-      contentHeight = contentHeight - 52 - 40
-      return Math.max(200, contentHeight - (this.filterTagHeight || 0) - 190)
+      // 通过 updateFilterTagHeight 内的 calculateTableHeight 方法动态计算
+      // 该值根据 .views-layout 实际高度和 filterTag 高度计算, 保持分页距离 window 底部约 12px
+      return this.tableMaxHeight
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -600,7 +601,18 @@ export default {
     console.log('[Index.mounted] Route query:', JSON.stringify(this.$route.query))
     this.restoreStateFromUrl()
     console.log('[Index.mounted] restoreStateFromUrl 后 filter.value:', this.filter.value, 'fuzzy:', this.filter.fuzzyQuery)
-    this.$nextTick(() => this.updateFilterTagHeight())
+    this.$nextTick(() => {
+      this.updateFilterTagHeight()
+      // 初次挂载时同步计算表格高度, 避免等待 setTimeout 300ms
+      this.calculateTableHeight()
+    })
+
+    // 监听窗口尺寸变化, 重新计算表格高度, 保持分页在 window 可视范围内
+    this.resizeHandler = () => {
+      this.calculateTableHeight()
+      this.updateFilterTagHeight()
+    }
+    window.addEventListener('resize', this.resizeHandler)
 
     this.clickOutsideHandler = (event) => {
       const wrapper = document.querySelector('.enum-select-wrapper')
@@ -641,6 +653,9 @@ export default {
     }
     if (this.searchTimeout) {
       clearTimeout(this.searchTimeout)
+    }
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
     }
   },
   watch: {
@@ -765,7 +780,27 @@ export default {
         } else {
           this.filterTagHeight = 0
         }
+        // 同步计算表格可用高度, 保持分页距离 window 底部约 12px
+        this.calculateTableHeight()
       }, 300)
+    },
+    calculateTableHeight() {
+      // 通过 DOM 直接获取 .views-layout 实际可用高度, 这样不受视口变化影响
+      // .views-layout 高度 = 100vh - 52 (header)
+      // 减去内容区上方的: breadcrumbs(40) + general-model-layout padding-top(15) + options(32) + margin(14) = 101
+      // 减去内容区下方的: buffer(12) = 12
+      // 总减法 = 52 (header) + 40 (breadcrumbs) + 15 (padding) + 32 (options) + 14 (margin) + 12 (buffer) = 165
+      const viewsLayout = document.querySelector('.views-layout')
+      if (viewsLayout) {
+        const layoutHeight = viewsLayout.getBoundingClientRect().height
+        const newHeight = Math.max(200, layoutHeight - 40 - 15 - 32 - 14 - 12 - (this.filterTagHeight || 0))
+        console.log('[calculateTableHeight] viewsLayout.height:', layoutHeight, 'filterTagHeight:', this.filterTagHeight, 'newHeight:', newHeight, 'oldHeight:', this.tableMaxHeight)
+        this.tableMaxHeight = newHeight
+      } else {
+        // fallback: 使用 $APP.height 推算
+        const contentHeight = (this.$APP?.height || window.innerHeight) - 52 - 40
+        this.tableMaxHeight = Math.max(200, contentHeight - (this.filterTagHeight || 0) - 73)
+      }
     },
     async loadModelData(searchParams = null) {
       this.table.loading = true
@@ -2584,7 +2619,7 @@ export default {
 .bk-table-pagination-wrapper {
   background: #fff;
   border-top: 1px solid #eaeaea;
-  padding: 8px 20px;
+  padding: 15px 20px;
 }
 
 .icon-button {
