@@ -446,20 +446,15 @@ export default {
       display: flex;
       align-items: center;
       margin: 2px 0 6px;
-      .property-name-text {
-        font-size: 14px;
-        color: #63656e;
-        &.required::after {
-          content: "*";
-          color: #ff5656;
-          margin-left: 4px;
-        }
-      }
-      .property-tips {
-        margin-left: 4px;
-        color: #c3cdd7;
-        cursor: help;
-      }
+    }
+    .property-name-text {
+      font-size: 14px;
+      color: #63656e;
+    }
+    .property-name-text.required::after {
+      content: "*";
+      color: #ff5656;
+      margin-left: 4px;
     }
     .property-value {
       position: relative;
