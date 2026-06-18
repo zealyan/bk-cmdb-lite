@@ -16,9 +16,10 @@
                 class="property-item"
                 :class="[property.bk_property_type, { 'full-width': isFullWidth(property) }]">
                 <div class="property-name">
-                  <span class="property-name-text" :class="{ required: property.isrequired }">
+                  <span class="property-name-text">
                     {{ property.bk_property_name }}
                   </span>
+                  <span class="required-asterisk" v-if="property.isrequired">*</span>
                   <i class="bk-icon icon-cc-tips property-tips"
                     v-if="property.placeholder"
                     v-bk-tooltips="{ trigger: 'mouseenter', content: property.placeholder }">
@@ -451,8 +452,7 @@ export default {
       font-size: 14px;
       color: #63656e;
     }
-    .property-name-text.required::after {
-      content: "*";
+    .required-asterisk {
       color: #ff5656;
       margin-left: 4px;
     }
