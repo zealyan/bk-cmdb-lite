@@ -131,43 +131,45 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <bk-table
-      ref="tableRef"
-      class="models-table"
-      v-bkloading="{ isLoading: table.loading }"
-      :data="table.list"
-      :pagination="table.pagination"
-      :max-height="tableContentHeight"
-      :sort="tableSort"
-      :selected-data.sync="selectedIds"
-      :row-key="row => row.bk_inst_id"
-      @selection-change="handleSelectionChange"
-      @page-change="handlePageChange"
-      @page-limit-change="handleLimitChange"
-      @sort-change="handleSortChange">
-        <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
-        <bk-table-column
-          v-for="column in table.header"
-          :key="column.id"
-          :prop="column.id"
-          :label="column.name"
-          :sortable="getColumnSortable(column.id)"
-          :show-overflow-tooltip="true">
-          <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-            <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
-              {{ row[column.id] }}
-            </bk-button>
-          </template>
-          <template v-else #default="{ row }">
-            {{ formatCellValue(row[column.id], column) }}
-          </template>
-        </bk-table-column>
-        <bk-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
-          </template>
-        </bk-table-column>
-      </bk-table>
+    <div class="models-table-wrapper">
+      <bk-table
+        ref="tableRef"
+        class="models-table"
+        v-bkloading="{ isLoading: table.loading }"
+        :data="table.list"
+        :pagination="table.pagination"
+        :max-height="tableContentHeight"
+        :sort="tableSort"
+        :selected-data.sync="selectedIds"
+        :row-key="row => row.bk_inst_id"
+        @selection-change="handleSelectionChange"
+        @page-change="handlePageChange"
+        @page-limit-change="handleLimitChange"
+        @sort-change="handleSortChange">
+          <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
+          <bk-table-column
+            v-for="column in table.header"
+            :key="column.id"
+            :prop="column.id"
+            :label="column.name"
+            :sortable="getColumnSortable(column.id)"
+            :show-overflow-tooltip="true">
+            <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
+              <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+                {{ row[column.id] }}
+              </bk-button>
+            </template>
+            <template v-else #default="{ row }">
+              {{ formatCellValue(row[column.id], column) }}
+            </template>
+          </bk-table-column>
+          <bk-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
+            </template>
+          </bk-table-column>
+        </bk-table>
+    </div>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -432,9 +434,13 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
-      // 通过 updateFilterTagHeight 内的 calculateTableHeight 方法动态计算
-      // 该值根据 .views-layout 实际高度和 filterTag 高度计算, 保持分页距离 window 底部约 12px
-      return this.tableMaxHeight
+      // 计算从表格顶部到窗口底部的距离
+      // 表格顶部位置 = 面包屑(40) + padding(15) + 工具栏(32) + margin(14) = 101
+      // 窗口底部位置 = window.innerHeight
+      // 可用空间 = window.innerHeight - 表格顶部位置 - 分页高度(63) - 底部缓冲(12)
+      const tableTop = 40 + 15 + 32 + 14 + (this.filterTagHeight || 0)
+      const baseHeight = this.$APP?.height || window.innerHeight
+      return Math.max(200, baseHeight - tableTop - 63 - 12)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -664,6 +670,11 @@ export default {
         this.$nextTick(() => this.updateFilterTagHeight())
       }
     },
+    filterTagHeight: {
+      handler() {
+        this.$nextTick(() => this.calculateTableHeight())
+      }
+    },
     'filter.values': {
       handler(newValues, oldValues) {
         console.log('[Index.watch.filter.values] 变化:', { old: oldValues, new: newValues })
@@ -780,8 +791,6 @@ export default {
         } else {
           this.filterTagHeight = 0
         }
-        // 同步计算表格可用高度, 保持分页距离 window 底部约 12px
-        this.calculateTableHeight()
       }, 300)
     },
     calculateTableHeight() {
@@ -2209,6 +2218,17 @@ export default {
 <style lang="scss">
 .general-model-layout {
   padding: 15px 20px 0;
+}
+
+.models-table-wrapper {
+  margin-top: 14px;
+}
+
+.filter-tag-wrapper + .models-table-wrapper {
+  margin-top: 0;
+}
+
+.models-table {
 }
 
 .models-options {
