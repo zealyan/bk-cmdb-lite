@@ -444,17 +444,34 @@ export default {
       max-width: 100%;
     }
     .property-name {
-      display: flex;
-      align-items: center;
+      display: block;
       margin: 2px 0 6px;
+      line-height: 24px;
+      font-size: 0;
     }
     .property-name-text {
+      position: relative;
+      display: inline-block;
+      max-width: calc(100% - 20px);
+      padding: 0 10px 0 0;
+      vertical-align: middle;
       font-size: 14px;
       color: #63656e;
     }
     .required-asterisk {
       color: #ff5656;
-      margin-left: 4px;
+      font-size: 14px;
+      margin-left: -10px;
+    }
+    .property-tips {
+      display: inline-block;
+      vertical-align: middle;
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+      margin-right: 6px;
+      color: #c3cdd7;
+      cursor: help;
     }
     .property-value {
       position: relative;

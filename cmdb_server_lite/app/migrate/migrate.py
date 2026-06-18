@@ -149,7 +149,7 @@ SYSTEM_PROPERTIES = [
         "ispre": True,
         "bk_property_index": 1,
         "bk_property_group": "default",
-        "placeholder": "",
+        "placeholder": "请输入实例名称，用于标识该实例",
         "unit": "",
         "option": None
     },
