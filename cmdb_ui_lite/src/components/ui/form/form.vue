@@ -115,10 +115,32 @@ export default {
   data() {
     return {
       groupState: {},
-      errorMessages: {}
+      errorMessages: {},
+      initialValues: {}
     }
   },
   computed: {
+    hasChange() {
+      const keys = Object.keys(this.initialValues)
+      if (keys.length === 0) {
+        const hasAnyValue = Object.values(this.values).some(v => v !== '' && v !== null && v !== undefined && !Array.isArray(v) ? true : (Array.isArray(v) ? v.length > 0 : false))
+        return hasAnyValue
+      }
+      for (const key of keys) {
+        const initial = this.initialValues[key]
+        const current = this.values[key]
+        if (initial !== current) {
+          if (Array.isArray(initial) && Array.isArray(current)) {
+            if (JSON.stringify(initial) !== JSON.stringify(current)) {
+              return true
+            }
+          } else if (initial !== '' || (current !== '' && current !== null && current !== undefined)) {
+            return true
+          }
+        }
+      }
+      return false
+    },
     groupedPropertiesList() {
       const groupNameMap = {
         'base': '基本信息',
@@ -151,8 +173,14 @@ export default {
   },
   created() {
     this.initGroupState()
+    this.initialValues = { ...this.values }
   },
   methods: {
+    reset() {
+      this.initialValues = {}
+      this.errorMessages = {}
+      this.$emit('update:values', {})
+    },
     initGroupState() {
       this.groupedPropertiesList.forEach(group => {
         this.$set(this.groupState, group.bk_group_id, false)

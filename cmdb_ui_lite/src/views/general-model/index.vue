@@ -198,6 +198,7 @@
       :width="createSidesliderWidth"
       :fullscreen="createSidesliderFullscreen"
       :quick-close="true"
+      :before-close="handleCreateDialogBeforeClose"
       @hidden="handleCreateDialogClose">
       <template #content>
         <div class="create-form-wrapper">
@@ -225,6 +226,7 @@
       :width="createSidesliderWidth"
       :fullscreen="createSidesliderFullscreen"
       :quick-close="true"
+      :before-close="handleBatchUpdateDialogBeforeClose"
       @hidden="handleBatchUpdateDialogClose">
       <template #content>
         <div class="batch-update-form-wrapper">
@@ -1687,6 +1689,20 @@ export default {
         this.batchUpdateFormLoading = false
       }
     },
+    handleBatchUpdateDialogBeforeClose(done) {
+      const formRef = this.$refs.formMultipleRef
+      if (formRef && formRef.hasChange) {
+        this.$bkInfo({
+          title: '确认退出？',
+          subTitle: '当前批量更新有未保存的修改，是否确认退出？',
+          confirmFn: () => {
+            done && done()
+          }
+        })
+      } else {
+        done && done()
+      }
+    },
     handleBatchUpdateDialogClose() {
       this.batchUpdateDialogVisible = false
       if (this.$refs.formMultipleRef) {
@@ -1844,6 +1860,20 @@ export default {
           this.$set(this.createForm, attr.bk_property_id, attr.default)
         }
       })
+    },
+    handleCreateDialogBeforeClose(done) {
+      const formRef = this.$refs.cmdbFormRef
+      if (formRef && formRef.hasChange) {
+        this.$bkInfo({
+          title: '确认退出？',
+          subTitle: '当前新增实例有未保存的修改，是否确认退出？',
+          confirmFn: () => {
+            done && done()
+          }
+        })
+      } else {
+        done && done()
+      }
     },
     handleCreateDialogClose() {
       this.createDialogVisible = false
