@@ -255,6 +255,7 @@ import FilterTag from '@/components/filter-tag/index.vue'
 import FilterTagItem from '@/components/filter-tag/filter-tag-item.vue'
 import GeneralModelFilter from '@/components/filter/general-model-filter.vue'
 import FormMultiple from '@/components/ui/form/form-multiple.vue'
+import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
 import modelIndex from '@/assets/api/index.json'
@@ -271,6 +272,7 @@ export default {
     FilterTagItem,
     GeneralModelFilter,
     FormMultiple,
+    'cmdb-form': CmdbForm,
     'cmdb-search-date': DateSearch,
     'cmdb-search-time': TimeSearch
   },
