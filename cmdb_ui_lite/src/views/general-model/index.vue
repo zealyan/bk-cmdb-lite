@@ -1694,7 +1694,7 @@ export default {
     handleBatchUpdateDialogBeforeClose() {
       const formRef = this.$refs.formMultipleRef
       if (formRef && formRef.hasChange) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           this.$bkInfo({
             title: '确认退出？',
             subTitle: '当前批量更新有未保存的修改，是否确认退出？',
@@ -1702,7 +1702,7 @@ export default {
               resolve(true)
             },
             cancelFn: () => {
-              reject(false)
+              resolve(false)
             }
           })
         })
@@ -1873,7 +1873,7 @@ export default {
         return v !== '' && v !== null && v !== undefined
       })
       if (hasValue) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           this.$bkInfo({
             title: '确认退出？',
             subTitle: '当前新增实例有未保存的修改，是否确认退出？',
@@ -1881,7 +1881,7 @@ export default {
               resolve(true)
             },
             cancelFn: () => {
-              reject(false)
+              resolve(false)
             }
           })
         })
