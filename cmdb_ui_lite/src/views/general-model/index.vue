@@ -2149,10 +2149,16 @@ export default {
       this.loadModelData()
     },
     getColumnSortable(columnId) {
-      const sortableTypes = ['int', 'float', 'date', 'time', 'enum', 'singlechar', 'longchar']
+      // 参考原项目实现: 除了 INNER_TABLE 类型外，其他类型都可以排序
+      // 原项目 isPropertySortable 函数:
+      //   - 对于 host 模型: 排除 FOREIGNKEY, TOPOLOGY, INNER_TABLE
+      //   - 对于其他模型: 只排除 INNER_TABLE
       const property = this.allProperties.find(p => p.bk_property_id === columnId)
       if (!property) return false
-      return sortableTypes.includes(property.bk_property_type)
+      
+      // INNER_TABLE 类型不支持排序
+      const notSortableTypes = ['innertable']
+      return !notSortableTypes.includes(property.bk_property_type)
     },
     async handleApplyColumns(properties) {
       console.log('[Persistence] handleApplyColumns called, properties:', properties)
