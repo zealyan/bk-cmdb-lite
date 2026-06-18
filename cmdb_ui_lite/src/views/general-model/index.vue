@@ -431,8 +431,9 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
-      const baseHeight = this.$APP?.height || window.innerHeight
-      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 210)
+      let contentHeight = this.$APP?.height || window.innerHeight
+      contentHeight = contentHeight - 52 - 40
+      return Math.max(200, contentHeight - (this.filterTagHeight || 0) - 190)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -2581,12 +2582,9 @@ export default {
 }
 
 .bk-table-pagination-wrapper {
-  position: sticky;
-  bottom: 20px;
   background: #fff;
   border-top: 1px solid #eaeaea;
   padding: 8px 20px;
-  z-index: 10;
 }
 
 .icon-button {
