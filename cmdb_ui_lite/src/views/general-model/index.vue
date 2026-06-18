@@ -1689,19 +1689,23 @@ export default {
         this.batchUpdateFormLoading = false
       }
     },
-    handleBatchUpdateDialogBeforeClose(done) {
+    handleBatchUpdateDialogBeforeClose() {
       const formRef = this.$refs.formMultipleRef
       if (formRef && formRef.hasChange) {
-        this.$bkInfo({
-          title: '确认退出？',
-          subTitle: '当前批量更新有未保存的修改，是否确认退出？',
-          confirmFn: () => {
-            done && done()
-          }
+        return new Promise((resolve, reject) => {
+          this.$bkInfo({
+            title: '确认退出？',
+            subTitle: '当前批量更新有未保存的修改，是否确认退出？',
+            confirmFn: () => {
+              resolve(true)
+            },
+            cancelFn: () => {
+              reject(false)
+            }
+          })
         })
-      } else {
-        done && done()
       }
+      return true
     },
     handleBatchUpdateDialogClose() {
       this.batchUpdateDialogVisible = false
@@ -1861,19 +1865,23 @@ export default {
         }
       })
     },
-    handleCreateDialogBeforeClose(done) {
+    handleCreateDialogBeforeClose() {
       const formRef = this.$refs.cmdbFormRef
       if (formRef && formRef.hasChange) {
-        this.$bkInfo({
-          title: '确认退出？',
-          subTitle: '当前新增实例有未保存的修改，是否确认退出？',
-          confirmFn: () => {
-            done && done()
-          }
+        return new Promise((resolve, reject) => {
+          this.$bkInfo({
+            title: '确认退出？',
+            subTitle: '当前新增实例有未保存的修改，是否确认退出？',
+            confirmFn: () => {
+              resolve(true)
+            },
+            cancelFn: () => {
+              reject(false)
+            }
+          })
         })
-      } else {
-        done && done()
       }
+      return true
     },
     handleCreateDialogClose() {
       this.createDialogVisible = false
