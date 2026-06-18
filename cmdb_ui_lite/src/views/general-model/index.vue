@@ -3,8 +3,8 @@
     <div class="models-options clearfix">
       <div class="options-button clearfix fl">
         <bk-button theme="primary" @click="handleCreate">新建</bk-button>
-        <bk-button class="models-button" theme="default" @click="handleImport">导入</bk-button>
-        <bk-button class="models-button" theme="default" @click="handleExport">导出</bk-button>
+        <!-- <bk-button class="models-button" theme="default" @click="handleImport">导入</bk-button> -->
+        <!-- <bk-button class="models-button" theme="default" @click="handleExport">导出</bk-button> -->
         <bk-button class="models-button" theme="default" @click="handleBatchEdit">批量更新</bk-button>
         <bk-button class="models-button button-delete" theme="default" @click="handleBatchDelete">删除</bk-button>
       </div>
@@ -131,43 +131,45 @@
       @reset="handleAdvancedFilterReset">
     </general-model-filter>
 
-    <bk-table
-      ref="tableRef"
-      class="models-table"
-      v-bkloading="{ isLoading: table.loading }"
-      :data="table.list"
-      :pagination="table.pagination"
-      :max-height="tableContentHeight"
-      :sort="tableSort"
-      :selected-data.sync="selectedIds"
-      :row-key="row => row.bk_inst_id"
-      @selection-change="handleSelectionChange"
-      @page-change="handlePageChange"
-      @page-limit-change="handleLimitChange"
-      @sort-change="handleSortChange">
-        <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
-        <bk-table-column
-          v-for="column in table.header"
-          :key="column.id"
-          :prop="column.id"
-          :label="column.name"
-          :sortable="getColumnSortable(column.id)"
-          :show-overflow-tooltip="true">
-          <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-            <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
-              {{ row[column.id] }}
-            </bk-button>
-          </template>
-          <template v-else #default="{ row }">
-            {{ formatCellValue(row[column.id], column) }}
-          </template>
-        </bk-table-column>
-        <bk-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
-          </template>
-        </bk-table-column>
-      </bk-table>
+    <div class="models-table-wrapper">
+      <bk-table
+        ref="tableRef"
+        class="models-table"
+        v-bkloading="{ isLoading: table.loading }"
+        :data="table.list"
+        :pagination="table.pagination"
+        :max-height="tableContentHeight"
+        :sort="tableSort"
+        :selected-data.sync="selectedIds"
+        :row-key="row => row.bk_inst_id"
+        @selection-change="handleSelectionChange"
+        @page-change="handlePageChange"
+        @page-limit-change="handleLimitChange"
+        @sort-change="handleSortChange">
+          <bk-table-column type="selection" width="60" align="center" fixed></bk-table-column>
+          <bk-table-column
+            v-for="column in table.header"
+            :key="column.id"
+            :prop="column.id"
+            :label="column.name"
+            :sortable="getColumnSortable(column.id)"
+            :show-overflow-tooltip="true">
+            <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
+              <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+                {{ row[column.id] }}
+              </bk-button>
+            </template>
+            <template v-else #default="{ row }">
+              {{ formatCellValue(row[column.id], column) }}
+            </template>
+          </bk-table-column>
+          <bk-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <bk-button :text="true" theme="danger" @click="handleDeleteSingle(row)">删除</bk-button>
+            </template>
+          </bk-table-column>
+        </bk-table>
+    </div>
 
     <bk-sideslider
       :is-show.sync="columnsConfig.show"
@@ -326,7 +328,8 @@ export default {
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null,
-      filterTagHeight: 0
+      filterTagHeight: 0,
+      tableMaxHeight: 600
     }
   },
   computed: {
@@ -431,8 +434,13 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
+      // 计算从表格顶部到窗口底部的距离
+      // 表格顶部位置 = 面包屑(40) + padding(15) + 工具栏(32) + margin(14) = 101
+      // 窗口底部位置 = window.innerHeight
+      // 可用空间 = window.innerHeight - 表格顶部位置 - 分页高度(63) - 底部缓冲(12)
+      const tableTop = 40 + 15 + 32 + 14 + (this.filterTagHeight || 0)
       const baseHeight = this.$APP?.height || window.innerHeight
-      return Math.max(200, baseHeight - (this.filterTagHeight || 0) - 210)
+      return Math.max(200, baseHeight - tableTop - 63 - 12)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -599,7 +607,18 @@ export default {
     console.log('[Index.mounted] Route query:', JSON.stringify(this.$route.query))
     this.restoreStateFromUrl()
     console.log('[Index.mounted] restoreStateFromUrl 后 filter.value:', this.filter.value, 'fuzzy:', this.filter.fuzzyQuery)
-    this.$nextTick(() => this.updateFilterTagHeight())
+    this.$nextTick(() => {
+      this.updateFilterTagHeight()
+      // 初次挂载时同步计算表格高度, 避免等待 setTimeout 300ms
+      this.calculateTableHeight()
+    })
+
+    // 监听窗口尺寸变化, 重新计算表格高度, 保持分页在 window 可视范围内
+    this.resizeHandler = () => {
+      this.calculateTableHeight()
+      this.updateFilterTagHeight()
+    }
+    window.addEventListener('resize', this.resizeHandler)
 
     this.clickOutsideHandler = (event) => {
       const wrapper = document.querySelector('.enum-select-wrapper')
@@ -641,11 +660,19 @@ export default {
     if (this.searchTimeout) {
       clearTimeout(this.searchTimeout)
     }
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+    }
   },
   watch: {
     filterTags: {
       handler() {
         this.$nextTick(() => this.updateFilterTagHeight())
+      }
+    },
+    filterTagHeight: {
+      handler() {
+        this.$nextTick(() => this.calculateTableHeight())
       }
     },
     'filter.values': {
@@ -765,6 +792,24 @@ export default {
           this.filterTagHeight = 0
         }
       }, 300)
+    },
+    calculateTableHeight() {
+      // 通过 DOM 直接获取 .views-layout 实际可用高度, 这样不受视口变化影响
+      // .views-layout 高度 = 100vh - 52 (header)
+      // 减去内容区上方的: breadcrumbs(40) + general-model-layout padding-top(15) + options(32) + margin(14) = 101
+      // 减去内容区下方的: buffer(12) = 12
+      // 总减法 = 52 (header) + 40 (breadcrumbs) + 15 (padding) + 32 (options) + 14 (margin) + 12 (buffer) = 165
+      const viewsLayout = document.querySelector('.views-layout')
+      if (viewsLayout) {
+        const layoutHeight = viewsLayout.getBoundingClientRect().height
+        const newHeight = Math.max(200, layoutHeight - 40 - 15 - 32 - 14 - 12 - (this.filterTagHeight || 0))
+        console.log('[calculateTableHeight] viewsLayout.height:', layoutHeight, 'filterTagHeight:', this.filterTagHeight, 'newHeight:', newHeight, 'oldHeight:', this.tableMaxHeight)
+        this.tableMaxHeight = newHeight
+      } else {
+        // fallback: 使用 $APP.height 推算
+        const contentHeight = (this.$APP?.height || window.innerHeight) - 52 - 40
+        this.tableMaxHeight = Math.max(200, contentHeight - (this.filterTagHeight || 0) - 73)
+      }
     },
     async loadModelData(searchParams = null) {
       this.table.loading = true
@@ -1607,12 +1652,12 @@ export default {
       routerQuery.setAll(query)
       this.loadModelData()
     },
-    handleImport() {
-      this.$bkMessage({ message: '导入功能开发中', theme: 'info' })
-    },
-    handleExport() {
-      this.$bkMessage({ message: '导出功能开发中', theme: 'info' })
-    },
+    // handleImport() {
+    //   this.$bkMessage({ message: '导入功能开发中', theme: 'info' })
+    // },
+    // handleExport() {
+    //   this.$bkMessage({ message: '导出功能开发中', theme: 'info' })
+    // },
     handleBatchEdit() {
       if (this.selectedIds.length === 0) {
         this.$bkMessage({ message: '请先选择要更新的实例', theme: 'warning' })
@@ -2104,10 +2149,16 @@ export default {
       this.loadModelData()
     },
     getColumnSortable(columnId) {
-      const sortableTypes = ['int', 'float', 'date', 'time', 'enum', 'singlechar', 'longchar']
+      // 参考原项目实现: 除了 INNER_TABLE 类型外，其他类型都可以排序
+      // 原项目 isPropertySortable 函数:
+      //   - 对于 host 模型: 排除 FOREIGNKEY, TOPOLOGY, INNER_TABLE
+      //   - 对于其他模型: 只排除 INNER_TABLE
       const property = this.allProperties.find(p => p.bk_property_id === columnId)
       if (!property) return false
-      return sortableTypes.includes(property.bk_property_type)
+      
+      // INNER_TABLE 类型不支持排序
+      const notSortableTypes = ['innertable']
+      return !notSortableTypes.includes(property.bk_property_type)
     },
     async handleApplyColumns(properties) {
       console.log('[Persistence] handleApplyColumns called, properties:', properties)
@@ -2173,6 +2224,17 @@ export default {
 <style lang="scss">
 .general-model-layout {
   padding: 15px 20px 0;
+}
+
+.models-table-wrapper {
+  margin-top: 14px;
+}
+
+.filter-tag-wrapper + .models-table-wrapper {
+  margin-top: 0;
+}
+
+.models-table {
 }
 
 .models-options {
@@ -2581,12 +2643,9 @@ export default {
 }
 
 .bk-table-pagination-wrapper {
-  position: sticky;
-  bottom: 20px;
   background: #fff;
   border-top: 1px solid #eaeaea;
-  padding: 8px 20px;
-  z-index: 10;
+  padding: 15px 20px;
 }
 
 .icon-button {
