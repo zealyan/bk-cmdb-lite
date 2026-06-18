@@ -3,8 +3,8 @@
     <div class="models-options clearfix">
       <div class="options-button clearfix fl">
         <bk-button theme="primary" @click="handleCreate">新建</bk-button>
-        <bk-button class="models-button" theme="default" @click="handleImport">导入</bk-button>
-        <bk-button class="models-button" theme="default" @click="handleExport">导出</bk-button>
+        <!-- <bk-button class="models-button" theme="default" @click="handleImport">导入</bk-button> -->
+        <!-- <bk-button class="models-button" theme="default" @click="handleExport">导出</bk-button> -->
         <bk-button class="models-button" theme="default" @click="handleBatchEdit">批量更新</bk-button>
         <bk-button class="models-button button-delete" theme="default" @click="handleBatchDelete">删除</bk-button>
       </div>
@@ -1652,12 +1652,12 @@ export default {
       routerQuery.setAll(query)
       this.loadModelData()
     },
-    handleImport() {
-      this.$bkMessage({ message: '导入功能开发中', theme: 'info' })
-    },
-    handleExport() {
-      this.$bkMessage({ message: '导出功能开发中', theme: 'info' })
-    },
+    // handleImport() {
+    //   this.$bkMessage({ message: '导入功能开发中', theme: 'info' })
+    // },
+    // handleExport() {
+    //   this.$bkMessage({ message: '导出功能开发中', theme: 'info' })
+    // },
     handleBatchEdit() {
       if (this.selectedIds.length === 0) {
         this.$bkMessage({ message: '请先选择要更新的实例', theme: 'warning' })
