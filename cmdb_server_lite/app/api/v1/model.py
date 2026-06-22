@@ -104,21 +104,7 @@ def get_instance(model_id, instance_id):
         logger.error(f"Error getting instance: {e}")
         return jsonify({'detail': str(e)}), 500
 
-@model_bp.route('/<model_id>/instances/batch', methods=['POST'])
-def get_instances_batch(model_id):
-    """按实例ID列表批量查询实例"""
-    try:
-        data = request.get_json() or {}
-        instance_ids = data.get('ids', [])
-        
-        if not instance_ids or not isinstance(instance_ids, list):
-            return jsonify({'instances': []})
-        
-        result = InstanceService.get_instances_by_ids(model_id, instance_ids)
-        return jsonify({'instances': result})
-    except Exception as e:
-        logger.error(f"Error getting instances batch: {e}")
-        return jsonify({'detail': str(e)}), 500
+
 
 @model_bp.route('/<model_id>/instances', methods=['POST'])
 def create_instance(model_id):

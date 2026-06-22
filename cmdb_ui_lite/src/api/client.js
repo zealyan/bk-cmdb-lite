@@ -113,9 +113,22 @@ export const modelAPI = {
     return http.get('/api/v1/common/statistics')
   },
 
-  // 批量查询实例（按ID列表）
+  // 按实例ID列表查询实例（使用搜索接口 + $in 条件）
   getInstancesByIds (modelId, ids = []) {
-    return http.post(`/api/v1/models/${modelId}/instances/batch`, { ids })
+    return http.post(`/api/v1/models/${modelId}/instances/search`, {
+      conditions: {
+        condition: 'AND',
+        rules: [{
+          field: 'bk_inst_id',
+          operator: '$in',
+          value: ids
+        }]
+      },
+      page: {
+        limit: ids.length,
+        start: 0
+      }
+    })
   },
 
   // 检查实例的关联关系数量

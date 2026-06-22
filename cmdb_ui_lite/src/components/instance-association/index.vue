@@ -95,6 +95,7 @@
 <script>
 import AssociationCreate from './association-create.vue'
 import associationAPI from '@/api/association'
+import { modelAPI } from '@/api/client'
 import showInstanceDetails from '@/components/instance/details/index.js'
 
 export default {
@@ -118,14 +119,6 @@ export default {
     relations: {
       type: Array,
       default: () => []
-    },
-    instancesMap: {
-      type: Object,
-      default: () => {}
-    },
-    propertiesMap: {
-      type: Object,
-      default: () => {}
     }
   },
   data() {
@@ -135,8 +128,9 @@ export default {
       showCreateDialog: false,
       loading: false,
       cachedProperties: {},
-      expandAll: false,  // 默认不全部展开
-      loadedGroups: new Set()  // 已加载的分组，防止重复加载
+      cachedInstances: {},
+      expandAll: false,
+      loadedGroups: new Set()
     }
   },
   computed: {
@@ -162,13 +156,11 @@ export default {
         if (isSource) {
           groupKey = `to_${asst.bk_asst_obj_id}`
           relatedObjId = asst.bk_asst_obj_id
-          // 原项目规则：作为源时使用 src_des-模型名称
           const desc = relation.src_des || relation.bk_relation_type_name
           relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         } else {
           groupKey = `from_${asst.bk_obj_id}`
           relatedObjId = asst.bk_obj_id
-          // 原项目规则：作为目标时使用 dest_des-模型名称（关联的另一端模型）
           const desc = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
           relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         }
@@ -178,56 +170,23 @@ export default {
             key: groupKey,
             relationTypeName,
             relatedObjId,
-            instanceIds: [],  // 存储关联的实例ID列表
-            allInstances: [],  // 存储完整的实例数据
-            columns: this.getColumnsForModel(relatedObjId)
+            instanceIds: [],
+            sourceIds: []
           })
         }
 
         const group = groupedMap.get(groupKey)
         const targetInstId = isSource ? asst.bk_asst_inst_id : asst.bk_inst_id
         
-        // 记录关联的实例ID（用于懒加载）
         if (!group.instanceIds.includes(Number(targetInstId))) {
           group.instanceIds.push(Number(targetInstId))
         }
-        
-        // 尝试从 instancesMap 中获取完整数据
-        const instances = this.instancesMap[relatedObjId] || []
-        const instance = instances.find(inst => {
-          const instMatch = inst.bk_inst_id !== undefined ? inst.bk_inst_id : inst.id
-          return Number(instMatch) === Number(targetInstId)
-        })
-
-        if (instance) {
-          const existingId = instance.bk_inst_id !== undefined ? instance.bk_inst_id : instance.id
-          if (!group.allInstances.find(i => {
-            const iId = i.bk_inst_id !== undefined ? i.bk_inst_id : i.id
-            return Number(iId) === Number(existingId)
-          })) {
-            group.allInstances.push(instance)
-          }
-        } else {
-          // 懒加载模式：instancesMap 中没有数据时，创建占位数据
-          if (!group.allInstances.find(i => Number(i.bk_inst_id || i.id) === Number(targetInstId))) {
-            // 创建占位实例对象，包含 ID 信息
-            group.allInstances.push({
-              bk_inst_id: targetInstId,
-              id: targetInstId,
-              bk_inst_name: `实例 ${targetInstId}`,
-              _placeholder: true  // 标记为占位数据
-            })
-          }
-        }
+        group.sourceIds.push(asst)
       })
 
       const result = []
       let firstGroup = true
       groupedMap.forEach((group) => {
-        // 移除占位标记，过滤出真实数据
-        const realInstances = group.allInstances.filter(i => !i._placeholder)
-        
-        // 使用 instanceIds 计算总数（更准确）
         const total = group.instanceIds.length
         const totalPages = Math.ceil(total / this.pageSize)
 
@@ -241,7 +200,22 @@ export default {
 
         const state = this.groupStates[group.key]
         const start = (state.current - 1) * this.pageSize
-        const displayInstances = group.allInstances.slice(start, start + this.pageSize)
+        
+        const currentPageIds = group.instanceIds.slice(start, start + this.pageSize)
+        
+        const allInstances = this.cachedInstances[group.relatedObjId] || []
+        const displayInstances = currentPageIds.map(id => {
+          const inst = allInstances.find(i => Number(i.bk_inst_id || i.id) === Number(id))
+          if (inst) {
+            return inst
+          }
+          return {
+            bk_inst_id: id,
+            id: id,
+            bk_inst_name: `实例 ${id}`,
+            _placeholder: true
+          }
+        }).filter(i => !i._placeholder || !state.expanded)
 
         result.push({
           ...group,
@@ -249,7 +223,8 @@ export default {
           totalPages,
           current: state.current,
           expanded: state.expanded,
-          displayInstances
+          displayInstances,
+          columns: this.getColumnsForModel(group.relatedObjId)
         })
       })
 
@@ -260,11 +235,10 @@ export default {
     associationGroups: {
       immediate: true,
       handler(groups) {
-        // 默认展开第一分组时触发数据加载（防止重复加载）
         const firstGroup = groups.find(g => g.expanded)
         if (firstGroup && !this.loadedGroups.has(firstGroup.key)) {
           this.loadedGroups.add(firstGroup.key)
-          this.$emit('expand-group', firstGroup)
+          this.getData(firstGroup)
         }
       }
     }
@@ -272,17 +246,15 @@ export default {
   methods: {
     handleExpandAll(expandAll) {
       this.expandAll = expandAll
-      // 更新所有分组的展开状态
       Object.keys(this.groupStates).forEach(key => {
         this.groupStates[key].expanded = expandAll
       })
       
-      // 如果展开全部，触发未加载分组的数据加载
       if (expandAll) {
         this.associationGroups.forEach(group => {
           if (!this.loadedGroups.has(group.key)) {
             this.loadedGroups.add(group.key)
-            this.$emit('expand-group', group)
+            this.getData(group)
           }
         })
       }
@@ -304,28 +276,56 @@ export default {
         return this.cachedProperties[objId]
       }
 
-      const propsObj = this.propertiesMap[objId]
-      const propsArray = (propsObj && propsObj.info) ? propsObj.info : (Array.isArray(propsObj) ? propsObj : [])
-
-      let orderedColumns = []
-
-      if (propsArray.length > 0) {
-        orderedColumns = propsArray
-          .filter(p => p.bk_property_index !== -1 && !['id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account', 'create_time', 'last_time', 'bk_operate_time'].includes(p.bk_property_id))
-          .sort((a, b) => a.bk_property_index - b.bk_property_index)
-          .slice(0, 5)
-      } else {
-        // 默认只显示 ID 字段，用于点击打开详情
-        orderedColumns = [{
-          bk_property_id: 'id',
-          bk_property_name: 'ID',
-          bk_property_type: 'int',
-          bk_property_index: 0
-        }]
+      return [{
+        bk_property_id: 'id',
+        bk_property_name: 'ID',
+        bk_property_type: 'int',
+        bk_property_index: 0
+      }]
+    },
+    async getData(item) {
+      this.loading = true
+      try {
+        await Promise.all([
+          this.getProperties(item.relatedObjId),
+          this.getInstances(item)
+        ])
+      } catch (err) {
+        console.warn(`加载 ${item.relatedObjId} 数据失败:`, err)
+      } finally {
+        this.loading = false
       }
-
-      this.cachedProperties[objId] = orderedColumns
-      return orderedColumns
+    },
+    async getProperties(modelId) {
+      if (this.cachedProperties[modelId]) {
+        return
+      }
+      try {
+        const attrResponse = await modelAPI.getModelAttributes(modelId)
+        if (attrResponse && attrResponse.attributes) {
+          const sortedAttrs = attrResponse.attributes
+            .filter(p => p.bk_property_index !== -1 && !['id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account', 'create_time', 'last_time', 'bk_operate_time'].includes(p.bk_property_id))
+            .sort((a, b) => a.bk_property_index - b.bk_property_index)
+            .slice(0, 5)
+          this.$set(this.cachedProperties, modelId, sortedAttrs)
+        }
+      } catch (err) {
+        console.warn(`加载 ${modelId} 属性定义失败:`, err)
+      }
+    },
+    async getInstances(item) {
+      if (!item.instanceIds.length) {
+        return
+      }
+      
+      try {
+        const response = await modelAPI.getInstancesByIds(item.relatedObjId, item.instanceIds)
+        if (response && response.instances) {
+          this.$set(this.cachedInstances, item.relatedObjId, response.instances)
+        }
+      } catch (err) {
+        console.warn(`加载 ${item.relatedObjId} 实例失败:`, err)
+      }
     },
     toggleExpand(item) {
       const state = this.groupStates[item.key]
@@ -333,11 +333,9 @@ export default {
         const willExpand = !state.expanded
         state.expanded = willExpand
         
-        // 展开时触发数据加载（防止重复加载）
         if (willExpand && !this.loadedGroups.has(item.key)) {
           this.loadedGroups.add(item.key)
-          // 通知父组件需要加载数据
-          this.$emit('expand-group', item)
+          this.getData(item)
         }
       }
       this.$forceUpdate()
@@ -382,13 +380,11 @@ export default {
       this.$emit('association-change')
     },
     handleRowClick(row, event, column, item) {
-      // 使用 bk_inst_id 作为标准实例ID（与原项目一致）
       const instId = row.bk_inst_id !== undefined ? row.bk_inst_id : row.id
       const objId = item.relatedObjId
       const modelName = this.getModelDisplayName(objId)
       const instanceName = row.bk_inst_name || row.name || 'ID: ' + instId
 
-      // 与原项目一致：调用 showInstanceDetails 函数显示标准详情页
       showInstanceDetails({
         bk_obj_id: objId,
         bk_inst_id: instId,
@@ -426,7 +422,6 @@ export default {
             this.$bkMessage({ message: '取消关联成功', theme: 'success' })
             this.$emit('association-change')
           } catch (e) {
-            console.error('取消关联失败:', e)
             this.$bkMessage({ message: '取消关联失败: ' + (e.message || e), theme: 'error' })
           }
         }
