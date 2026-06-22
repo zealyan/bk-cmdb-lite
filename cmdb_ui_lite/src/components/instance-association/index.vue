@@ -135,7 +135,7 @@ export default {
       showCreateDialog: false,
       loading: false,
       cachedProperties: {},
-      expandAll: true,  // 全部展开状态
+      expandAll: false,  // 默认不全部展开
       loadedGroups: new Set()  // 已加载的分组，防止重复加载
     }
   },
