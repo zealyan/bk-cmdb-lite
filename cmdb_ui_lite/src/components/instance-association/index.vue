@@ -121,6 +121,10 @@ export default {
       default: () => []
     }
   },
+  created() {
+    // 组件创建时，如果 associations 已有值，初始化 groupStates
+    this.initGroupStates()
+  },
   data() {
     return {
       pageSize: 10,
@@ -217,41 +221,14 @@ export default {
     }
   },
   watch: {
-    // 监听 associations 变化，初始化 groupStates
+    // 监听 associations 变化，初始化 groupStates 并触发数据加载
     associations: {
       immediate: true,
       handler(associations) {
         if (!associations || !associations.length) return
         
-        const groupedMap = new Map()
-        associations.forEach((asst) => {
-          const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
-          const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
-          if (!isSource && !isTarget) return
-
-          let groupKey
-          if (isSource) {
-            groupKey = `to_${asst.bk_asst_obj_id}`
-          } else {
-            groupKey = `from_${asst.bk_obj_id}`
-          }
-          
-          if (!groupedMap.has(groupKey)) {
-            groupedMap.set(groupKey, true)
-          }
-        })
-        
-        // 初始化 groupStates（第一个 group 默认展开）
-        const keys = Array.from(groupedMap.keys())
-        keys.forEach((key, index) => {
-          if (!this.groupStates[key]) {
-            this.$set(this.groupStates, key, {
-              expanded: index === 0, // 第一个 group 默认展开
-              current: 1
-            })
-            this.$set(this.prevExpanded, key, false)
-          }
-        })
+        // 初始化 groupStates
+        const keys = this.initGroupStates()
         
         // 使用 nextTick 确保 associationGroups 更新后再触发数据加载
         this.$nextTick(() => {
@@ -263,6 +240,24 @@ export default {
             }
           }
         })
+      }
+    },
+    // 监听 relations 变化，当 relations 加载完成后，重新初始化
+    relations: {
+      handler(relations) {
+        if (!relations || !relations.length) return
+        // 当 relations 可用时，确保 groupStates 正确初始化
+        if (this.associations && this.associations.length > 0) {
+          const keys = this.initGroupStates()
+          this.$nextTick(() => {
+            if (keys.length > 0) {
+              const group = this.associationGroups.find(g => g.key === keys[0])
+              if (group && group.expanded) {
+                this.getData(group)
+              }
+            }
+          })
+        }
       }
     },
     // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
@@ -291,6 +286,42 @@ export default {
     }
   },
   methods: {
+    // 初始化 groupStates
+    initGroupStates() {
+      if (!this.associations || !this.associations.length) return []
+      
+      const groupedMap = new Map()
+      this.associations.forEach((asst) => {
+        const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
+        const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
+        if (!isSource && !isTarget) return
+
+        let groupKey
+        if (isSource) {
+          groupKey = `to_${asst.bk_asst_obj_id}`
+        } else {
+          groupKey = `from_${asst.bk_obj_id}`
+        }
+        
+        if (!groupedMap.has(groupKey)) {
+          groupedMap.set(groupKey, true)
+        }
+      })
+      
+      // 初始化 groupStates（第一个 group 默认展开）
+      const keys = Array.from(groupedMap.keys())
+      keys.forEach((key, index) => {
+        if (!this.groupStates[key]) {
+          this.$set(this.groupStates, key, {
+            expanded: index === 0, // 第一个 group 默认展开
+            current: 1
+          })
+          this.$set(this.prevExpanded, key, false)
+        }
+      })
+      
+      return keys
+    },
     handleExpandAll(expandAll) {
       this.expandAll = expandAll
       Object.keys(this.groupStates).forEach(key => {
