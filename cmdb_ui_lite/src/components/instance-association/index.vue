@@ -223,14 +223,17 @@ export default {
     }
   },
   watch: {
-    // 监听 groupStates 变化，当 expanded 变为 true 时加载当前页数据
+    // 监听 groupStates 变化，只在 expanded 变为 true 时触发 getData
+    // current 变化（翻页）由 togglePage 处理，避免重复请求
     groupStates: {
       deep: true,
-      handler(states) {
+      handler(states, oldStates) {
         if (!states) return
         Object.keys(states).forEach(key => {
           const state = states[key]
-          if (state && state.expanded) {
+          const oldState = oldStates && oldStates[key]
+          // 只在 expanded 从 false 变为 true 时触发（首次展开）
+          if (state && state.expanded && (!oldState || !oldState.expanded)) {
             const group = this.associationGroups.find(g => g.key === key)
             if (group) {
               this.getData(group)
@@ -333,13 +336,14 @@ export default {
       const state = this.groupStates[item.key]
       if (state) {
         state.current = newCurrent
-        // 翻页后重新加载当前页数据
+      }
+      // 使用 $nextTick 确保 computed 更新后再加载
+      this.$nextTick(() => {
         const group = this.associationGroups.find(g => g.key === item.key)
-        if (group && state.expanded) {
+        if (group && state && state.expanded) {
           this.getInstances(group)
         }
-      }
-      this.$forceUpdate()
+      })
     },
     getPaginationText(item) {
       const total = item.total
