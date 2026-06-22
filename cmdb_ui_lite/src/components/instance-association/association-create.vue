@@ -857,21 +857,13 @@ export default {
           console.log('[AssociationCreate] >>> Updating association (replace)...')
           
           // 1. 删除旧关联（对于 1:1 关系，只能有一个关联）
-          const oldInstId = this.isSource 
-            ? this.existInstAssociation[0]?.bk_asst_inst_id 
-            : this.existInstAssociation[0]?.bk_inst_id
-            
-          console.log('[AssociationCreate] Deleting old association with instId:', oldInstId)
+          // 注意：需要删除的是关联记录的主键 id，而不是实例 ID
+          const oldInst = this.existInstAssociation[0]
           
-          const existInst = this.existInstAssociation.find(inst => {
-            if (this.isSource) {
-              return Number(inst.bk_asst_inst_id) === Number(oldInstId)
-            }
-            return Number(inst.bk_inst_id) === Number(oldInstId)
-          })
+          console.log('[AssociationCreate] Deleting old association with id:', oldInst?.id)
           
-          if (existInst) {
-            await associationAPI.delete(this.objId, existInst.id)
+          if (oldInst) {
+            await associationAPI.delete(this.objId, oldInst.id)
           }
           
           // 2. 清空临时数据
