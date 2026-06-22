@@ -290,6 +290,9 @@ export default {
     initGroupStates() {
       if (!this.associations || !this.associations.length) return []
       
+      // 清除实例缓存，强制重新加载
+      this.groupInstances = {}
+      
       const groupedMap = new Map()
       this.associations.forEach((asst) => {
         const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
@@ -311,13 +314,12 @@ export default {
       // 初始化 groupStates（第一个 group 默认展开）
       const keys = Array.from(groupedMap.keys())
       keys.forEach((key, index) => {
-        if (!this.groupStates[key]) {
-          this.$set(this.groupStates, key, {
-            expanded: index === 0, // 第一个 group 默认展开
-            current: 1
-          })
-          this.$set(this.prevExpanded, key, false)
-        }
+        // 每次都重置展开状态（第一个默认为展开，其他默认为合并）
+        this.$set(this.groupStates, key, {
+          expanded: index === 0, // 第一个 group 默认展开
+          current: 1
+        })
+        this.$set(this.prevExpanded, key, false)
       })
       
       return keys
