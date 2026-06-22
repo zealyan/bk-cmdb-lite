@@ -6,6 +6,15 @@
           新增关联
         </bk-button>
       </div>
+      <div class="fr" v-if="hasAssociations">
+        <bk-checkbox
+          :size="16"
+          class="options-checkbox"
+          :value="expandAll"
+          @change="handleExpandAll">
+          <span class="checkbox-label">全部展开</span>
+        </bk-checkbox>
+      </div>
     </div>
 
     <div class="association-list">
@@ -125,7 +134,8 @@ export default {
       groupStates: {},
       showCreateDialog: false,
       loading: false,
-      cachedProperties: {}
+      cachedProperties: {},
+      expandAll: true  // 全部展开状态
     }
   },
   computed: {
@@ -201,7 +211,7 @@ export default {
 
         if (!this.groupStates[group.key]) {
           this.$set(this.groupStates, group.key, {
-            expanded: true,
+            expanded: this.expandAll,
             current: 1
           })
         }
@@ -224,6 +234,14 @@ export default {
     }
   },
   methods: {
+    handleExpandAll(expandAll) {
+      this.expandAll = expandAll
+      // 更新所有分组的展开状态
+      Object.keys(this.groupStates).forEach(key => {
+        this.groupStates[key].expanded = expandAll
+      })
+      this.$forceUpdate()
+    },
     getModelDisplayName(objId) {
       const modelNames = {
         'bk_slb': '负载均衡',
@@ -376,6 +394,16 @@ export default {
     height: 32px;
     line-height: 30px;
     font-size: 14px;
+  }
+
+  .options-checkbox {
+    margin-right: 0;
+    line-height: 32px;
+
+    .checkbox-label {
+      padding-left: 4px;
+      font-size: 14px;
+    }
   }
 }
 
