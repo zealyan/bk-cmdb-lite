@@ -130,7 +130,9 @@ export default {
       cachedProperties: {},
       // 每个分组的当前页实例数据缓存
       groupInstances: {},
-      expandAll: false
+      expandAll: false,
+      // 记录上次展开状态用于判断变化
+      prevExpanded: {}
     }
   },
   computed: {
@@ -184,20 +186,12 @@ export default {
       })
 
       const result = []
-      let firstGroup = true
       groupedMap.forEach((group) => {
+        const state = this.groupStates[group.key]
+        if (!state) return
+
         const total = group.instanceIds.length
         const totalPages = Math.ceil(total / this.pageSize)
-
-        if (!this.groupStates[group.key]) {
-          this.$set(this.groupStates, group.key, {
-            expanded: firstGroup,
-            current: 1
-          })
-          firstGroup = false
-        }
-
-        const state = this.groupStates[group.key]
         
         // 计算当前页的 instanceIds
         const start = (state.current - 1) * this.pageSize
@@ -223,22 +217,64 @@ export default {
     }
   },
   watch: {
-    // 监听 groupStates 变化，只在 expanded 变为 true 时触发 getData
-    // current 变化（翻页）由 togglePage 处理，避免重复请求
+    // 监听 associations 变化，初始化 groupStates
+    associations: {
+      immediate: true,
+      handler(associations) {
+        if (!associations || !associations.length) return
+        
+        const groupedMap = new Map()
+        associations.forEach((asst) => {
+          const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
+          const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
+          if (!isSource && !isTarget) return
+
+          let groupKey
+          if (isSource) {
+            groupKey = `to_${asst.bk_asst_obj_id}`
+          } else {
+            groupKey = `from_${asst.bk_obj_id}`
+          }
+          
+          if (!groupedMap.has(groupKey)) {
+            groupedMap.set(groupKey, true)
+          }
+        })
+        
+        // 初始化 groupStates（第一个 group 默认展开）
+        const keys = Array.from(groupedMap.keys())
+        keys.forEach((key, index) => {
+          if (!this.groupStates[key]) {
+            this.$set(this.groupStates, key, {
+              expanded: index === 0, // 第一个 group 默认展开
+              current: 1
+            })
+            this.$set(this.prevExpanded, key, false)
+          }
+        })
+      }
+    },
+    // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
+    // 使用 prevExpanded 比较变化，避免 deep watch 中 oldStates 引用问题
     groupStates: {
       deep: true,
-      handler(states, oldStates) {
+      handler(states) {
         if (!states) return
         Object.keys(states).forEach(key => {
           const state = states[key]
-          const oldState = oldStates && oldStates[key]
+          const wasExpanded = this.prevExpanded[key] || false
+          const isExpanded = state && state.expanded
+          
           // 只在 expanded 从 false 变为 true 时触发（首次展开）
-          if (state && state.expanded && (!oldState || !oldState.expanded)) {
+          if (isExpanded && !wasExpanded) {
             const group = this.associationGroups.find(g => g.key === key)
             if (group) {
               this.getData(group)
             }
           }
+          
+          // 更新 prevExpanded
+          this.$set(this.prevExpanded, key, isExpanded)
         })
       }
     }
