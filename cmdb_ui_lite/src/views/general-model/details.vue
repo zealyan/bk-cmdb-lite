@@ -183,8 +183,12 @@ export default {
   },
   watch: {
     activeTab (newTab) {
-      if (newTab === 'association' && !this.isDataReady) {
-        this.associationLoading = true
+      if (newTab === 'association') {
+        if (!this.isDataReady) {
+          this.associationLoading = true
+        }
+        // 点击关联Tab时重新加载关联数据
+        this.loadAssociationData()
       }
     }
   },
@@ -302,6 +306,74 @@ export default {
         this.associationLoading = false
       }
     },
+    async loadAssociationData () {
+      // 重新加载关联相关数据
+      this.associationLoading = true
+      try {
+        if (!this.objId || !this.instId) {
+          return
+        }
+        
+        // 加载实例关联
+        const assocResponse = await modelAPI.getInstanceAssociations(this.instId)
+        if (assocResponse && assocResponse.associations) {
+          this.apiAssociations = assocResponse.associations
+        }
+        
+        // 加载对象关联
+        const relationsResponse = await modelAPI.listRelations()
+        if (relationsResponse && relationsResponse.relations) {
+          this.apiRelations = relationsResponse.relations
+        }
+        
+        // 获取需要加载的模型ID列表
+        const relatedModelIds = new Set()
+        relatedModelIds.add(this.objId)
+        
+        this.apiAssociations.forEach(asst => {
+          if (String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)) {
+            relatedModelIds.add(asst.bk_asst_obj_id)
+          }
+          if (String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)) {
+            relatedModelIds.add(asst.bk_obj_id)
+          }
+        })
+        
+        // 加载关联实例的属性
+        for (const modelId of relatedModelIds) {
+          try {
+            const attrResponse = await modelAPI.getModelAttributes(modelId)
+            if (attrResponse && attrResponse.attributes) {
+              const sortedAttrs = attrResponse.attributes
+                .filter(p => p.bk_property_index !== -1)
+                .sort((a, b) => a.bk_property_index - b.bk_property_index)
+              this.$set(this.apiAttributes, modelId, { info: sortedAttrs })
+            }
+          } catch (err) {
+            console.warn(`加载 ${modelId} 属性定义失败:`, err)
+          }
+        }
+        
+        // 加载关联实例
+        for (const modelId of relatedModelIds) {
+          try {
+            const instancesResponse = await modelAPI.listInstances(modelId, { page: 1, page_size: 100 })
+            if (instancesResponse && instancesResponse.instances) {
+              this.$set(this.apiInstances, modelId, instancesResponse.instances)
+            }
+          } catch (err) {
+            console.warn(`加载 ${modelId} 实例失败:`, err)
+          }
+        }
+        
+        this.isDataReady = true
+        
+      } catch (error) {
+        console.error('加载关联数据失败:', error)
+      } finally {
+        this.associationLoading = false
+      }
+    },
     goBack () {
       this.$router.go(-1)
     },
@@ -324,7 +396,7 @@ export default {
       })
     },
     handleAssociationChange () {
-      this.loadInstanceData()
+      this.loadAssociationData()
     },
     async handlePropertyConfirm ({ property, value, changed }) {
       if (!changed) {
