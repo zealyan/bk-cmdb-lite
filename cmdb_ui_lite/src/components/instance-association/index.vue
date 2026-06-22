@@ -136,7 +136,9 @@ export default {
       groupInstances: {},
       expandAll: false,
       // 记录上次展开状态用于判断变化
-      prevExpanded: {}
+      prevExpanded: {},
+      // 上次初始化的时间戳，用于防止重复触发
+      _lastInitTime: 0
     }
   },
   computed: {
@@ -227,37 +229,20 @@ export default {
       handler(associations) {
         if (!associations || !associations.length) return
         
-        // 初始化 groupStates
-        const keys = this.initGroupStates()
+        // 检查 relations 是否已准备好（用于获取关联类型名称）
+        if (!this.relations || !this.relations.length) return
         
-        // 使用 nextTick 确保 associationGroups 更新后再触发数据加载
-        this.$nextTick(() => {
-          // 触发第一个分组的 getData
-          if (keys.length > 0) {
-            const group = this.associationGroups.find(g => g.key === keys[0])
-            if (group && group.expanded) {
-              this.getData(group)
-            }
-          }
-        })
+        this.initAndLoad()
       }
     },
-    // 监听 relations 变化，当 relations 加载完成后，重新初始化
+    // 监听 relations 变化，当 relations 比 associations 后准备好时，触发初始化
     relations: {
+      immediate: true,
       handler(relations) {
         if (!relations || !relations.length) return
-        // 当 relations 可用时，确保 groupStates 正确初始化
-        if (this.associations && this.associations.length > 0) {
-          const keys = this.initGroupStates()
-          this.$nextTick(() => {
-            if (keys.length > 0) {
-              const group = this.associationGroups.find(g => g.key === keys[0])
-              if (group && group.expanded) {
-                this.getData(group)
-              }
-            }
-          })
-        }
+        if (!this.associations || !this.associations.length) return
+        
+        this.initAndLoad()
       }
     },
     // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
@@ -286,6 +271,25 @@ export default {
     }
   },
   methods: {
+    // 统一的初始化和数据加载方法，防止重复触发
+    initAndLoad() {
+      const now = Date.now()
+      // 防止在 500ms 内重复触发（用于同一次数据加载中的多次 watch 触发）
+      if (now - this._lastInitTime < 500) return
+      
+      this._lastInitTime = now
+      this.groupInstances = {} // 清除缓存
+      
+      const keys = this.initGroupStates()
+      this.$nextTick(() => {
+        if (keys.length > 0) {
+          const group = this.associationGroups.find(g => g.key === keys[0])
+          if (group && group.expanded) {
+            this.getData(group)
+          }
+        }
+      })
+    },
     // 初始化 groupStates
     initGroupStates() {
       if (!this.associations || !this.associations.length) return []
