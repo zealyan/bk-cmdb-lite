@@ -58,7 +58,7 @@
             <bk-link
               theme="primary"
               :disabled="isAssociated(row)"
-              @click="updateAssociation(getInstanceId(row), 'new')"
+              @click="beforeUpdate($event, getInstanceId(row), 'new')"
               v-if="!isAssociated(row)">
               关联
             </bk-link>
@@ -74,6 +74,13 @@
           <div class="empty-text">暂无数据</div>
         </div>
       </bk-table>
+      <div class="confirm-tips" ref="confirmTips" v-show="confirm.id">
+        <p class="tips-content">更新确认</p>
+        <div class="tips-option">
+          <bk-button class="tips-button" theme="primary" @click="confirmUpdate">确认</bk-button>
+          <bk-button class="tips-button" theme="default" @click="cancelUpdate">取消</bk-button>
+        </div>
+      </div>
     </div>
   </bk-sideslider>
 </template>
@@ -138,11 +145,18 @@ export default {
       },
       tableKey: 0, // 用于强制表格重新渲染的 key
       useServerPagination: false,
+      confirm: {
+        instance: null,
+        id: null
+      }
     }
   },
   computed: {
     isSource() {
       return this.currentOption.bk_obj_id === this.objId
+    },
+    multiple() {
+      return this.currentOption.mapping !== '1:1'
     },
     instanceIdKey() {
       const specialObj = {
@@ -839,13 +853,54 @@ export default {
             console.warn('[AssociationCreate] No existing association found')
             this.$bkMessage({ message: '未找到关联记录', theme: 'warning' })
           }
+        } else if (updateType === 'update') {
+          console.log('[AssociationCreate] >>> Updating association (replace)...')
+          
+          // 1. 删除旧关联（对于 1:1 关系，只能有一个关联）
+          const oldInstId = this.isSource 
+            ? this.existInstAssociation[0]?.bk_asst_inst_id 
+            : this.existInstAssociation[0]?.bk_inst_id
+            
+          console.log('[AssociationCreate] Deleting old association with instId:', oldInstId)
+          
+          const existInst = this.existInstAssociation.find(inst => {
+            if (this.isSource) {
+              return Number(inst.bk_asst_inst_id) === Number(oldInstId)
+            }
+            return Number(inst.bk_inst_id) === Number(oldInstId)
+          })
+          
+          if (existInst) {
+            await associationAPI.delete(this.objId, existInst.id)
+          }
+          
+          // 2. 清空临时数据
+          this.tempData = []
+          this.hasChange = true
+          
+          // 3. 创建新关联
+          console.log('[AssociationCreate] Creating new association with instId:', instId)
+          await this.createAssociation(instId)
+          this.tempData = [instIdNum]
+          
+          // 4. 显示成功提示
+          this.$bkMessage({ message: '关联成功', theme: 'success' })
+          
+          // 5. 重新从后端加载关联列表
+          await this.getExistInstAssociation()
         }
         
         console.log('[AssociationCreate] ========== updateAssociation END ==========')
         
       } catch (e) {
         console.error('[AssociationCreate] updateAssociation error:', e)
-        this.$bkMessage({ message: '操作失败: ' + (e.message || e), theme: 'error' })
+        let errorMsg = '操作失败'
+        if (e.response && e.response.data && e.response.data.error) {
+          errorMsg = e.response.data.error
+        } else if (e.message) {
+          errorMsg = '操作失败: ' + e.message
+        }
+        this.$bkMessage({ message: errorMsg, theme: 'error' })
         throw e
       }
     },
@@ -930,6 +985,37 @@ export default {
         }
       }
     },
+    beforeUpdate(event, instId, updateType = 'new') {
+      if (this.multiple || !this.existInstAssociation.length) {
+        this.updateAssociation(instId, updateType)
+      } else {
+        this.confirm.id = instId
+        this.confirm.instance = this.$bkPopover(event.target, {
+          content: this.$refs.confirmTips,
+          theme: 'light',
+          zIndex: 9999,
+          width: 230,
+          trigger: 'click',
+          boundary: 'window',
+          arrow: true,
+          interactive: true,
+          onHidden: () => {
+            this.confirm.instance && this.confirm.instance.destroy()
+            this.confirm.instance = null
+          }
+        })
+        this.$nextTick(() => {
+          this.confirm.instance.show()
+        })
+      }
+    },
+    confirmUpdate() {
+      this.updateAssociation(this.confirm.id, 'update')
+      this.cancelUpdate()
+    },
+    cancelUpdate() {
+      this.confirm.instance && this.confirm.instance.hide()
+    },
     formatValue(value, column) {
       if (value === null || value === undefined || value === '') {
         return '-'
@@ -986,6 +1072,25 @@ export default {
   .empty-text {
     color: #63656e;
     padding: 20px 0;
+  }
+
+  .confirm-tips {
+    padding: 9px;
+    .tips-content {
+      color: #313238;
+      line-height: 20px;
+    }
+    .tips-option {
+      margin: 12px 0 0 0;
+      text-align: right;
+      .tips-button {
+        height: 26px;
+        line-height: 24px;
+        padding: 0 16px;
+        min-width: 56px;
+        font-size: 12px;
+      }
+    }
   }
 }
 
