@@ -143,8 +143,8 @@ export default {
       expandAll: false,
       // 记录上次展开状态用于判断变化
       prevExpanded: {},
-      // 上次初始化的时间戳，用于防止重复触发
-      _lastInitTime: 0
+      // 是否正在初始化中，防止 watch 重复触发
+      _isInitializing: false
     }
   },
   computed: {
@@ -230,17 +230,19 @@ export default {
   },
   watch: {
     // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
+    // 如果正在初始化中（_isInitializing=true），则不触发
     groupStates: {
       deep: true,
       handler(states) {
         if (!states) return
+        
         Object.keys(states).forEach(key => {
           const state = states[key]
           const wasExpanded = this.prevExpanded[key] || false
           const isExpanded = state && state.expanded
           
-          // 只在 expanded 从 false 变为 true 时触发（首次展开）
-          if (isExpanded && !wasExpanded) {
+          // 只在 expanded 从 false 变为 true 时触发（首次展开），且不在初始化中
+          if (isExpanded && !wasExpanded && !this._isInitializing) {
             const group = this.associationGroups.find(g => g.key === key)
             if (group) {
               this.getData(group)
@@ -254,7 +256,7 @@ export default {
     }
   },
   methods: {
-    // 尝试初始化（在 created/mounted 中调用，或在数据变化时调用）
+    // 尝试初始化（在 created/mounted 中调用）
     tryInit() {
       // 检查数据是否准备好
       if (!this.associations || !this.associations.length) return
@@ -267,14 +269,25 @@ export default {
     },
     // 执行初始化
     doInit() {
+      // 标记为正在初始化，防止 watch 重复触发
+      this._isInitializing = true
+      
       const keys = this.initGroupStates()
-      if (!keys || keys.length === 0) return
+      if (!keys || keys.length === 0) {
+        this._isInitializing = false
+        return
+      }
+      
+      // 清除 prevExpanded，重新计算
+      this.prevExpanded = {}
       
       this.$nextTick(() => {
         const group = this.associationGroups.find(g => g.key === keys[0])
         if (group && group.expanded) {
           this.getData(group)
         }
+        // 初始化完成后，重置标志
+        this._isInitializing = false
       })
     },
     // 初始化 groupStates
