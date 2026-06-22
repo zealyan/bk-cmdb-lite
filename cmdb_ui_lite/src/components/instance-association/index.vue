@@ -177,15 +177,22 @@ export default {
             key: groupKey,
             relationTypeName,
             relatedObjId,
-            allInstances: [],
+            instanceIds: [],  // 存储关联的实例ID列表
+            allInstances: [],  // 存储完整的实例数据
             columns: this.getColumnsForModel(relatedObjId)
           })
         }
 
         const group = groupedMap.get(groupKey)
         const targetInstId = isSource ? asst.bk_asst_inst_id : asst.bk_inst_id
+        
+        // 记录关联的实例ID（用于懒加载）
+        if (!group.instanceIds.includes(Number(targetInstId))) {
+          group.instanceIds.push(Number(targetInstId))
+        }
+        
+        // 尝试从 instancesMap 中获取完整数据
         const instances = this.instancesMap[relatedObjId] || []
-
         const instance = instances.find(inst => {
           const instMatch = inst.bk_inst_id !== undefined ? inst.bk_inst_id : inst.id
           return Number(instMatch) === Number(targetInstId)
@@ -199,15 +206,28 @@ export default {
           })) {
             group.allInstances.push(instance)
           }
+        } else {
+          // 懒加载模式：instancesMap 中没有数据时，创建占位数据
+          if (!group.allInstances.find(i => Number(i.bk_inst_id || i.id) === Number(targetInstId))) {
+            // 创建占位实例对象，包含 ID 信息
+            group.allInstances.push({
+              bk_inst_id: targetInstId,
+              id: targetInstId,
+              bk_inst_name: `实例 ${targetInstId}`,
+              _placeholder: true  // 标记为占位数据
+            })
+          }
         }
       })
 
       const result = []
       let firstGroup = true
       groupedMap.forEach((group) => {
-        if (group.allInstances.length === 0) return
-
-        const total = group.allInstances.length
+        // 移除占位标记，过滤出真实数据
+        const realInstances = group.allInstances.filter(i => !i._placeholder)
+        
+        // 使用 instanceIds 计算总数（更准确）
+        const total = group.instanceIds.length
         const totalPages = Math.ceil(total / this.pageSize)
 
         if (!this.groupStates[group.key]) {
