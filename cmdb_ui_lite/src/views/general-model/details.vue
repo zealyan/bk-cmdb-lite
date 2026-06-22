@@ -44,6 +44,8 @@
             </div>
             <instance-association
               v-else
+              ref="associationComponent"
+              :key="associationKey"
               :obj-id="objId"
               :inst-id="instId"
               :associations="allAssociations"
@@ -83,7 +85,8 @@ export default {
       propertyGroups: [],
       isDataReady: false,
       associationLoading: false,
-      editingPropertyId: null
+      editingPropertyId: null,
+      associationKey: 0
     }
   },
   computed: {
@@ -232,7 +235,8 @@ export default {
           return
         }
         
-        // 清除旧数据，强制子组件重新初始化
+        // 先加载数据
+        this.isDataReady = false
         this.apiAssociations = []
         this.apiRelations = []
         
@@ -246,6 +250,8 @@ export default {
           this.apiRelations = relationsResponse.relations
         }
         
+        // 数据加载完成后，强制子组件重新创建
+        this.associationKey++
         this.isDataReady = true
         
       } catch (error) {

@@ -122,8 +122,14 @@ export default {
     }
   },
   created() {
-    // 组件创建时，如果 associations 已有值，初始化 groupStates
-    this.initGroupStates()
+    // 组件创建时，检查数据是否已准备好
+    this.tryInit()
+  },
+  mounted() {
+    // mounted 时使用 nextTick 确保数据已更新，然后检查
+    this.$nextTick(() => {
+      this.tryInit()
+    })
   },
   data() {
     return {
@@ -223,30 +229,7 @@ export default {
     }
   },
   watch: {
-    // 监听 associations 变化，初始化 groupStates 并触发数据加载
-    associations: {
-      immediate: true,
-      handler(associations) {
-        if (!associations || !associations.length) return
-        
-        // 检查 relations 是否已准备好（用于获取关联类型名称）
-        if (!this.relations || !this.relations.length) return
-        
-        this.initAndLoad()
-      }
-    },
-    // 监听 relations 变化，当 relations 比 associations 后准备好时，触发初始化
-    relations: {
-      immediate: true,
-      handler(relations) {
-        if (!relations || !relations.length) return
-        if (!this.associations || !this.associations.length) return
-        
-        this.initAndLoad()
-      }
-    },
     // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
-    // 使用 prevExpanded 比较变化，避免 deep watch 中 oldStates 引用问题
     groupStates: {
       deep: true,
       handler(states) {
@@ -271,22 +254,26 @@ export default {
     }
   },
   methods: {
-    // 统一的初始化和数据加载方法，防止重复触发
-    initAndLoad() {
-      const now = Date.now()
-      // 防止在 500ms 内重复触发（用于同一次数据加载中的多次 watch 触发）
-      if (now - this._lastInitTime < 500) return
+    // 尝试初始化（在 created/mounted 中调用，或在数据变化时调用）
+    tryInit() {
+      // 检查数据是否准备好
+      if (!this.associations || !this.associations.length) return
+      if (!this.relations || !this.relations.length) return
       
-      this._lastInitTime = now
-      this.groupInstances = {} // 清除缓存
+      // 检查是否已经初始化过
+      if (Object.keys(this.groupStates).length > 0) return
       
+      this.doInit()
+    },
+    // 执行初始化
+    doInit() {
       const keys = this.initGroupStates()
+      if (!keys || keys.length === 0) return
+      
       this.$nextTick(() => {
-        if (keys.length > 0) {
-          const group = this.associationGroups.find(g => g.key === keys[0])
-          if (group && group.expanded) {
-            this.getData(group)
-          }
+        const group = this.associationGroups.find(g => g.key === keys[0])
+        if (group && group.expanded) {
+          this.getData(group)
         }
       })
     },
