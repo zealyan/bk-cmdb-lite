@@ -252,6 +252,17 @@ export default {
             this.$set(this.prevExpanded, key, false)
           }
         })
+        
+        // 使用 nextTick 确保 associationGroups 更新后再触发数据加载
+        this.$nextTick(() => {
+          // 触发第一个分组的 getData
+          if (keys.length > 0) {
+            const group = this.associationGroups.find(g => g.key === keys[0])
+            if (group && group.expanded) {
+              this.getData(group)
+            }
+          }
+        })
       }
     },
     // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
