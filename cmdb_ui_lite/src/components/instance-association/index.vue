@@ -129,6 +129,7 @@ export default {
       loading: false,
       cachedProperties: {},
       cachedInstances: {},
+      cachedInstanceIds: {},
       expandAll: false,
       loadedGroups: new Set()
     }
@@ -232,14 +233,21 @@ export default {
     }
   },
   watch: {
-    associationGroups: {
-      immediate: true,
-      handler(groups) {
-        const firstGroup = groups.find(g => g.expanded)
-        if (firstGroup && !this.loadedGroups.has(firstGroup.key)) {
-          this.loadedGroups.add(firstGroup.key)
-          this.getData(firstGroup)
-        }
+    // 监听 groupStates 变化，参考原项目 expanded 触发 getData 的逻辑
+    // 当某个分组 expanded 变为 true 时，加载对应的属性和实例数据
+    groupStates: {
+      deep: true,
+      handler(states) {
+        if (!states) return
+        Object.keys(states).forEach(key => {
+          const state = states[key]
+          if (state && state.expanded) {
+            const group = this.associationGroups.find(g => g.key === key)
+            if (group) {
+              this.getData(group)
+            }
+          }
+        })
       }
     }
   },
@@ -318,25 +326,33 @@ export default {
         return
       }
       
+      // 检查是否已经加载过该分组的实例（避免重复请求）
+      const cachedIds = this.cachedInstanceIds[item.relatedObjId]
+      if (cachedIds && this.isSameIds(cachedIds, item.instanceIds)) {
+        return
+      }
+      
       try {
         const response = await modelAPI.getInstancesByIds(item.relatedObjId, item.instanceIds)
         if (response && response.instances) {
           this.$set(this.cachedInstances, item.relatedObjId, response.instances)
+          this.$set(this.cachedInstanceIds, item.relatedObjId, item.instanceIds.slice())
         }
       } catch (err) {
         console.warn(`加载 ${item.relatedObjId} 实例失败:`, err)
       }
+    },
+    isSameIds(a, b) {
+      if (a.length !== b.length) return false
+      const sortedA = [...a].sort()
+      const sortedB = [...b].sort()
+      return sortedA.every((v, i) => v === sortedB[i])
     },
     toggleExpand(item) {
       const state = this.groupStates[item.key]
       if (state) {
         const willExpand = !state.expanded
         state.expanded = willExpand
-        
-        if (willExpand && !this.loadedGroups.has(item.key)) {
-          this.loadedGroups.add(item.key)
-          this.getData(item)
-        }
       }
       this.$forceUpdate()
     },
