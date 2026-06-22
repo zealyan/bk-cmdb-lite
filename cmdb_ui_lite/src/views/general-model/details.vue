@@ -232,6 +232,10 @@ export default {
           return
         }
         
+        // 清除旧数据，强制子组件重新初始化
+        this.apiAssociations = []
+        this.apiRelations = []
+        
         const assocResponse = await modelAPI.getInstanceAssociations(this.instId)
         if (assocResponse && assocResponse.associations) {
           this.apiAssociations = assocResponse.associations
