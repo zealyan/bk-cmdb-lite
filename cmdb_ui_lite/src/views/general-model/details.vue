@@ -288,17 +288,6 @@ export default {
           }
         }
         
-        for (const modelId of relatedModelIds) {
-          try {
-            const instancesResponse = await modelAPI.listInstances(modelId, { page: 1, page_size: 100 })
-            if (instancesResponse && instancesResponse.instances) {
-              this.$set(this.apiInstances, modelId, instancesResponse.instances)
-            }
-          } catch (err) {
-            console.warn(`加载 ${modelId} 实例失败:`, err)
-          }
-        }
-        
         this.isDataReady = true
         
       } catch (error) {
@@ -308,7 +297,7 @@ export default {
       }
     },
     async loadAssociationData () {
-      // 重新加载关联相关数据
+      // 重新加载关联相关数据（懒加载模式：不预加载实例数据）
       this.associationLoading = true
       try {
         if (!this.objId || !this.instId) {
@@ -340,7 +329,7 @@ export default {
           }
         })
         
-        // 加载关联实例的属性
+        // 加载关联实例的属性定义
         for (const modelId of relatedModelIds) {
           try {
             const attrResponse = await modelAPI.getModelAttributes(modelId)
@@ -352,18 +341,6 @@ export default {
             }
           } catch (err) {
             console.warn(`加载 ${modelId} 属性定义失败:`, err)
-          }
-        }
-        
-        // 加载关联实例
-        for (const modelId of relatedModelIds) {
-          try {
-            const instancesResponse = await modelAPI.listInstances(modelId, { page: 1, page_size: 100 })
-            if (instancesResponse && instancesResponse.instances) {
-              this.$set(this.apiInstances, modelId, instancesResponse.instances)
-            }
-          } catch (err) {
-            console.warn(`加载 ${modelId} 实例失败:`, err)
           }
         }
         
@@ -400,9 +377,44 @@ export default {
       this.loadAssociationData()
     },
     handleExpandGroup (item) {
-      // 点击展开分组时加载数据（与原项目一致）
+      // 点击展开分组时加载实例数据（懒加载模式）
       const relatedObjId = item.relatedObjId
-      this.loadAssociationData()
+      this.loadGroupInstances(relatedObjId)
+    },
+    async loadGroupInstances (modelId) {
+      // 根据关联实例ID列表批量加载实例数据
+      this.associationLoading = true
+      try {
+        // 从当前关联数据中获取需要加载的实例ID列表
+        const instanceIds = []
+        
+        this.apiAssociations.forEach(asst => {
+          if (String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)) {
+            if (String(asst.bk_asst_obj_id) === String(modelId)) {
+              instanceIds.push(asst.bk_asst_inst_id)
+            }
+          }
+          if (String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)) {
+            if (String(asst.bk_obj_id) === String(modelId)) {
+              instanceIds.push(asst.bk_inst_id)
+            }
+          }
+        })
+        
+        if (instanceIds.length === 0) {
+          return
+        }
+        
+        // 使用批量查询API加载实例数据
+        const response = await modelAPI.getInstancesByIds(modelId, instanceIds)
+        if (response && response.instances) {
+          this.$set(this.apiInstances, modelId, response.instances)
+        }
+      } catch (err) {
+        console.warn(`加载 ${modelId} 实例失败:`, err)
+      } finally {
+        this.associationLoading = false
+      }
     },
     async handlePropertyConfirm ({ property, value, changed }) {
       if (!changed) {

@@ -113,6 +113,11 @@ export const modelAPI = {
     return http.get('/api/v1/common/statistics')
   },
 
+  // 批量查询实例（按ID列表）
+  getInstancesByIds (modelId, ids = []) {
+    return http.post(`/api/v1/models/${modelId}/instances/batch`, { ids })
+  },
+
   // 检查实例的关联关系数量
   checkInstanceAssociations (modelId, ids = []) {
     return http.post(`/api/v1/models/${modelId}/instances/check-associations`, { ids })

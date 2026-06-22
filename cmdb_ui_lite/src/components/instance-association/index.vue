@@ -203,6 +203,7 @@ export default {
       })
 
       const result = []
+      let firstGroup = true
       groupedMap.forEach((group) => {
         if (group.allInstances.length === 0) return
 
@@ -211,9 +212,10 @@ export default {
 
         if (!this.groupStates[group.key]) {
           this.$set(this.groupStates, group.key, {
-            expanded: this.expandAll,
+            expanded: firstGroup,
             current: 1
           })
+          firstGroup = false
         }
 
         const state = this.groupStates[group.key]
@@ -231,6 +233,18 @@ export default {
       })
 
       return result
+    }
+  },
+  watch: {
+    associationGroups: {
+      immediate: true,
+      handler(groups) {
+        // 默认展开第一分组时触发数据加载
+        const firstGroup = groups.find(g => g.expanded)
+        if (firstGroup) {
+          this.$emit('expand-group', firstGroup)
+        }
+      }
     }
   },
   methods: {

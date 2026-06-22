@@ -71,6 +71,25 @@ class InstanceService:
         }
     
     @staticmethod
+    def get_instances_by_ids(model_id, instance_ids):
+        """按实例ID列表批量查询实例"""
+        table_name = InstanceService._get_table_name(model_id)
+        
+        if not instance_ids:
+            return []
+        
+        placeholders = ','.join([':id_' + str(i) for i in range(len(instance_ids))])
+        params = {'id_' + str(i): int(instance_ids[i]) for i in range(len(instance_ids))}
+        
+        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id IN ({placeholders})'
+        instances = query_all(sql, params)
+        
+        for i in range(len(instances)):
+            instances[i] = InstanceService._parse_json_fields(instances[i], model_id)
+        
+        return instances
+    
+    @staticmethod
     def advanced_search(model_id, search_data):
         """高级搜索模型实例"""
         from app.utils.logger import get_logger
