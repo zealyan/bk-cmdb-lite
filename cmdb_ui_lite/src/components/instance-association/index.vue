@@ -135,7 +135,8 @@ export default {
       showCreateDialog: false,
       loading: false,
       cachedProperties: {},
-      expandAll: true  // 全部展开状态
+      expandAll: true,  // 全部展开状态
+      loadedGroups: new Set()  // 已加载的分组，防止重复加载
     }
   },
   computed: {
@@ -259,9 +260,10 @@ export default {
     associationGroups: {
       immediate: true,
       handler(groups) {
-        // 默认展开第一分组时触发数据加载
+        // 默认展开第一分组时触发数据加载（防止重复加载）
         const firstGroup = groups.find(g => g.expanded)
-        if (firstGroup) {
+        if (firstGroup && !this.loadedGroups.has(firstGroup.key)) {
+          this.loadedGroups.add(firstGroup.key)
           this.$emit('expand-group', firstGroup)
         }
       }
@@ -274,6 +276,17 @@ export default {
       Object.keys(this.groupStates).forEach(key => {
         this.groupStates[key].expanded = expandAll
       })
+      
+      // 如果展开全部，触发未加载分组的数据加载
+      if (expandAll) {
+        this.associationGroups.forEach(group => {
+          if (!this.loadedGroups.has(group.key)) {
+            this.loadedGroups.add(group.key)
+            this.$emit('expand-group', group)
+          }
+        })
+      }
+      
       this.$forceUpdate()
     },
     getModelDisplayName(objId) {
@@ -320,8 +333,9 @@ export default {
         const willExpand = !state.expanded
         state.expanded = willExpand
         
-        // 展开时触发数据加载（与原项目一致）
-        if (willExpand) {
+        // 展开时触发数据加载（防止重复加载）
+        if (willExpand && !this.loadedGroups.has(item.key)) {
+          this.loadedGroups.add(item.key)
           // 通知父组件需要加载数据
           this.$emit('expand-group', item)
         }
