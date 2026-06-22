@@ -72,7 +72,9 @@ class AssociationService:
                 oa.bk_asst_id AS relation_type_id,
                 ad.bk_asst_name AS relation_type_name,
                 oa.bk_obj_asst_id,
-                oa.bk_obj_asst_name
+                oa.bk_obj_asst_name,
+                oa.mapping,
+                oa.on_delete
             FROM cc_ObjAsst oa
             JOIN cc_AsstDes ad ON oa.bk_asst_id = ad.bk_asst_id
             WHERE oa.bk_obj_id = :model_id
@@ -89,8 +91,92 @@ class AssociationService:
         return query_all(sql, {'instance_id': instance_id})
     
     @staticmethod
+    def _count_instance_association(obj_asst_id, **conditions):
+        """统计实例关联数量"""
+        sql = "SELECT COUNT(*) as count FROM cc_InstAsst_0_pub WHERE bk_obj_asst_id = :bk_obj_asst_id"
+        params = {'bk_obj_asst_id': obj_asst_id}
+        
+        if 'bk_inst_id' in conditions:
+            sql += " AND bk_inst_id = :bk_inst_id"
+            params['bk_inst_id'] = conditions['bk_inst_id']
+        
+        if 'bk_asst_inst_id' in conditions:
+            sql += " AND bk_asst_inst_id = :bk_asst_inst_id"
+            params['bk_asst_inst_id'] = conditions['bk_asst_inst_id']
+        
+        result = query_one(sql, params)
+        return result.get('count', 0) if result else 0
+    
+    @staticmethod
+    def check_association_mapping(obj_asst_id, inst_id, asst_inst_id):
+        """
+        检查关联映射规则，根据 mapping 字段校验关联是否合法
+        
+        参数:
+            obj_asst_id: 对象关联ID (bk_obj_asst_id)
+            inst_id: 源实例ID
+            asst_inst_id: 目标实例ID
+        
+        返回:
+            None: 校验通过
+            Exception: 校验失败，包含错误信息
+        """
+        sql = """
+            SELECT mapping, bk_obj_id, target_obj_id 
+            FROM cc_ObjAsst 
+            WHERE bk_obj_asst_id = :obj_asst_id
+        """
+        result = query_one(sql, {'obj_asst_id': obj_asst_id})
+        
+        if not result:
+            raise ValueError("关联关系不存在")
+        
+        mapping = result.get('mapping', '')
+        object_id = result.get('bk_obj_id', '')
+        asst_object_id = result.get('target_obj_id', '')
+        
+        if mapping == '1:1':
+            inst_count = AssociationService._count_instance_association(
+                obj_asst_id, bk_inst_id=inst_id
+            )
+            asst_inst_count = AssociationService._count_instance_association(
+                obj_asst_id, bk_asst_inst_id=asst_inst_id
+            )
+            
+            if inst_count > 0:
+                raise ValueError("1:1 关联不允许创建多个关联实例（源实例已有关联）")
+            if asst_inst_count > 0:
+                raise ValueError("1:1 关联不允许创建多个关联实例（目标实例已有关联）")
+        
+        elif mapping == '1:n':
+            asst_inst_count = AssociationService._count_instance_association(
+                obj_asst_id, bk_asst_inst_id=asst_inst_id
+            )
+            
+            if asst_inst_count > 0:
+                raise ValueError("1:n 关联的目标实例已有关联，不能重复关联")
+        
+        elif mapping == 'n:1':
+            inst_count = AssociationService._count_instance_association(
+                obj_asst_id, bk_inst_id=inst_id
+            )
+            
+            if inst_count > 0:
+                raise ValueError("n:1 关联的源实例已有关联，不能重复关联")
+        
+        elif mapping == 'n:n':
+            pass
+    
+    @staticmethod
     def create_instance_association(data):
         """创建实例关联"""
+        obj_asst_id = data.get('bk_obj_asst_id')
+        inst_id = data.get('bk_inst_id')
+        asst_inst_id = data.get('bk_asst_inst_id')
+        
+        if obj_asst_id and inst_id and asst_inst_id:
+            AssociationService.check_association_mapping(obj_asst_id, inst_id, asst_inst_id)
+        
         data['id'] = generate_id()
         data['_id'] = str(data['id'])
         data.setdefault('bk_supplier_account', '0')
@@ -128,7 +214,9 @@ class AssociationService:
                    oa.bk_obj_asst_id,
                    ad.bk_asst_name,
                    oa.target_obj_id,
-                   oa.target_obj_name
+                   oa.target_obj_name,
+                   oa.mapping,
+                   oa.on_delete
             FROM cc_InstAsst_0_pub ia
             JOIN cc_ObjAsst oa ON ia.bk_obj_asst_id = oa.bk_obj_asst_id
             JOIN cc_AsstDes ad ON ia.bk_relation_type_id = ad.bk_asst_id
@@ -173,7 +261,8 @@ class AssociationService:
         """获取实例的相关实例"""
         sql = """
             SELECT a.*, ad.bk_asst_name as bk_relation_type_name, 
-                   oa.bk_obj_id as bk_src_model, oa.target_obj_id as bk_dst_model
+                   oa.bk_obj_id as bk_src_model, oa.target_obj_id as bk_dst_model,
+                   oa.mapping, oa.on_delete
             FROM cc_InstAsst_0_pub a
             JOIN cc_AsstDes ad ON a.bk_relation_type_id = ad.bk_asst_id
             JOIN cc_ObjAsst oa ON a.bk_obj_asst_id = oa.bk_obj_asst_id
