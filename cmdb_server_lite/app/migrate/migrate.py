@@ -931,23 +931,23 @@ class DatabaseMigrator:
                 "bk_obj_id": "bk_slb",
                 "target_obj_id": "bk_slb_server",
                 "target_obj_name": "后端服务器",
-                "bk_asst_id": "default",  # 使用标准关联类型
-                "bk_obj_asst_id": "bk_slb_default_bk_slb_server",  # {源}_{类型}_{目标}
+                "bk_asst_id": "default",
+                "bk_obj_asst_id": "bk_slb_default_bk_slb_server",
                 "bk_obj_asst_name": "指向后端服务器",
                 "bk_supplier_account": "0",
-                "mapping": None,
-                "on_delete": None
+                "mapping": "1:n",
+                "on_delete": "none"
             },
             {
                 "bk_obj_id": "bk_slb",
                 "target_obj_id": "bk_slb_listener",
                 "target_obj_name": "监听器",
-                "bk_asst_id": "default",  # 使用标准关联类型
-                "bk_obj_asst_id": "bk_slb_default_bk_slb_listener",  # {源}_{类型}_{目标}
+                "bk_asst_id": "default",
+                "bk_obj_asst_id": "bk_slb_default_bk_slb_listener",
                 "bk_obj_asst_name": "指向监听器",
                 "bk_supplier_account": "0",
-                "mapping": None,
-                "on_delete": None
+                "mapping": "1:n",
+                "on_delete": "none"
             }
         ]
 
