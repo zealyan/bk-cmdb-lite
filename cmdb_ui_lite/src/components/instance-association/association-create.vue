@@ -791,36 +791,16 @@ export default {
     },
     async updateAssociation(instId, updateType = 'new') {
       try {
-        console.log('[AssociationCreate] ========== updateAssociation START ==========')
-        console.log('[AssociationCreate] instId:', instId, 'updateType:', updateType)
-        
         const instIdNum = Number(instId)
         
         if (updateType === 'new') {
-          // 1. 创建关联
-          console.log('[AssociationCreate] >>> Creating new association...')
-          const result = await this.createAssociation(instId)
-          console.log('[AssociationCreate] <<< createAssociation result:', result)
-          
-          // 2. 添加到临时数据（用于实时显示）
+          await this.createAssociation(instId)
           this.tempData.push(instIdNum)
-          console.log('[AssociationCreate] Added to tempData:', this.tempData)
-          
-          // 3. 显示成功提示
           this.$bkMessage({ message: '关联成功', theme: 'success' })
-          
-          // 4. 标记有变更
           this.hasChange = true
-          
-          // 5. 重新从后端加载关联列表（确保数据一致性）
-          console.log('[AssociationCreate] Refreshing existInstAssociation from backend...')
           await this.getExistInstAssociation()
-          console.log('[AssociationCreate] After refresh, existInstAssociation.length:', this.existInstAssociation.length)
           
         } else if (updateType === 'remove') {
-          console.log('[AssociationCreate] >>> Removing association...')
-          
-          // 1. 找到要删除的关联记录
           const existInst = this.existInstAssociation.find(inst => {
             if (this.isSource) {
               return Number(inst.bk_asst_inst_id) === instIdNum
@@ -828,64 +808,32 @@ export default {
             return Number(inst.bk_inst_id) === instIdNum
           })
           
-          console.log('[AssociationCreate] Found association to delete:', existInst)
-          
           if (existInst) {
-            // 2. 删除关联
-            console.log('[AssociationCreate] Deleting association ID:', existInst.id)
             await associationAPI.delete(this.objId, existInst.id)
-            
-            // 3. 从临时数据中移除
             this.tempData = this.tempData.filter(id => Number(id) !== instIdNum)
-            console.log('[AssociationCreate] Removed from tempData, current tempData:', this.tempData)
-            
-            // 4. 显示成功提示
             this.$bkMessage({ message: '取消关联成功', theme: 'success' })
-            
-            // 5. 标记有变更
             this.hasChange = true
-            
-            // 6. 重新从后端加载关联列表
-            console.log('[AssociationCreate] Refreshing existInstAssociation from backend...')
             await this.getExistInstAssociation()
-            console.log('[AssociationCreate] After refresh, existInstAssociation.length:', this.existInstAssociation.length)
           } else {
-            console.warn('[AssociationCreate] No existing association found')
             this.$bkMessage({ message: '未找到关联记录', theme: 'warning' })
           }
         } else if (updateType === 'update') {
-          console.log('[AssociationCreate] >>> Updating association (replace)...')
-          
-          // 1. 删除旧关联（对于 1:1 关系，只能有一个关联）
-          // 注意：需要删除的是关联记录的主键 id，而不是实例 ID
           const oldInst = this.existInstAssociation[0]
-          
-          console.log('[AssociationCreate] Deleting old association with id:', oldInst?.id)
           
           if (oldInst) {
             await associationAPI.delete(this.objId, oldInst.id)
           }
           
-          // 2. 清空临时数据
           this.tempData = []
           this.hasChange = true
-          
-          // 3. 创建新关联
-          console.log('[AssociationCreate] Creating new association with instId:', instId)
           await this.createAssociation(instId)
           this.tempData = [instIdNum]
-          
-          // 4. 显示成功提示
           this.$bkMessage({ message: '关联成功', theme: 'success' })
-          
-          // 5. 重新从后端加载关联列表
           await this.getExistInstAssociation()
         }
         
-        console.log('[AssociationCreate] ========== updateAssociation END ==========')
-        
       } catch (e) {
-        console.error('[AssociationCreate] updateAssociation error:', e)
+        console.log(e)
         let errorMsg = '操作失败'
         if (e.response && e.response.data && e.response.data.error) {
           errorMsg = e.response.data.error
@@ -893,61 +841,23 @@ export default {
           errorMsg = '操作失败: ' + e.message
         }
         this.$bkMessage({ message: errorMsg, theme: 'error' })
-        throw e
+      } finally {
+        this.getExistInstAssociation()
       }
     },
     async createAssociation(instId) {
-      try {
-        const isSource = this.currentOption.bk_obj_id === this.objId
-        
-        console.log('[AssociationCreate] ========== createAssociation ==========')
-        console.log('[AssociationCreate] isSource:', isSource)
-        console.log('[AssociationCreate] this.objId:', this.objId)
-        console.log('[AssociationCreate] this.instId:', this.instId)
-        console.log('[AssociationCreate] instId (target):', instId)
-        console.log('[AssociationCreate] this.currentAsstObj:', this.currentAsstObj)
-        console.log('[AssociationCreate] this.currentOption.bk_obj_asst_id:', this.currentOption.bk_obj_asst_id)
-        console.log('[AssociationCreate] this.currentOption.bk_asst_id:', this.currentOption.bk_asst_id)
-        
-        const params = {
-          bk_obj_id: isSource ? this.objId : this.currentAsstObj,
-          bk_inst_id: isSource ? this.instId : instId,
-          bk_asst_obj_id: isSource ? this.currentAsstObj : this.objId,
-          bk_asst_inst_id: isSource ? instId : this.instId,
-          bk_obj_asst_id: this.currentOption.bk_obj_asst_id,
-          bk_relation_type_id: this.currentOption.bk_asst_id
-        }
-        
-        console.log('[AssociationCreate] Final params:', JSON.stringify(params, null, 2))
-        
-        // 验证参数
-        if (!params.bk_obj_id || !params.bk_asst_obj_id || !params.bk_obj_asst_id) {
-          console.error('[AssociationCreate] ❌ Invalid params! Missing required fields')
-          throw new Error('缺少必需参数')
-        }
-        
-        console.log('[AssociationCreate] Sending request to create association...')
-        console.log('[AssociationCreate] Source:', params.bk_obj_id, 'instance', params.bk_inst_id)
-        console.log('[AssociationCreate] Target:', params.bk_asst_obj_id, 'instance', params.bk_asst_inst_id)
-        
-        const result = await associationAPI.create(params)
-        console.log('[AssociationCreate] ✅ createAssociation result:', result)
-        
-        if (result && result.id) {
-          console.log('[AssociationCreate] ✅ Created association ID:', result.id)
-        } else if (result && result.info && result.info.id) {
-          console.log('[AssociationCreate] ✅ Created association ID (from info):', result.info.id)
-        } else {
-          console.warn('[AssociationCreate] ⚠️ No ID returned in result:', result)
-        }
-        
-        console.log('[AssociationCreate] ========== createAssociation END ==========')
-        
-        return result
-      } catch (e) {
-        console.error('[AssociationCreate] ❌ createAssociation error:', e)
-        throw e
+      const isSource = this.currentOption.bk_obj_id === this.objId
+      
+      const params = {
+        bk_obj_id: isSource ? this.objId : this.currentAsstObj,
+        bk_inst_id: isSource ? this.instId : instId,
+        bk_asst_obj_id: isSource ? this.currentAsstObj : this.objId,
+        bk_asst_inst_id: isSource ? instId : this.instId,
+        bk_obj_asst_id: this.currentOption.bk_obj_asst_id,
+        bk_relation_type_id: this.currentOption.bk_asst_id
       }
+      
+      return await associationAPI.create(params)
     },
     handleClose() {
       this.sliderShow = false
