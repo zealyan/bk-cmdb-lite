@@ -128,10 +128,9 @@ export default {
       showCreateDialog: false,
       loading: false,
       cachedProperties: {},
-      cachedInstances: {},
-      cachedInstanceIds: {},
-      expandAll: false,
-      loadedGroups: new Set()
+      // 每个分组的当前页实例数据缓存
+      groupInstances: {},
+      expandAll: false
     }
   },
   computed: {
@@ -172,7 +171,7 @@ export default {
             relationTypeName,
             relatedObjId,
             instanceIds: [],
-            sourceIds: []
+            isSource
           })
         }
 
@@ -182,7 +181,6 @@ export default {
         if (!group.instanceIds.includes(Number(targetInstId))) {
           group.instanceIds.push(Number(targetInstId))
         }
-        group.sourceIds.push(asst)
       })
 
       const result = []
@@ -200,23 +198,14 @@ export default {
         }
 
         const state = this.groupStates[group.key]
-        const start = (state.current - 1) * this.pageSize
         
+        // 计算当前页的 instanceIds
+        const start = (state.current - 1) * this.pageSize
         const currentPageIds = group.instanceIds.slice(start, start + this.pageSize)
         
-        const allInstances = this.cachedInstances[group.relatedObjId] || []
-        const displayInstances = currentPageIds.map(id => {
-          const inst = allInstances.find(i => Number(i.bk_inst_id || i.id) === Number(id))
-          if (inst) {
-            return inst
-          }
-          return {
-            bk_inst_id: id,
-            id: id,
-            bk_inst_name: `实例 ${id}`,
-            _placeholder: true
-          }
-        }).filter(i => !i._placeholder || !state.expanded)
+        // 从缓存中获取当前页的实例数据
+        const cacheKey = `${group.key}_${state.current}`
+        const displayInstances = this.groupInstances[cacheKey] || []
 
         result.push({
           ...group,
@@ -224,6 +213,7 @@ export default {
           totalPages,
           current: state.current,
           expanded: state.expanded,
+          currentPageIds,
           displayInstances,
           columns: this.getColumnsForModel(group.relatedObjId)
         })
@@ -233,8 +223,7 @@ export default {
     }
   },
   watch: {
-    // 监听 groupStates 变化，参考原项目 expanded 触发 getData 的逻辑
-    // 当某个分组 expanded 变为 true 时，加载对应的属性和实例数据
+    // 监听 groupStates 变化，当 expanded 变为 true 时加载当前页数据
     groupStates: {
       deep: true,
       handler(states) {
@@ -257,16 +246,6 @@ export default {
       Object.keys(this.groupStates).forEach(key => {
         this.groupStates[key].expanded = expandAll
       })
-      
-      if (expandAll) {
-        this.associationGroups.forEach(group => {
-          if (!this.loadedGroups.has(group.key)) {
-            this.loadedGroups.add(group.key)
-            this.getData(group)
-          }
-        })
-      }
-      
       this.$forceUpdate()
     },
     getModelDisplayName(objId) {
@@ -322,37 +301,27 @@ export default {
       }
     },
     async getInstances(item) {
-      if (!item.instanceIds.length) {
-        return
-      }
-      
-      // 检查是否已经加载过该分组的实例（避免重复请求）
-      const cachedIds = this.cachedInstanceIds[item.relatedObjId]
-      if (cachedIds && this.isSameIds(cachedIds, item.instanceIds)) {
+      // 使用当前页的 instanceIds 进行查询（后端分页）
+      const currentPageIds = item.currentPageIds
+      if (!currentPageIds || !currentPageIds.length) {
         return
       }
       
       try {
-        const response = await modelAPI.getInstancesByIds(item.relatedObjId, item.instanceIds)
+        const response = await modelAPI.getInstancesByIds(item.relatedObjId, currentPageIds)
         if (response && response.instances) {
-          this.$set(this.cachedInstances, item.relatedObjId, response.instances)
-          this.$set(this.cachedInstanceIds, item.relatedObjId, item.instanceIds.slice())
+          // 缓存当前页的实例数据
+          const cacheKey = `${item.key}_${item.current}`
+          this.$set(this.groupInstances, cacheKey, response.instances)
         }
       } catch (err) {
         console.warn(`加载 ${item.relatedObjId} 实例失败:`, err)
       }
     },
-    isSameIds(a, b) {
-      if (a.length !== b.length) return false
-      const sortedA = [...a].sort()
-      const sortedB = [...b].sort()
-      return sortedA.every((v, i) => v === sortedB[i])
-    },
     toggleExpand(item) {
       const state = this.groupStates[item.key]
       if (state) {
-        const willExpand = !state.expanded
-        state.expanded = willExpand
+        state.expanded = !state.expanded
       }
       this.$forceUpdate()
     },
@@ -364,6 +333,11 @@ export default {
       const state = this.groupStates[item.key]
       if (state) {
         state.current = newCurrent
+        // 翻页后重新加载当前页数据
+        const group = this.associationGroups.find(g => g.key === item.key)
+        if (group && state.expanded) {
+          this.getInstances(group)
+        }
       }
       this.$forceUpdate()
     },
@@ -393,6 +367,8 @@ export default {
       this.showCreateDialog = true
     },
     handleAssociationCreated() {
+      // 清空缓存，重新加载
+      this.groupInstances = {}
       this.$emit('association-change')
     },
     handleRowClick(row, event, column, item) {
@@ -436,6 +412,8 @@ export default {
           try {
             await associationAPI.delete(this.objId, association.id)
             this.$bkMessage({ message: '取消关联成功', theme: 'success' })
+            // 清空缓存，重新加载
+            this.groupInstances = {}
             this.$emit('association-change')
           } catch (e) {
             this.$bkMessage({ message: '取消关联失败: ' + (e.message || e), theme: 'error' })
