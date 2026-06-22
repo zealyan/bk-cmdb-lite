@@ -283,7 +283,14 @@ export default {
     toggleExpand(item) {
       const state = this.groupStates[item.key]
       if (state) {
-        state.expanded = !state.expanded
+        const willExpand = !state.expanded
+        state.expanded = willExpand
+        
+        // 展开时触发数据加载（与原项目一致）
+        if (willExpand) {
+          // 通知父组件需要加载数据
+          this.$emit('expand-group', item)
+        }
       }
       this.$forceUpdate()
     },

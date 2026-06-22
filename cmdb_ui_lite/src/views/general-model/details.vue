@@ -51,7 +51,8 @@
               :instances-map="instancesMap"
               :properties-map="propertiesMap"
               @view-instance="handleViewAssociatedInstance"
-              @association-change="handleAssociationChange">
+              @association-change="handleAssociationChange"
+              @expand-group="handleExpandGroup">
             </instance-association>
           </div>
         </bk-tab-panel>
@@ -396,6 +397,11 @@ export default {
       })
     },
     handleAssociationChange () {
+      this.loadAssociationData()
+    },
+    handleExpandGroup (item) {
+      // 点击展开分组时加载数据（与原项目一致）
+      const relatedObjId = item.relatedObjId
       this.loadAssociationData()
     },
     async handlePropertyConfirm ({ property, value, changed }) {
