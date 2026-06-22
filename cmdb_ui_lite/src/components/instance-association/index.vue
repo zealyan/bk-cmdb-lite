@@ -157,9 +157,9 @@ export default {
         } else {
           groupKey = `from_${asst.bk_obj_id}`
           relatedObjId = asst.bk_obj_id
-          // 原项目规则：作为目标时使用 dest_des-模型名称
+          // 原项目规则：作为目标时使用 dest_des-模型名称（关联的另一端模型）
           const desc = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
-          relationTypeName = `${desc}-${this.getModelDisplayName(this.objId)}`
+          relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         }
 
         if (!groupedMap.has(groupKey)) {
