@@ -903,6 +903,15 @@ class DatabaseMigrator:
                 "bk_supplier_account": "0",
                 "ispre": True
             },
+            {
+                "bk_asst_id": "install",
+                "bk_asst_name": "安装",
+                "src_des": "安装",
+                "dest_des": "运行于",
+                "direction": "forward",
+                "bk_supplier_account": "0",
+                "ispre": True
+            },
         ]
 
         for idx, asst_type in enumerate(asst_types, 1):
@@ -947,6 +956,17 @@ class DatabaseMigrator:
                 "bk_obj_asst_name": "指向监听器",
                 "bk_supplier_account": "0",
                 "mapping": "1:n",
+                "on_delete": "none"
+            },
+            {
+                "bk_obj_id": "bk_host",
+                "target_obj_id": "bk_slb",
+                "target_obj_name": "负载均衡",
+                "bk_asst_id": "install",
+                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_name": "主机安装SLB",
+                "bk_supplier_account": "0",
+                "mapping": "1:1",
                 "on_delete": "none"
             }
         ]
@@ -1014,6 +1034,42 @@ class DatabaseMigrator:
             logger.info(f"迁移了 {len(associations)} 个实例关联")
         else:
             logger.warning("未找到实例关联数据文件")
+        
+        # 4. 添加模拟的 bk_host_install_slb 实例关联数据 (mapping: 1:1)
+        # 模拟主机 1 安装了 SLB 实例 1
+        mock_host_slb_associations = [
+            {
+                "id": 117,
+                "bk_obj_id": "bk_host",
+                "bk_inst_id": 1,
+                "bk_asst_obj_id": "bk_slb",
+                "bk_asst_inst_id": 1,
+                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_relation_type_id": "install",
+                "bk_supplier_account": "0"
+            },
+            {
+                "id": 118,
+                "bk_obj_id": "bk_host",
+                "bk_inst_id": 2,
+                "bk_asst_obj_id": "bk_slb",
+                "bk_asst_inst_id": 2,
+                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_relation_type_id": "install",
+                "bk_supplier_account": "0"
+            }
+        ]
+        
+        for assoc in mock_host_slb_associations:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_InstAsst_0_pub 
+                (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
+                 bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
+                VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
+                        :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
+            """, assoc)
+        
+        logger.info(f"添加了 {len(mock_host_slb_associations)} 个模拟主机-SLB实例关联")
 
     def migrate(self):
         """执行完整的迁移"""
