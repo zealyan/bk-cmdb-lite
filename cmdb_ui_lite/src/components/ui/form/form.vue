@@ -122,14 +122,35 @@ export default {
   },
   computed: {
     hasChange() {
-      const keys = Object.keys(this.initialValues)
-      if (keys.length === 0) {
-        const hasAnyValue = Object.values(this.values).some(v => v !== '' && v !== null && v !== undefined && !Array.isArray(v) ? true : (Array.isArray(v) ? v.length > 0 : false))
-        return hasAnyValue
+      const allKeys = new Set([
+        ...Object.keys(this.initialValues),
+        ...Object.keys(this.values)
+      ])
+      if (allKeys.size === 0) {
+        return false
       }
-      for (const key of keys) {
+      for (const key of allKeys) {
         const initial = this.initialValues[key]
         const current = this.values[key]
+        if (initial === undefined && current === undefined) {
+          continue
+        }
+        if (initial === undefined && current !== undefined) {
+          if (Array.isArray(current)) {
+            if (current.length > 0) return true
+          } else if (current !== '' && current !== null) {
+            return true
+          }
+          continue
+        }
+        if (current === undefined && initial !== undefined) {
+          if (Array.isArray(initial)) {
+            if (initial.length > 0) return true
+          } else if (initial !== '' && initial !== null) {
+            return true
+          }
+          continue
+        }
         if (!isEqual(initial, current)) {
           return true
         }

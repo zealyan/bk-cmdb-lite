@@ -262,6 +262,7 @@ import modelIndex from '@/assets/api/index.json'
 import { modelAPI, userCustom } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
+import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
 
 export default {
@@ -293,6 +294,7 @@ export default {
       selectedIds: [],
       createDialogVisible: false,
       createForm: {},
+      createFormInitial: {},
       createFormRules: {},
       createFormLoading: false,
       batchUpdateDialogVisible: false,
@@ -1839,8 +1841,7 @@ export default {
     },
     handleCreateInstance() {
       console.log('[DEBUG] handleCreateInstance - 开始打开新建弹窗')
-      this.createForm = {}
-      this.createDialogVisible = true
+      const formData = {}
 
       // 初始化表单默认值
       this.allProperties.forEach(attr => {
@@ -1857,19 +1858,23 @@ export default {
           } else if (typeof option === 'number') {
             defaultVal = Boolean(option)
           }
-          this.$set(this.createForm, attr.bk_property_id, defaultVal)
+          formData[attr.bk_property_id] = defaultVal
           return
         }
 
         // 其他类型优先使用 default，为默认值
         if (attr.default !== null && attr.default !== undefined) {
-          this.$set(this.createForm, attr.bk_property_id, attr.default)
+          formData[attr.bk_property_id] = attr.default
         }
       })
+
+      this.createForm = formData
+      this.createFormInitial = JSON.parse(JSON.stringify(formData))
+      this.createDialogVisible = true
     },
     handleCreateDialogBeforeClose() {
-      const $form = this.$refs.cmdbFormRef
-      if ($form && $form.hasChange) {
+      const changed = !isEqual(this.createForm, this.createFormInitial)
+      if (changed) {
         return new Promise((resolve) => {
           this.$bkInfo({
             title: '确认退出？',
@@ -1888,6 +1893,7 @@ export default {
     handleCreateDialogClose() {
       this.createDialogVisible = false
       this.createForm = {}
+      this.createFormInitial = {}
     },
     handleCreateSubmit(formData) {
       console.log('[DEBUG] handleCreateSubmit - 提交表单数据:', formData)
