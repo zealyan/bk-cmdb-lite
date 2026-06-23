@@ -198,6 +198,7 @@
       :width="createSidesliderWidth"
       :fullscreen="createSidesliderFullscreen"
       :quick-close="true"
+      :before-close="handleCreateDialogBeforeClose"
       @hidden="handleCreateDialogClose">
       <template #content>
         <div class="create-form-wrapper">
@@ -225,6 +226,7 @@
       :width="createSidesliderWidth"
       :fullscreen="createSidesliderFullscreen"
       :quick-close="true"
+      :before-close="handleBatchUpdateDialogBeforeClose"
       @hidden="handleBatchUpdateDialogClose">
       <template #content>
         <div class="batch-update-form-wrapper">
@@ -253,6 +255,7 @@ import FilterTag from '@/components/filter-tag/index.vue'
 import FilterTagItem from '@/components/filter-tag/filter-tag-item.vue'
 import GeneralModelFilter from '@/components/filter/general-model-filter.vue'
 import FormMultiple from '@/components/ui/form/form-multiple.vue'
+import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
 import modelIndex from '@/assets/api/index.json'
@@ -269,6 +272,7 @@ export default {
     FilterTagItem,
     GeneralModelFilter,
     FormMultiple,
+    'cmdb-form': CmdbForm,
     'cmdb-search-date': DateSearch,
     'cmdb-search-time': TimeSearch
   },
@@ -1687,6 +1691,24 @@ export default {
         this.batchUpdateFormLoading = false
       }
     },
+    handleBatchUpdateDialogBeforeClose() {
+      const formRef = this.$refs.formMultipleRef
+      if (formRef && formRef.hasChange) {
+        return new Promise((resolve) => {
+          this.$bkInfo({
+            title: '确认退出？',
+            subTitle: '当前批量更新有未保存的修改，是否确认退出？',
+            confirmFn: () => {
+              resolve(true)
+            },
+            cancelFn: () => {
+              resolve(false)
+            }
+          })
+        })
+      }
+      return true
+    },
     handleBatchUpdateDialogClose() {
       this.batchUpdateDialogVisible = false
       if (this.$refs.formMultipleRef) {
@@ -1844,6 +1866,27 @@ export default {
           this.$set(this.createForm, attr.bk_property_id, attr.default)
         }
       })
+    },
+    handleCreateDialogBeforeClose() {
+      const hasValue = Object.values(this.createForm).some(v => {
+        if (Array.isArray(v)) return v.length > 0
+        return v !== '' && v !== null && v !== undefined
+      })
+      if (hasValue) {
+        return new Promise((resolve) => {
+          this.$bkInfo({
+            title: '确认退出？',
+            subTitle: '当前新增实例有未保存的修改，是否确认退出？',
+            confirmFn: () => {
+              resolve(true)
+            },
+            cancelFn: () => {
+              resolve(false)
+            }
+          })
+        })
+      }
+      return true
     },
     handleCreateDialogClose() {
       this.createDialogVisible = false

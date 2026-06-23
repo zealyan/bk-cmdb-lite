@@ -37,7 +37,6 @@ http.interceptors.response.use(
     return response.data
   },
   (error) => {
-    console.error('API Error:', error)
     return Promise.reject(error)
   }
 )
@@ -112,6 +111,24 @@ export const modelAPI = {
   // 获取统计信息
   getStatistics () {
     return http.get('/api/v1/common/statistics')
+  },
+
+  // 按实例ID列表查询实例（使用搜索接口 + $in 条件）
+  getInstancesByIds (modelId, ids = []) {
+    return http.post(`/api/v1/models/${modelId}/instances/search`, {
+      conditions: {
+        condition: 'AND',
+        rules: [{
+          field: 'bk_inst_id',
+          operator: '$in',
+          value: ids
+        }]
+      },
+      page: {
+        limit: ids.length,
+        start: 0
+      }
+    })
   },
 
   // 检查实例的关联关系数量

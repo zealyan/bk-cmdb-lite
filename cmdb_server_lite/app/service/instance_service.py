@@ -71,6 +71,25 @@ class InstanceService:
         }
     
     @staticmethod
+    def get_instances_by_ids(model_id, instance_ids):
+        """按实例ID列表批量查询实例"""
+        table_name = InstanceService._get_table_name(model_id)
+        
+        if not instance_ids:
+            return []
+        
+        placeholders = ','.join([':id_' + str(i) for i in range(len(instance_ids))])
+        params = {'id_' + str(i): int(instance_ids[i]) for i in range(len(instance_ids))}
+        
+        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id IN ({placeholders})'
+        instances = query_all(sql, params)
+        
+        for i in range(len(instances)):
+            instances[i] = InstanceService._parse_json_fields(instances[i], model_id)
+        
+        return instances
+    
+    @staticmethod
     def advanced_search(model_id, search_data):
         """高级搜索模型实例"""
         from app.utils.logger import get_logger
@@ -80,8 +99,16 @@ class InstanceService:
         
         table_name = InstanceService._get_table_name(model_id)
         
-        page = search_data.get('page', 1)
-        page_size = search_data.get('page_size', 20)
+        # 处理 page 参数，支持字典和整数两种格式
+        page_param = search_data.get('page')
+        if isinstance(page_param, dict):
+            page_size = page_param.get('limit', 20)
+            offset = page_param.get('start', 0)
+            page = offset // page_size + 1 if page_size > 0 else 1
+        else:
+            page = int(page_param) if page_param else 1
+            page_size = search_data.get('page_size', 20)
+            offset = (page - 1) * page_size
         search = search_data.get('search')
         search_field = search_data.get('search_field')
         search_value = search_data.get('search_value')
@@ -103,8 +130,6 @@ class InstanceService:
             pid = attr.get('bk_property_id')
             if pid:
                 attr_type_map[pid] = attr.get('bk_property_type', '')
-        
-        offset = (page - 1) * page_size
         
         sql_parts = [f'SELECT * FROM "{table_name}"']
         params = {}

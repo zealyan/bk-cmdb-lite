@@ -6,6 +6,15 @@
           新增关联
         </bk-button>
       </div>
+      <div class="fr" v-if="hasAssociations">
+        <bk-checkbox
+          :size="16"
+          class="options-checkbox"
+          :value="expandAll"
+          @change="handleExpandAll">
+          <span class="checkbox-label">全部展开</span>
+        </bk-checkbox>
+      </div>
     </div>
 
     <div class="association-list">
@@ -86,6 +95,7 @@
 <script>
 import AssociationCreate from './association-create.vue'
 import associationAPI from '@/api/association'
+import { modelAPI } from '@/api/client'
 import showInstanceDetails from '@/components/instance/details/index.js'
 
 export default {
@@ -109,15 +119,17 @@ export default {
     relations: {
       type: Array,
       default: () => []
-    },
-    instancesMap: {
-      type: Object,
-      default: () => {}
-    },
-    propertiesMap: {
-      type: Object,
-      default: () => {}
     }
+  },
+  created() {
+    // 组件创建时，检查数据是否已准备好
+    this.tryInit()
+  },
+  mounted() {
+    // mounted 时使用 nextTick 确保数据已更新，然后检查
+    this.$nextTick(() => {
+      this.tryInit()
+    })
   },
   data() {
     return {
@@ -125,7 +137,14 @@ export default {
       groupStates: {},
       showCreateDialog: false,
       loading: false,
-      cachedProperties: {}
+      cachedProperties: {},
+      // 每个分组的当前页实例数据缓存
+      groupInstances: {},
+      expandAll: false,
+      // 记录上次展开状态用于判断变化
+      prevExpanded: {},
+      // 是否正在初始化中，防止 watch 重复触发
+      _isInitializing: false
     }
   },
   computed: {
@@ -151,15 +170,13 @@ export default {
         if (isSource) {
           groupKey = `to_${asst.bk_asst_obj_id}`
           relatedObjId = asst.bk_asst_obj_id
-          // 原项目规则：作为源时使用 src_des-模型名称
           const desc = relation.src_des || relation.bk_relation_type_name
           relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         } else {
           groupKey = `from_${asst.bk_obj_id}`
           relatedObjId = asst.bk_obj_id
-          // 原项目规则：作为目标时使用 dest_des-模型名称
           const desc = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
-          relationTypeName = `${desc}-${this.getModelDisplayName(this.objId)}`
+          relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         }
 
         if (!groupedMap.has(groupKey)) {
@@ -167,48 +184,34 @@ export default {
             key: groupKey,
             relationTypeName,
             relatedObjId,
-            allInstances: [],
-            columns: this.getColumnsForModel(relatedObjId)
+            instanceIds: [],
+            isSource
           })
         }
 
         const group = groupedMap.get(groupKey)
         const targetInstId = isSource ? asst.bk_asst_inst_id : asst.bk_inst_id
-        const instances = this.instancesMap[relatedObjId] || []
-
-        const instance = instances.find(inst => {
-          const instMatch = inst.bk_inst_id !== undefined ? inst.bk_inst_id : inst.id
-          return Number(instMatch) === Number(targetInstId)
-        })
-
-        if (instance) {
-          const existingId = instance.bk_inst_id !== undefined ? instance.bk_inst_id : instance.id
-          if (!group.allInstances.find(i => {
-            const iId = i.bk_inst_id !== undefined ? i.bk_inst_id : i.id
-            return Number(iId) === Number(existingId)
-          })) {
-            group.allInstances.push(instance)
-          }
+        
+        if (!group.instanceIds.includes(Number(targetInstId))) {
+          group.instanceIds.push(Number(targetInstId))
         }
       })
 
       const result = []
       groupedMap.forEach((group) => {
-        if (group.allInstances.length === 0) return
-
-        const total = group.allInstances.length
-        const totalPages = Math.ceil(total / this.pageSize)
-
-        if (!this.groupStates[group.key]) {
-          this.$set(this.groupStates, group.key, {
-            expanded: true,
-            current: 1
-          })
-        }
-
         const state = this.groupStates[group.key]
+        if (!state) return
+
+        const total = group.instanceIds.length
+        const totalPages = Math.ceil(total / this.pageSize)
+        
+        // 计算当前页的 instanceIds
         const start = (state.current - 1) * this.pageSize
-        const displayInstances = group.allInstances.slice(start, start + this.pageSize)
+        const currentPageIds = group.instanceIds.slice(start, start + this.pageSize)
+        
+        // 从缓存中获取当前页的实例数据
+        const cacheKey = `${group.key}_${state.current}`
+        const displayInstances = this.groupInstances[cacheKey] || []
 
         result.push({
           ...group,
@@ -216,14 +219,122 @@ export default {
           totalPages,
           current: state.current,
           expanded: state.expanded,
-          displayInstances
+          currentPageIds,
+          displayInstances,
+          columns: this.getColumnsForModel(group.relatedObjId)
         })
       })
 
       return result
     }
   },
+  watch: {
+    // 监听 groupStates 变化，只在 expanded 从 false 变为 true 时触发 getData
+    // 如果正在初始化中（_isInitializing=true），则不触发
+    groupStates: {
+      deep: true,
+      handler(states) {
+        if (!states) return
+        
+        Object.keys(states).forEach(key => {
+          const state = states[key]
+          const wasExpanded = this.prevExpanded[key] || false
+          const isExpanded = state && state.expanded
+          
+          // 只在 expanded 从 false 变为 true 时触发（首次展开），且不在初始化中
+          if (isExpanded && !wasExpanded && !this._isInitializing) {
+            const group = this.associationGroups.find(g => g.key === key)
+            if (group) {
+              this.getData(group)
+            }
+          }
+          
+          // 更新 prevExpanded
+          this.$set(this.prevExpanded, key, isExpanded)
+        })
+      }
+    }
+  },
   methods: {
+    // 尝试初始化（在 created/mounted 中调用）
+    tryInit() {
+      // 检查数据是否准备好
+      if (!this.associations || !this.associations.length) return
+      if (!this.relations || !this.relations.length) return
+      
+      // 检查是否已经初始化过
+      if (Object.keys(this.groupStates).length > 0) return
+      
+      this.doInit()
+    },
+    // 执行初始化
+    doInit() {
+      // 标记为正在初始化，防止 watch 重复触发
+      this._isInitializing = true
+      
+      const keys = this.initGroupStates()
+      if (!keys || keys.length === 0) {
+        this._isInitializing = false
+        return
+      }
+      
+      // 清除 prevExpanded，重新计算
+      this.prevExpanded = {}
+      
+      this.$nextTick(() => {
+        const group = this.associationGroups.find(g => g.key === keys[0])
+        if (group && group.expanded) {
+          this.getData(group)
+        }
+        // 初始化完成后，重置标志
+        this._isInitializing = false
+      })
+    },
+    // 初始化 groupStates
+    initGroupStates() {
+      if (!this.associations || !this.associations.length) return []
+      
+      // 清除实例缓存，强制重新加载
+      this.groupInstances = {}
+      
+      const groupedMap = new Map()
+      this.associations.forEach((asst) => {
+        const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
+        const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
+        if (!isSource && !isTarget) return
+
+        let groupKey
+        if (isSource) {
+          groupKey = `to_${asst.bk_asst_obj_id}`
+        } else {
+          groupKey = `from_${asst.bk_obj_id}`
+        }
+        
+        if (!groupedMap.has(groupKey)) {
+          groupedMap.set(groupKey, true)
+        }
+      })
+      
+      // 初始化 groupStates（第一个 group 默认展开）
+      const keys = Array.from(groupedMap.keys())
+      keys.forEach((key, index) => {
+        // 每次都重置展开状态（第一个默认为展开，其他默认为合并）
+        this.$set(this.groupStates, key, {
+          expanded: index === 0, // 第一个 group 默认展开
+          current: 1
+        })
+        this.$set(this.prevExpanded, key, false)
+      })
+      
+      return keys
+    },
+    handleExpandAll(expandAll) {
+      this.expandAll = expandAll
+      Object.keys(this.groupStates).forEach(key => {
+        this.groupStates[key].expanded = expandAll
+      })
+      this.$forceUpdate()
+    },
     getModelDisplayName(objId) {
       const modelNames = {
         'bk_slb': '负载均衡',
@@ -239,28 +350,60 @@ export default {
         return this.cachedProperties[objId]
       }
 
-      const propsObj = this.propertiesMap[objId]
-      const propsArray = (propsObj && propsObj.info) ? propsObj.info : (Array.isArray(propsObj) ? propsObj : [])
-
-      let orderedColumns = []
-
-      if (propsArray.length > 0) {
-        orderedColumns = propsArray
-          .filter(p => p.bk_property_index !== -1 && !['id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account', 'create_time', 'last_time', 'bk_operate_time'].includes(p.bk_property_id))
-          .sort((a, b) => a.bk_property_index - b.bk_property_index)
-          .slice(0, 5)
-      } else {
-        // 默认只显示 ID 字段，用于点击打开详情
-        orderedColumns = [{
-          bk_property_id: 'id',
-          bk_property_name: 'ID',
-          bk_property_type: 'int',
-          bk_property_index: 0
-        }]
+      return [{
+        bk_property_id: 'id',
+        bk_property_name: 'ID',
+        bk_property_type: 'int',
+        bk_property_index: 0
+      }]
+    },
+    async getData(item) {
+      this.loading = true
+      try {
+        await Promise.all([
+          this.getProperties(item.relatedObjId),
+          this.getInstances(item)
+        ])
+      } catch (err) {
+        console.warn(`加载 ${item.relatedObjId} 数据失败:`, err)
+      } finally {
+        this.loading = false
       }
-
-      this.cachedProperties[objId] = orderedColumns
-      return orderedColumns
+    },
+    async getProperties(modelId) {
+      if (this.cachedProperties[modelId]) {
+        return
+      }
+      try {
+        const attrResponse = await modelAPI.getModelAttributes(modelId)
+        if (attrResponse && attrResponse.attributes) {
+          const sortedAttrs = attrResponse.attributes
+            .filter(p => p.bk_property_index !== -1 && !['id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account', 'create_time', 'last_time', 'bk_operate_time'].includes(p.bk_property_id))
+            .sort((a, b) => a.bk_property_index - b.bk_property_index)
+            .slice(0, 5)
+          this.$set(this.cachedProperties, modelId, sortedAttrs)
+        }
+      } catch (err) {
+        console.warn(`加载 ${modelId} 属性定义失败:`, err)
+      }
+    },
+    async getInstances(item) {
+      // 使用当前页的 instanceIds 进行查询（后端分页）
+      const currentPageIds = item.currentPageIds
+      if (!currentPageIds || !currentPageIds.length) {
+        return
+      }
+      
+      try {
+        const response = await modelAPI.getInstancesByIds(item.relatedObjId, currentPageIds)
+        if (response && response.instances) {
+          // 缓存当前页的实例数据
+          const cacheKey = `${item.key}_${item.current}`
+          this.$set(this.groupInstances, cacheKey, response.instances)
+        }
+      } catch (err) {
+        console.warn(`加载 ${item.relatedObjId} 实例失败:`, err)
+      }
     },
     toggleExpand(item) {
       const state = this.groupStates[item.key]
@@ -278,7 +421,13 @@ export default {
       if (state) {
         state.current = newCurrent
       }
-      this.$forceUpdate()
+      // 使用 $nextTick 确保 computed 更新后再加载
+      this.$nextTick(() => {
+        const group = this.associationGroups.find(g => g.key === item.key)
+        if (group && state && state.expanded) {
+          this.getInstances(group)
+        }
+      })
     },
     getPaginationText(item) {
       const total = item.total
@@ -306,16 +455,16 @@ export default {
       this.showCreateDialog = true
     },
     handleAssociationCreated() {
+      // 清空缓存，重新加载
+      this.groupInstances = {}
       this.$emit('association-change')
     },
     handleRowClick(row, event, column, item) {
-      // 使用 bk_inst_id 作为标准实例ID（与原项目一致）
       const instId = row.bk_inst_id !== undefined ? row.bk_inst_id : row.id
       const objId = item.relatedObjId
       const modelName = this.getModelDisplayName(objId)
       const instanceName = row.bk_inst_name || row.name || 'ID: ' + instId
 
-      // 与原项目一致：调用 showInstanceDetails 函数显示标准详情页
       showInstanceDetails({
         bk_obj_id: objId,
         bk_inst_id: instId,
@@ -351,9 +500,10 @@ export default {
           try {
             await associationAPI.delete(this.objId, association.id)
             this.$bkMessage({ message: '取消关联成功', theme: 'success' })
+            // 清空缓存，重新加载
+            this.groupInstances = {}
             this.$emit('association-change')
           } catch (e) {
-            console.error('取消关联失败:', e)
             this.$bkMessage({ message: '取消关联失败: ' + (e.message || e), theme: 'error' })
           }
         }
@@ -376,6 +526,16 @@ export default {
     height: 32px;
     line-height: 30px;
     font-size: 14px;
+  }
+
+  .options-checkbox {
+    margin-right: 0;
+    line-height: 32px;
+
+    .checkbox-label {
+      padding-left: 4px;
+      font-size: 14px;
+    }
   }
 }
 

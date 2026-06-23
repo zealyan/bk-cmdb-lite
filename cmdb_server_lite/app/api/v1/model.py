@@ -104,6 +104,8 @@ def get_instance(model_id, instance_id):
         logger.error(f"Error getting instance: {e}")
         return jsonify({'detail': str(e)}), 500
 
+
+
 @model_bp.route('/<model_id>/instances', methods=['POST'])
 def create_instance(model_id):
     """创建新的模型实例"""

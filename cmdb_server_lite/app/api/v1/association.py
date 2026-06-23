@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from app.service.association_service import AssociationService
 from app.service.instance_service import InstanceService
 from app.utils.logger import get_logger
+from app.utils.exceptions import ValidationException
 
 logger = get_logger('api.association')
 association_bp = Blueprint('association', __name__)
@@ -68,6 +69,9 @@ def create_instassociation():
         
         result = AssociationService.create_instance_association(data)
         return jsonify(result)
+    except ValueError as e:
+        logger.error(f"Validation error creating instance association: {e}")
+        return jsonify({'error': str(e), 'status_code': 400}), 400
     except Exception as e:
         logger.error(f"Error creating instance association: {e}")
         return jsonify({'detail': str(e)}), 500

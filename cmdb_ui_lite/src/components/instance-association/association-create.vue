@@ -58,7 +58,7 @@
             <bk-link
               theme="primary"
               :disabled="isAssociated(row)"
-              @click="updateAssociation(getInstanceId(row), 'new')"
+              @click="beforeUpdate($event, getInstanceId(row), 'new')"
               v-if="!isAssociated(row)">
               关联
             </bk-link>
@@ -74,6 +74,13 @@
           <div class="empty-text">暂无数据</div>
         </div>
       </bk-table>
+      <div class="confirm-tips" ref="confirmTips" v-show="confirm.id">
+        <p class="tips-content">更新确认</p>
+        <div class="tips-option">
+          <bk-button class="tips-button" theme="primary" @click="confirmUpdate">确认</bk-button>
+          <bk-button class="tips-button" theme="default" @click="cancelUpdate">取消</bk-button>
+        </div>
+      </div>
     </div>
   </bk-sideslider>
 </template>
@@ -138,11 +145,18 @@ export default {
       },
       tableKey: 0, // 用于强制表格重新渲染的 key
       useServerPagination: false,
+      confirm: {
+        instance: null,
+        id: null
+      }
     }
   },
   computed: {
     isSource() {
       return this.currentOption.bk_obj_id === this.objId
+    },
+    multiple() {
+      return this.currentOption.mapping !== '1:1'
     },
     instanceIdKey() {
       const specialObj = {
@@ -777,36 +791,16 @@ export default {
     },
     async updateAssociation(instId, updateType = 'new') {
       try {
-        console.log('[AssociationCreate] ========== updateAssociation START ==========')
-        console.log('[AssociationCreate] instId:', instId, 'updateType:', updateType)
-        
         const instIdNum = Number(instId)
         
         if (updateType === 'new') {
-          // 1. 创建关联
-          console.log('[AssociationCreate] >>> Creating new association...')
-          const result = await this.createAssociation(instId)
-          console.log('[AssociationCreate] <<< createAssociation result:', result)
-          
-          // 2. 添加到临时数据（用于实时显示）
+          await this.createAssociation(instId)
           this.tempData.push(instIdNum)
-          console.log('[AssociationCreate] Added to tempData:', this.tempData)
-          
-          // 3. 显示成功提示
           this.$bkMessage({ message: '关联成功', theme: 'success' })
-          
-          // 4. 标记有变更
           this.hasChange = true
-          
-          // 5. 重新从后端加载关联列表（确保数据一致性）
-          console.log('[AssociationCreate] Refreshing existInstAssociation from backend...')
           await this.getExistInstAssociation()
-          console.log('[AssociationCreate] After refresh, existInstAssociation.length:', this.existInstAssociation.length)
           
         } else if (updateType === 'remove') {
-          console.log('[AssociationCreate] >>> Removing association...')
-          
-          // 1. 找到要删除的关联记录
           const existInst = this.existInstAssociation.find(inst => {
             if (this.isSource) {
               return Number(inst.bk_asst_inst_id) === instIdNum
@@ -814,93 +808,56 @@ export default {
             return Number(inst.bk_inst_id) === instIdNum
           })
           
-          console.log('[AssociationCreate] Found association to delete:', existInst)
-          
           if (existInst) {
-            // 2. 删除关联
-            console.log('[AssociationCreate] Deleting association ID:', existInst.id)
             await associationAPI.delete(this.objId, existInst.id)
-            
-            // 3. 从临时数据中移除
             this.tempData = this.tempData.filter(id => Number(id) !== instIdNum)
-            console.log('[AssociationCreate] Removed from tempData, current tempData:', this.tempData)
-            
-            // 4. 显示成功提示
             this.$bkMessage({ message: '取消关联成功', theme: 'success' })
-            
-            // 5. 标记有变更
             this.hasChange = true
-            
-            // 6. 重新从后端加载关联列表
-            console.log('[AssociationCreate] Refreshing existInstAssociation from backend...')
             await this.getExistInstAssociation()
-            console.log('[AssociationCreate] After refresh, existInstAssociation.length:', this.existInstAssociation.length)
           } else {
-            console.warn('[AssociationCreate] No existing association found')
             this.$bkMessage({ message: '未找到关联记录', theme: 'warning' })
           }
+        } else if (updateType === 'update') {
+          const oldInst = this.existInstAssociation[0]
+          
+          if (oldInst) {
+            await associationAPI.delete(this.objId, oldInst.id)
+          }
+          
+          this.tempData = []
+          this.hasChange = true
+          await this.createAssociation(instId)
+          this.tempData = [instIdNum]
+          this.$bkMessage({ message: '关联成功', theme: 'success' })
+          await this.getExistInstAssociation()
         }
         
-        console.log('[AssociationCreate] ========== updateAssociation END ==========')
-        
       } catch (e) {
-        console.error('[AssociationCreate] updateAssociation error:', e)
-        this.$bkMessage({ message: '操作失败: ' + (e.message || e), theme: 'error' })
-        throw e
+        console.log(e)
+        let errorMsg = '操作失败'
+        if (e.response && e.response.data && e.response.data.error) {
+          errorMsg = e.response.data.error
+        } else if (e.message) {
+          errorMsg = '操作失败: ' + e.message
+        }
+        this.$bkMessage({ message: errorMsg, theme: 'error' })
+      } finally {
+        this.getExistInstAssociation()
       }
     },
     async createAssociation(instId) {
-      try {
-        const isSource = this.currentOption.bk_obj_id === this.objId
-        
-        console.log('[AssociationCreate] ========== createAssociation ==========')
-        console.log('[AssociationCreate] isSource:', isSource)
-        console.log('[AssociationCreate] this.objId:', this.objId)
-        console.log('[AssociationCreate] this.instId:', this.instId)
-        console.log('[AssociationCreate] instId (target):', instId)
-        console.log('[AssociationCreate] this.currentAsstObj:', this.currentAsstObj)
-        console.log('[AssociationCreate] this.currentOption.bk_obj_asst_id:', this.currentOption.bk_obj_asst_id)
-        console.log('[AssociationCreate] this.currentOption.bk_asst_id:', this.currentOption.bk_asst_id)
-        
-        const params = {
-          bk_obj_id: isSource ? this.objId : this.currentAsstObj,
-          bk_inst_id: isSource ? this.instId : instId,
-          bk_asst_obj_id: isSource ? this.currentAsstObj : this.objId,
-          bk_asst_inst_id: isSource ? instId : this.instId,
-          bk_obj_asst_id: this.currentOption.bk_obj_asst_id,
-          bk_relation_type_id: this.currentOption.bk_asst_id
-        }
-        
-        console.log('[AssociationCreate] Final params:', JSON.stringify(params, null, 2))
-        
-        // 验证参数
-        if (!params.bk_obj_id || !params.bk_asst_obj_id || !params.bk_obj_asst_id) {
-          console.error('[AssociationCreate] ❌ Invalid params! Missing required fields')
-          throw new Error('缺少必需参数')
-        }
-        
-        console.log('[AssociationCreate] Sending request to create association...')
-        console.log('[AssociationCreate] Source:', params.bk_obj_id, 'instance', params.bk_inst_id)
-        console.log('[AssociationCreate] Target:', params.bk_asst_obj_id, 'instance', params.bk_asst_inst_id)
-        
-        const result = await associationAPI.create(params)
-        console.log('[AssociationCreate] ✅ createAssociation result:', result)
-        
-        if (result && result.id) {
-          console.log('[AssociationCreate] ✅ Created association ID:', result.id)
-        } else if (result && result.info && result.info.id) {
-          console.log('[AssociationCreate] ✅ Created association ID (from info):', result.info.id)
-        } else {
-          console.warn('[AssociationCreate] ⚠️ No ID returned in result:', result)
-        }
-        
-        console.log('[AssociationCreate] ========== createAssociation END ==========')
-        
-        return result
-      } catch (e) {
-        console.error('[AssociationCreate] ❌ createAssociation error:', e)
-        throw e
+      const isSource = this.currentOption.bk_obj_id === this.objId
+      
+      const params = {
+        bk_obj_id: isSource ? this.objId : this.currentAsstObj,
+        bk_inst_id: isSource ? this.instId : instId,
+        bk_asst_obj_id: isSource ? this.currentAsstObj : this.objId,
+        bk_asst_inst_id: isSource ? instId : this.instId,
+        bk_obj_asst_id: this.currentOption.bk_obj_asst_id,
+        bk_relation_type_id: this.currentOption.bk_asst_id
       }
+      
+      return await associationAPI.create(params)
     },
     handleClose() {
       this.sliderShow = false
@@ -929,6 +886,37 @@ export default {
           'limit-list': [10, 20, 50, 100, 500]
         }
       }
+    },
+    beforeUpdate(event, instId, updateType = 'new') {
+      if (this.multiple || !this.existInstAssociation.length) {
+        this.updateAssociation(instId, updateType)
+      } else {
+        this.confirm.id = instId
+        this.confirm.instance = this.$bkPopover(event.target, {
+          content: this.$refs.confirmTips,
+          theme: 'light',
+          zIndex: 9999,
+          width: 230,
+          trigger: 'click',
+          boundary: 'window',
+          arrow: true,
+          interactive: true,
+          onHidden: () => {
+            this.confirm.instance && this.confirm.instance.destroy()
+            this.confirm.instance = null
+          }
+        })
+        this.$nextTick(() => {
+          this.confirm.instance.show()
+        })
+      }
+    },
+    confirmUpdate() {
+      this.updateAssociation(this.confirm.id, 'update')
+      this.cancelUpdate()
+    },
+    cancelUpdate() {
+      this.confirm.instance && this.confirm.instance.hide()
     },
     formatValue(value, column) {
       if (value === null || value === undefined || value === '') {
@@ -986,6 +974,25 @@ export default {
   .empty-text {
     color: #63656e;
     padding: 20px 0;
+  }
+
+  .confirm-tips {
+    padding: 9px;
+    .tips-content {
+      color: #313238;
+      line-height: 20px;
+    }
+    .tips-option {
+      margin: 12px 0 0 0;
+      text-align: right;
+      .tips-button {
+        height: 26px;
+        line-height: 24px;
+        padding: 0 16px;
+        min-width: 56px;
+        font-size: 12px;
+      }
+    }
   }
 }
 

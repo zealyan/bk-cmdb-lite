@@ -95,13 +95,22 @@ export default {
     return {
       values: {},
       editable: {},
+      initialValues: {},
       groupState: {},
       errorMessages: {}
     }
   },
   computed: {
     hasChange() {
-      return Object.values(this.editable).some(v => v)
+      return Object.keys(this.editable).some(key => {
+        if (!this.editable[key]) return false
+        const current = this.values[key]
+        const initial = this.initialValues[key]
+        if (Array.isArray(current) && Array.isArray(initial)) {
+          return JSON.stringify(current) !== JSON.stringify(initial)
+        }
+        return current !== initial
+      })
     },
     hasAvailableGroups() {
       return this.groupedPropertiesList.some(group => this.hasPropertiesInGroup(group.properties).length > 0)
@@ -157,6 +166,7 @@ export default {
         }
       })
       this.values = values
+      this.initialValues = { ...values }
     },
     initEditableStatus() {
       const editable = {}

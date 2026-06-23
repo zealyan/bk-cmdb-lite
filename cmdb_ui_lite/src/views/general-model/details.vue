@@ -44,13 +44,12 @@
             </div>
             <instance-association
               v-else
+              ref="associationComponent"
+              :key="associationKey"
               :obj-id="objId"
               :inst-id="instId"
               :associations="allAssociations"
               :relations="modelRelations"
-              :instances-map="instancesMap"
-              :properties-map="propertiesMap"
-              @view-instance="handleViewAssociatedInstance"
               @association-change="handleAssociationChange">
             </instance-association>
           </div>
@@ -67,8 +66,6 @@ import { modelAPI } from '@/api/client'
 import modelIndex from '@/assets/api/index.json'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
 
-const modelAttributesMap = {}
-
 export default {
   name: 'ModelDetails',
   components: {
@@ -84,13 +81,13 @@ export default {
       modelIndex: modelIndex.models,
       apiAssociations: [],
       apiRelations: [],
-      apiInstances: {},
       apiAttributes: {},
-      propertyGroups: [], // 属性分组数据
+      propertyGroups: [],
       isDataReady: false,
       associationLoading: false,
-      editingPropertyId: null // 当前正在编辑的属性ID
-      }
+      editingPropertyId: null,
+      associationKey: 0
+    }
   },
   computed: {
     properties () {
@@ -105,25 +102,13 @@ export default {
     allAssociations () {
       return this.modelAssociations
     },
-    instancesMap () {
-      const map = { ...this.apiInstances }
-      return map
-    },
-    propertiesMap () {
-      const map = { ...this.apiAttributes }
-      return map
-    },
     displayProperties () {
-      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段
-      // 参考: /workspace/bk-cmdb/src/ui/src/components/model-instance/property.vue
       return this.properties.filter(p =>
         p.bk_property_index !== -1 &&
         p.bk_property_id !== 'id' &&
         !p.bk_isapi
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
     },
-    // 从属性数据动态生成分组（仅作为回退方案）
-    // 与原项目一致：名称直接使用 groupId，索引根据在属性列表中出现的顺序
     dynamicPropertyGroups () {
       const groups = {}
       let orderIndex = 0
@@ -138,12 +123,8 @@ export default {
           orderIndex += 1
         }
       })
-      // 过滤掉空分组并排序
       return Object.values(groups).sort((a, b) => a.bk_group_index - b.bk_group_index)
     },
-    // 实际使用的分组：优先使用后端返回的分组数据（已按 bk_group_index 排序）
-    // 后端 cc_PropertyGroup 表有 bk_group_index 字段控制排序
-    // 只有后端没有返回分组时才使用动态生成的分组
     effectivePropertyGroups () {
       if (this.propertyGroups && this.propertyGroups.length > 0) {
         return this.propertyGroups.sort((a, b) => {
@@ -167,24 +148,15 @@ export default {
       }
       const nameField = this.instanceData.bk_cloud_name ? 'bk_cloud_name' : 'name'
       return this.instanceData[nameField] || `ID: ${this.instId}`
-    },
-    hasAssociations () {
-      const associations = this.allAssociations || []
-      const hasSourceData = associations.some(asst =>
-        String(asst.bk_obj_id) === String(this.objId) &&
-        String(asst.bk_inst_id) === String(this.instId)
-      )
-      const hasTargetData = associations.some(asst =>
-        String(asst.bk_asst_obj_id) === String(this.objId) &&
-        String(asst.bk_asst_inst_id) === String(this.instId)
-      )
-      return (hasSourceData || hasTargetData) && this.modelRelations.length > 0
     }
   },
   watch: {
     activeTab (newTab) {
-      if (newTab === 'association' && !this.isDataReady) {
-        this.associationLoading = true
+      if (newTab === 'association') {
+        if (!this.isDataReady) {
+          this.associationLoading = true
+        }
+        this.loadAssociationData()
       }
     }
   },
@@ -194,14 +166,10 @@ export default {
     this.loadInstanceData()
   },
   methods: {
-    // 获取指定分组的属性
     getPropertiesByGroup (groupId) {
       const props = this.properties.filter(p => {
-        // 不显示 id 字段
         if (p.bk_property_id === 'id') return false
-        // 不显示 bk_isapi=true 的系统字段
         if (p.bk_isapi) return false
-        // 检查分组，默认为 'default'
         const propGroup = p.bk_property_group || 'default'
         return propGroup === groupId && p.bk_property_index !== -1
       }).sort((a, b) => a.bk_property_index - b.bk_property_index)
@@ -229,15 +197,12 @@ export default {
           })
         }
         
-        // 加载属性分组
         try {
           const groupsResponse = await modelAPI.getModelPropertyGroups(this.objId)
           if (groupsResponse && groupsResponse.groups) {
             this.propertyGroups = groupsResponse.groups
           }
         } catch (err) {
-          console.warn('加载属性分组失败:', err)
-          // 如果没有分组，创建默认分组
           this.propertyGroups = [{
             id: 1,
             bk_group_id: 'default',
@@ -246,6 +211,34 @@ export default {
             bk_isdefault: true
           }]
         }
+        
+        const attrResponse = await modelAPI.getModelAttributes(this.objId)
+        if (attrResponse && attrResponse.attributes) {
+          const sortedAttrs = attrResponse.attributes
+            .filter(p => p.bk_property_index !== -1)
+            .sort((a, b) => a.bk_property_index - b.bk_property_index)
+          this.$set(this.apiAttributes, this.objId, { info: sortedAttrs })
+        }
+        
+        this.isDataReady = true
+        
+      } catch (error) {
+        console.error('加载实例数据失败:', error)
+      } finally {
+        this.associationLoading = false
+      }
+    },
+    async loadAssociationData () {
+      this.associationLoading = true
+      try {
+        if (!this.objId || !this.instId) {
+          return
+        }
+        
+        // 先加载数据
+        this.isDataReady = false
+        this.apiAssociations = []
+        this.apiRelations = []
         
         const assocResponse = await modelAPI.getInstanceAssociations(this.instId)
         if (assocResponse && assocResponse.associations) {
@@ -257,47 +250,12 @@ export default {
           this.apiRelations = relationsResponse.relations
         }
         
-        const relatedModelIds = new Set()
-        relatedModelIds.add(this.objId)
-        
-        this.apiAssociations.forEach(asst => {
-          if (String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)) {
-            relatedModelIds.add(asst.bk_asst_obj_id)
-          }
-          if (String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)) {
-            relatedModelIds.add(asst.bk_obj_id)
-          }
-        })
-        
-        for (const modelId of relatedModelIds) {
-          try {
-            const attrResponse = await modelAPI.getModelAttributes(modelId)
-            if (attrResponse && attrResponse.attributes) {
-              const sortedAttrs = attrResponse.attributes
-                .filter(p => p.bk_property_index !== -1)
-                .sort((a, b) => a.bk_property_index - b.bk_property_index)
-              this.$set(this.apiAttributes, modelId, { info: sortedAttrs })
-            }
-          } catch (err) {
-            console.warn(`加载 ${modelId} 属性定义失败:`, err)
-          }
-        }
-        
-        for (const modelId of relatedModelIds) {
-          try {
-            const instancesResponse = await modelAPI.listInstances(modelId, { page: 1, page_size: 100 })
-            if (instancesResponse && instancesResponse.instances) {
-              this.$set(this.apiInstances, modelId, instancesResponse.instances)
-            }
-          } catch (err) {
-            console.warn(`加载 ${modelId} 实例失败:`, err)
-          }
-        }
-        
+        // 数据加载完成后，强制子组件重新创建
+        this.associationKey++
         this.isDataReady = true
         
       } catch (error) {
-        console.error('加载实例数据失败:', error)
+        console.error('加载关联数据失败:', error)
       } finally {
         this.associationLoading = false
       }
@@ -315,16 +273,9 @@ export default {
       })
     },
     viewInstance () {
-      // ID 列不需要跳转
-    },
-    handleViewAssociatedInstance ({ objId, instId }) {
-      this.$router.push({
-        name: 'GeneralModelDetails',
-        params: { objId, instId }
-      })
     },
     handleAssociationChange () {
-      this.loadInstanceData()
+      this.loadAssociationData()
     },
     async handlePropertyConfirm ({ property, value, changed }) {
       if (!changed) {

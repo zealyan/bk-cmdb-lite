@@ -16,9 +16,10 @@
                 class="property-item"
                 :class="[property.bk_property_type, { 'full-width': isFullWidth(property) }]">
                 <div class="property-name">
-                  <span class="property-name-text" :class="{ required: property.isrequired }">
+                  <span class="property-name-text">
                     {{ property.bk_property_name }}
                   </span>
+                  <span class="required-asterisk" v-if="property.isrequired">*</span>
                   <i class="bk-icon icon-cc-tips property-tips"
                     v-if="property.placeholder"
                     v-bk-tooltips="{ trigger: 'mouseenter', content: property.placeholder }">
@@ -114,10 +115,32 @@ export default {
   data() {
     return {
       groupState: {},
-      errorMessages: {}
+      errorMessages: {},
+      initialValues: {}
     }
   },
   computed: {
+    hasChange() {
+      const keys = Object.keys(this.initialValues)
+      if (keys.length === 0) {
+        const hasAnyValue = Object.values(this.values).some(v => v !== '' && v !== null && v !== undefined && !Array.isArray(v) ? true : (Array.isArray(v) ? v.length > 0 : false))
+        return hasAnyValue
+      }
+      for (const key of keys) {
+        const initial = this.initialValues[key]
+        const current = this.values[key]
+        if (initial !== current) {
+          if (Array.isArray(initial) && Array.isArray(current)) {
+            if (JSON.stringify(initial) !== JSON.stringify(current)) {
+              return true
+            }
+          } else if (initial !== '' || (current !== '' && current !== null && current !== undefined)) {
+            return true
+          }
+        }
+      }
+      return false
+    },
     groupedPropertiesList() {
       const groupNameMap = {
         'base': '基本信息',
@@ -150,8 +173,14 @@ export default {
   },
   created() {
     this.initGroupState()
+    this.initialValues = { ...this.values }
   },
   methods: {
+    reset() {
+      this.initialValues = {}
+      this.errorMessages = {}
+      this.$emit('update:values', {})
+    },
     initGroupState() {
       this.groupedPropertiesList.forEach(group => {
         this.$set(this.groupState, group.bk_group_id, false)
@@ -443,23 +472,36 @@ export default {
       max-width: 100%;
     }
     .property-name {
-      display: flex;
-      align-items: center;
+      display: block;
       margin: 2px 0 6px;
-      .property-name-text {
-        font-size: 14px;
-        color: #63656e;
-        &.required::after {
-          content: "*";
-          color: #ff5656;
-          margin-left: 4px;
-        }
-      }
-      .property-tips {
-        margin-left: 4px;
-        color: #c3cdd7;
-        cursor: help;
-      }
+      line-height: 24px;
+      font-size: 0;
+    }
+    .property-name-text {
+      position: relative;
+      display: inline-block;
+      max-width: calc(100% - 20px);
+      padding: 0 10px 0 0;
+      vertical-align: middle;
+      font-size: 14px;
+      color: #63656e;
+    }
+    .required-asterisk {
+      display: inline-block;
+      vertical-align: middle;
+      color: #ff5656;
+      font-size: 14px;
+      margin-left: -10px;
+    }
+    .property-tips {
+      display: inline-block;
+      vertical-align: middle;
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+      margin-right: 6px;
+      color: #c3cdd7;
+      cursor: help;
     }
     .property-value {
       position: relative;
