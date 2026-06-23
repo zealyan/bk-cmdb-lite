@@ -1868,11 +1868,8 @@ export default {
       })
     },
     handleCreateDialogBeforeClose() {
-      const hasValue = Object.values(this.createForm).some(v => {
-        if (Array.isArray(v)) return v.length > 0
-        return v !== '' && v !== null && v !== undefined
-      })
-      if (hasValue) {
+      const $form = this.$refs.cmdbFormRef
+      if ($form && $form.hasChange) {
         return new Promise((resolve) => {
           this.$bkInfo({
             title: '确认退出？',

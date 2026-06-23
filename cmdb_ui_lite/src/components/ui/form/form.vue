@@ -64,6 +64,7 @@
 
 <script>
 import { parseOption, validateValue, charLength, getMaxCharsByType } from '@/utils/validate-utils'
+import isEqual from 'lodash/isEqual'
 
 // 不能更新修改的字段(在可能发生编辑操作的页面里不显示出来)
 // 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/dictionary/model-constants.js
@@ -129,14 +130,8 @@ export default {
       for (const key of keys) {
         const initial = this.initialValues[key]
         const current = this.values[key]
-        if (initial !== current) {
-          if (Array.isArray(initial) && Array.isArray(current)) {
-            if (JSON.stringify(initial) !== JSON.stringify(current)) {
-              return true
-            }
-          } else if (initial !== '' || (current !== '' && current !== null && current !== undefined)) {
-            return true
-          }
+        if (!isEqual(initial, current)) {
+          return true
         }
       }
       return false
