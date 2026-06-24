@@ -264,6 +264,7 @@ import routerQuery from '@/utils/router-query'
 import QS from 'qs'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
+import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'GeneralModel',
@@ -299,6 +300,7 @@ export default {
       createFormLoading: false,
       batchUpdateDialogVisible: false,
       batchUpdateFormLoading: false,
+      modelIndex: modelIndex.models,
       table: {
         list: [],
         header: [],
@@ -335,12 +337,14 @@ export default {
       isUrlUpdateTriggered: false,
       searchTimeout: null,
       filterTagHeight: 0,
-      tableMaxHeight: 600
+      tableMaxHeight: 600,
+      MENU_RESOURCE_INSTANCE_DETAILS,
+      MENU_RESOURCE_MANAGEMENT
     }
   },
   computed: {
     modelName() {
-      const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)
+      const model = (this.modelIndex.models || []).find(m => m.bk_obj_id === this.objId)
       return model ? model.bk_obj_name : this.objId
     },
     searchableProperties() {
@@ -1973,7 +1977,7 @@ export default {
       })
       this.prevInstanceId = instance.bk_inst_id
       this.$router.push({
-        name: 'ResourceInstanceDetails',
+        name: MENU_RESOURCE_INSTANCE_DETAILS,
         params: { objId: this.objId, instId: instance.bk_inst_id }
       })
     },
@@ -2265,7 +2269,7 @@ export default {
     },
     goBackToResource() {
       console.log('[Persistence] goBackToResource called, navigating to /resource')
-      this.$router.push({ name: 'Resource' })
+      this.$router.push({ name: MENU_RESOURCE_MANAGEMENT })
     }
   }
 }

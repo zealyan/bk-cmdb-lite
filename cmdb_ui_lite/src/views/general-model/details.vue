@@ -65,6 +65,7 @@ import EditableProperty from '@/components/property/editable-property.vue'
 import { modelAPI } from '@/api/client'
 import modelIndex from '@/assets/api/index.json'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
+import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'ModelDetails',
@@ -86,7 +87,9 @@ export default {
       isDataReady: false,
       associationLoading: false,
       editingPropertyId: null,
-      associationKey: 0
+      associationKey: 0,
+      MENU_RESOURCE_INSTANCE,
+      MENU_RESOURCE_MANAGEMENT
     }
   },
   computed: {
@@ -268,11 +271,11 @@ export default {
       this.$router.go(-1)
     },
     goToResource () {
-      this.$router.push({ name: 'Resource' })
+      this.$router.push({ name: MENU_RESOURCE_MANAGEMENT })
     },
     goToInstanceList () {
       this.$router.push({
-        name: 'ResourceInstanceList',
+        name: MENU_RESOURCE_INSTANCE,
         params: { objId: this.objId }
       })
     },
@@ -283,7 +286,7 @@ export default {
         title: this.instanceName,
         backward: () => {
           this.$router.push({
-            name: 'ResourceInstanceList',
+            name: MENU_RESOURCE_INSTANCE,
             params: { objId }
           })
         }

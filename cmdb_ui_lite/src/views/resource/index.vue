@@ -56,12 +56,14 @@
 
 <script>
 import { mapState, mapGetters, mapActions } from 'vuex'
+import { MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'ResourceIndex',
   data() {
     return {
-      hoveredModel: null
+      hoveredModel: null,
+      MENU_RESOURCE_INSTANCE
     }
   },
   computed: {
@@ -93,7 +95,7 @@ export default {
     handleModelClick(model) {
       console.log('[ResourceIndex] 点击模型:', model.bk_obj_id, model.bk_obj_name)
       this.$router.push({
-        name: 'ResourceInstanceList',
+        name: MENU_RESOURCE_INSTANCE,
         params: { objId: model.bk_obj_id }
       })
     },
