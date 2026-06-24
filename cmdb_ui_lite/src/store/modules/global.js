@@ -8,6 +8,11 @@ const state = {
   mainFullScreen: false,
   scrollerState: {
     scrollbar: false
+  },
+  breadcrumbs: {
+    enable: false,
+    title: '',
+    backward: null
   }
 }
 
@@ -40,6 +45,11 @@ const mutations = {
       ...state.scrollerState,
       ...scrollerState
     }
+  },
+  setCustomBreadcrumbs(state, { enable, title, backward }) {
+    state.breadcrumbs.enable = enable || false
+    state.breadcrumbs.title = title || ''
+    state.breadcrumbs.backward = backward || null
   }
 }
 
@@ -62,7 +72,8 @@ const getters = {
   navFold: (state) => state.navFold,
   title: (state) => state.title,
   globalLoading: (state) => state.globalLoading,
-  mainFullScreen: (state) => state.mainFullScreen
+  mainFullScreen: (state) => state.mainFullScreen,
+  breadcrumbs: (state) => state.breadcrumbs
 }
 
 export default {

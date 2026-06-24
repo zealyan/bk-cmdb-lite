@@ -1,7 +1,13 @@
 <template>
   <div class="breadcrumbs-layout clearfix">
-    <i class="icon icon-cc-arrow fl" v-if="from" @click="handleClick"></i>
-    <h1 class="current fl" v-bk-overflow-tips>{{ current }}</h1>
+    <template v-if="customize.enable">
+      <i class="icon icon-cc-arrow fl" v-if="customize.backward" @click="customize.backward"></i>
+      <h1 class="current fl" v-bk-overflow-tips>{{ customize.title }}</h1>
+    </template>
+    <template v-else>
+      <i class="icon icon-cc-arrow fl" v-if="from" @click="handleClick"></i>
+      <h1 class="current fl" v-bk-overflow-tips>{{ current }}</h1>
+    </template>
   </div>
 </template>
 
@@ -11,22 +17,43 @@ import { mapGetters } from 'vuex'
 export default {
   name: 'DynamicBreadcrumbs',
   computed: {
-    ...mapGetters(['title']),
+    ...mapGetters(['title', 'breadcrumbs']),
+    customize() {
+      return this.breadcrumbs
+    },
     current() {
+      if (this.breadcrumbs.enable) {
+        return this.breadcrumbs.title
+      }
       const menuI18n = this.$route.meta?.menu?.i18n
       return this.title || this.$route.meta?.title || menuI18n || ''
     },
-    from() {
+    defaultFrom() {
       const menu = this.$route.meta?.menu || {}
       if (menu.relative) {
-        return { name: Array.isArray(menu.relative) ? menu.relative[0] : menu.relative }
+        const relative = Array.isArray(menu.relative) ? menu.relative[0] : menu.relative
+        if (typeof relative === 'string') {
+          return { name: relative }
+        }
+        return relative
       }
       return null
+    },
+    from() {
+      return this.defaultFrom
+    }
+  },
+  watch: {
+    $route() {
+      this.$store.commit('setCustomBreadcrumbs', { enable: false })
+      this.$store.commit('setTitle', '')
     }
   },
   methods: {
     handleClick() {
-      if (this.from) {
+      if (this.breadcrumbs.enable && this.breadcrumbs.backward) {
+        this.breadcrumbs.backward()
+      } else if (this.from) {
         this.$router.push(this.from)
       }
     }

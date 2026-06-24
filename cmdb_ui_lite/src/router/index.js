@@ -74,8 +74,7 @@ const routes = [
         component: () => import('@/views/general-model/details.vue'),
         meta: {
           menu: {
-            i18n: '实例详情',
-            relative: MENU_RESOURCE_INSTANCE
+            i18n: '实例详情'
           },
           layout: {
             breadcrumbs: true

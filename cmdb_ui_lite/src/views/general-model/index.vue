@@ -440,12 +440,15 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
-      // 计算从表格顶部到窗口底部的距离
-      // 表格顶部位置 = 面包屑(40) + padding(15) + 工具栏(32) + margin(14) = 101
-      // 窗口底部位置 = window.innerHeight
-      // 可用空间 = window.innerHeight - 表格顶部位置 - 分页高度(63) - 底部缓冲(12)
-      const tableTop = 40 + 15 + 32 + 14 + (this.filterTagHeight || 0)
-      const baseHeight = this.$APP?.height || window.innerHeight
+      // 计算从表格顶部到 main-scroller 底部的距离
+      // 表格顶部位置 = general-model-layout padding-top(15) + 工具栏(32) + margin(14) = 61
+      // main-scroller 高度 = main-layout 高度 = views-layout 高度 - 面包屑(53)
+      // 可用空间 = main-scroller 高度 - 表格顶部位置 - 分页高度(63) - 底部缓冲(12)
+      const tableTop = 15 + 32 + 14 + (this.filterTagHeight || 0)
+      const mainScroller = document.querySelector('.main-scroller')
+      const baseHeight = mainScroller
+        ? mainScroller.getBoundingClientRect().height
+        : (this.$APP?.height || window.innerHeight) - 52 - 53
       return Math.max(200, baseHeight - tableTop - 63 - 12)
     },
     hasFilterCondition() {
@@ -514,6 +517,7 @@ export default {
   },
   created() {
     this.objId = this.$route.params.objId || 'bk_switch'
+    this.$store.commit('setTitle', this.modelName)
 
     this.stopRouteQueryWatch = routerQuery.watch('*', (query, oldQuery) => {
       console.log('[Index.watch] URL变化被触发', { query, oldQuery })
@@ -693,6 +697,7 @@ export default {
       handler(newObjId) {
         if (newObjId !== this.objId) {
           this.objId = newObjId || 'bk_switch'
+          this.$store.commit('setTitle', this.modelName)
           this.restoreStateFromUrl()
           this.loadModelData()
         }
@@ -800,21 +805,20 @@ export default {
       }, 300)
     },
     calculateTableHeight() {
-      // 通过 DOM 直接获取 .views-layout 实际可用高度, 这样不受视口变化影响
-      // .views-layout 高度 = 100vh - 52 (header)
-      // 减去内容区上方的: breadcrumbs(40) + general-model-layout padding-top(15) + options(32) + margin(14) = 101
-      // 减去内容区下方的: buffer(12) = 12
-      // 总减法 = 52 (header) + 40 (breadcrumbs) + 15 (padding) + 32 (options) + 14 (margin) + 12 (buffer) = 165
-      const viewsLayout = document.querySelector('.views-layout')
-      if (viewsLayout) {
-        const layoutHeight = viewsLayout.getBoundingClientRect().height
-        const newHeight = Math.max(200, layoutHeight - 40 - 15 - 32 - 14 - 12 - (this.filterTagHeight || 0))
-        console.log('[calculateTableHeight] viewsLayout.height:', layoutHeight, 'filterTagHeight:', this.filterTagHeight, 'newHeight:', newHeight, 'oldHeight:', this.tableMaxHeight)
+      // 通过 DOM 直接获取 .main-scroller 实际可用高度, 这样不受视口变化影响
+      // main-scroller 高度 = main-layout 高度 = views-layout 高度 - 面包屑(53)
+      // 减去内容区上方的: general-model-layout padding-top(15) + options(32) + margin(14) = 61
+      // 减去内容区下方的: buffer(12) + pagination(63) = 75
+      const mainScroller = document.querySelector('.main-scroller')
+      if (mainScroller) {
+        const scrollerHeight = mainScroller.getBoundingClientRect().height
+        const newHeight = Math.max(200, scrollerHeight - 15 - 32 - 14 - 12 - 63 - (this.filterTagHeight || 0))
+        console.log('[calculateTableHeight] mainScroller.height:', scrollerHeight, 'filterTagHeight:', this.filterTagHeight, 'newHeight:', newHeight, 'oldHeight:', this.tableMaxHeight)
         this.tableMaxHeight = newHeight
       } else {
         // fallback: 使用 $APP.height 推算
-        const contentHeight = (this.$APP?.height || window.innerHeight) - 52 - 40
-        this.tableMaxHeight = Math.max(200, contentHeight - (this.filterTagHeight || 0) - 73)
+        const contentHeight = (this.$APP?.height || window.innerHeight) - 52 - 53
+        this.tableMaxHeight = Math.max(200, contentHeight - (this.filterTagHeight || 0) - 15 - 32 - 14 - 12 - 63)
       }
     },
     async loadModelData(searchParams = null) {

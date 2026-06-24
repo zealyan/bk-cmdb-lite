@@ -222,6 +222,10 @@ export default {
         
         this.isDataReady = true
         
+        this.$nextTick(() => {
+          this.updateBreadcrumbs()
+        })
+        
       } catch (error) {
         console.error('加载实例数据失败:', error)
       } finally {
@@ -268,8 +272,21 @@ export default {
     },
     goToInstanceList () {
       this.$router.push({
-        name: 'GeneralModel',
+        name: 'ResourceInstanceList',
         params: { objId: this.objId }
+      })
+    },
+    updateBreadcrumbs () {
+      const objId = this.objId
+      this.$store.commit('setCustomBreadcrumbs', {
+        enable: true,
+        title: this.instanceName,
+        backward: () => {
+          this.$router.push({
+            name: 'ResourceInstanceList',
+            params: { objId }
+          })
+        }
       })
     },
     viewInstance () {
