@@ -2300,7 +2300,8 @@ export default {
   margin-top: 0;
 }
 
-.models-table {
+.general-model-layout .models-table {
+  margin-top: 0 !important;
 }
 
 .models-options {
@@ -2704,10 +2705,6 @@ export default {
   }
 }
 
-.models-table {
-  margin-top: 14px;
-}
-
 .bk-table-pagination-wrapper {
   background: #fff;
   border-top: 1px solid #eaeaea;
@@ -2765,10 +2762,6 @@ export default {
 
 .filter-tag-wrapper {
   margin-top: 10px;
-}
-
-.filter-tag-wrapper ~ .models-table {
-  margin-top: 0;
 }
 
 @media screen and (max-width: 768px) {
