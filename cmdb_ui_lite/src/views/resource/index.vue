@@ -290,8 +290,6 @@ export default {
       font-size: 14px;
       cursor: pointer;
       vertical-align: middle;
-      float: right;
-      margin-top: 7px;
 
       &.icon-star-shape {
         color: #FFB400;
