@@ -521,7 +521,7 @@ export default {
   },
   created() {
     this.objId = this.$route.params.objId || 'bk_switch'
-    this.$store.commit('setTitle', this.modelName)
+    this.updateBreadcrumbs()
 
     this.stopRouteQueryWatch = routerQuery.watch('*', (query, oldQuery) => {
       console.log('[Index.watch] URL变化被触发', { query, oldQuery })
@@ -701,7 +701,7 @@ export default {
       handler(newObjId) {
         if (newObjId !== this.objId) {
           this.objId = newObjId || 'bk_switch'
-          this.$store.commit('setTitle', this.modelName)
+          this.updateBreadcrumbs()
           this.restoreStateFromUrl()
           this.loadModelData()
         }
@@ -797,6 +797,17 @@ export default {
     }
   },
   methods: {
+    updateBreadcrumbs() {
+      this.$store.commit('setCustomBreadcrumbs', {
+        enable: true,
+        title: this.modelName,
+        backward: () => {
+          this.$router.push({
+            name: this.MENU_RESOURCE_MANAGEMENT
+          })
+        }
+      })
+    },
     updateFilterTagHeight() {
       setTimeout(() => {
         const filterTagRef = this.$refs?.filterTagRef
