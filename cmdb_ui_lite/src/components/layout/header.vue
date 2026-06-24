@@ -1,5 +1,5 @@
 <template>
-  <header class="header-layout">
+  <header class="header-layout" :class="{ 'nav-compact': isCompactNav }">
     <div class="logo">
       <router-link class="logo-link" :to="{ name: MENU_RESOURCE_MANAGEMENT }">
         <span class="logo-icon bk-icon icon-cc-cmdb"></span>
@@ -41,6 +41,13 @@ export default {
   computed: {
     headerMenus() {
       return menu
+    },
+    isCompactNav() {
+      const firstMenuId = this.headerMenus[0]?.id
+      const secondMenuId = this.headerMenus[1]?.id
+      const hasHomeOrBiz = firstMenuId === 'menu_index' || firstMenuId === 'menu_business'
+        || secondMenuId === 'menu_index' || secondMenuId === 'menu_business'
+      return !hasHomeOrBiz
     }
   },
   methods: {
@@ -134,5 +141,24 @@ export default {
   text-align: right;
   white-space: nowrap;
   font-size: 0;
+}
+
+.nav-compact {
+  .logo {
+    flex: 0 0 auto;
+    padding-right: 16px;
+
+    .logo-link {
+      margin-left: 24px;
+    }
+  }
+
+  .header-nav {
+    flex: 0 0 auto;
+  }
+
+  .header-info {
+    flex: 1;
+  }
 }
 </style>
