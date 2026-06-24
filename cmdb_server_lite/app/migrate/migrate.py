@@ -188,9 +188,9 @@ MODEL_CLASSIFICATION_MAP = {
 
 # 分类定义
 CLASSIFICATIONS = [
-    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network", "ispre": True},
+    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True},
     {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True},
-    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-loadbalance", "ispre": True},
+    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True},
 ]
 
 # 属性分组定义

@@ -13,7 +13,7 @@
     {
       "bk_obj_id": "bk_slb",
       "bk_obj_name": "负载均衡",
-      "bk_obj_icon": "icon-cc-loadbalance",
+      "bk_obj_icon": "icon-cc-balance",
       "associations": [
         {
           "target_obj_id": "bk_slb_server",
