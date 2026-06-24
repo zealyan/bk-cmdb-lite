@@ -268,9 +268,11 @@ import QS from 'qs'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
 import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
+import AppMixin from '@/mixins/app'
 
 export default {
   name: 'GeneralModel',
+  mixins: [AppMixin],
   components: {
     ColumnsConfig,
     FilterTag,
@@ -447,16 +449,7 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
-      // 计算从表格顶部到 main-scroller 底部的距离
-      // 表格顶部位置 = general-model-layout padding-top(15) + 工具栏(32) + margin(14) = 61
-      // main-scroller 高度 = main-layout 高度 = views-layout 高度 - 面包屑(53)
-      // 可用空间 = main-scroller 高度 - 表格顶部位置 - 分页高度(63) - 底部缓冲(12)
-      const tableTop = 15 + 32 + 14 + (this.filterTagHeight || 0)
-      const mainScroller = document.querySelector('.main-scroller')
-      const baseHeight = mainScroller
-        ? mainScroller.getBoundingClientRect().height
-        : (this.$APP?.height || window.innerHeight) - 58 - 53
-      return Math.max(200, baseHeight - tableTop - 63 - 12)
+      return Math.max(200, this.$APP.height - (this.filterTagHeight || 0) - 190)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
