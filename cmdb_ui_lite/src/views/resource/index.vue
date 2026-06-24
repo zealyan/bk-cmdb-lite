@@ -98,7 +98,7 @@ export default {
         const minColHeight = Math.min(...colHeight)
         const rowIndex = colHeight.indexOf(minColHeight)
         classifyColumns[rowIndex].push(classify)
-        colHeight[rowIndex] += classify.bk_objects.length
+        colHeight[rowIndex] += this.calcWaterfallHeight(classify)
       })
       return classifyColumns
     },
@@ -194,6 +194,9 @@ export default {
     handleClearFilter() {
       this.filter = ''
       this.matchedModels = null
+    },
+    calcWaterfallHeight(classify) {
+      return 46 + 16 + (classify.bk_objects.length * 36)
     },
     redirect(model) {
       this.$router.push({
