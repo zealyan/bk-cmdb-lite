@@ -45,16 +45,7 @@ const routes = [
       {
         name: MENU_RESOURCE_HOST,
         path: 'host',
-        component: () => import('@/views/resource/host.vue'),
-        meta: {
-          menu: {
-            i18n: '主机',
-            relative: MENU_RESOURCE_MANAGEMENT
-          },
-          layout: {
-            breadcrumbs: true
-          }
-        }
+        redirect: { name: MENU_RESOURCE_INSTANCE, params: { objId: 'bk_host' } }
       },
       {
         name: MENU_RESOURCE_INSTANCE,
