@@ -282,15 +282,17 @@ export default {
     updateBreadcrumbs () {
       const objId = this.objId
       const title = `${this.modelName} ${this.instanceName ? '【' + this.instanceName + '】' : ''}`
-      this.$store.commit('setCustomBreadcrumbs', {
-        enable: true,
-        title: title,
-        backward: () => {
-          this.$router.push({
-            name: MENU_RESOURCE_INSTANCE,
-            params: { objId }
-          })
-        }
+      this.$nextTick(() => {
+        this.$store.commit('setCustomBreadcrumbs', {
+          enable: true,
+          title: title,
+          backward: () => {
+            this.$router.push({
+              name: MENU_RESOURCE_INSTANCE,
+              params: { objId }
+            })
+          }
+        })
       })
     },
     viewInstance () {

@@ -344,7 +344,7 @@ export default {
   },
   computed: {
     modelName() {
-      const model = (this.modelIndex.models || []).find(m => m.bk_obj_id === this.objId)
+      const model = (this.modelIndex || []).find(m => m.bk_obj_id === this.objId)
       return model ? model.bk_obj_name : this.objId
     },
     searchableProperties() {
@@ -798,14 +798,16 @@ export default {
   },
   methods: {
     updateBreadcrumbs() {
-      this.$store.commit('setCustomBreadcrumbs', {
-        enable: true,
-        title: this.modelName,
-        backward: () => {
-          this.$router.push({
-            name: this.MENU_RESOURCE_MANAGEMENT
-          })
-        }
+      this.$nextTick(() => {
+        this.$store.commit('setCustomBreadcrumbs', {
+          enable: true,
+          title: this.modelName,
+          backward: () => {
+            this.$router.push({
+              name: this.MENU_RESOURCE_MANAGEMENT
+            })
+          }
+        })
       })
     },
     updateFilterTagHeight() {
