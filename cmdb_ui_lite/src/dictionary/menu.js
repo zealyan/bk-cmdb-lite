@@ -1,0 +1,40 @@
+import {
+  MENU_RESOURCE,
+  MENU_MODEL,
+  MENU_RESOURCE_MANAGEMENT,
+  MENU_RESOURCE_HOST,
+  MENU_MODEL_MANAGEMENT
+} from './menu-symbol'
+
+const menus = [{
+  id: MENU_RESOURCE,
+  i18n: '资源',
+  menu: [{
+    id: MENU_RESOURCE_MANAGEMENT,
+    i18n: '资源目录',
+    icon: 'icon-cc-square',
+    route: {
+      name: MENU_RESOURCE_MANAGEMENT
+    }
+  }, {
+    id: MENU_RESOURCE_HOST,
+    i18n: '主机',
+    icon: 'icon-cc-host',
+    route: {
+      name: MENU_RESOURCE_HOST
+    }
+  }]
+}, {
+  id: MENU_MODEL,
+  i18n: '模型',
+  menu: [{
+    id: MENU_MODEL_MANAGEMENT,
+    i18n: '模型管理',
+    icon: 'icon-cc-nav-model-02',
+    route: {
+      name: MENU_MODEL_MANAGEMENT
+    }
+  }]
+}]
+
+export default menus

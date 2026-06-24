@@ -1,6 +1,14 @@
 const state = {
   appHeight: window.innerHeight,
-  noticeHeight: 0
+  noticeHeight: 0,
+  navStick: false,
+  navFold: true,
+  title: '',
+  globalLoading: false,
+  mainFullScreen: false,
+  scrollerState: {
+    scrollbar: false
+  }
 }
 
 const mutations = {
@@ -9,6 +17,29 @@ const mutations = {
   },
   setNoticeHeight(state, height) {
     state.noticeHeight = Math.max(0, Number(height) || 0)
+  },
+  setNavStatus(state, { fold, stick }) {
+    if (typeof fold !== 'undefined') {
+      state.navFold = fold
+    }
+    if (typeof stick !== 'undefined') {
+      state.navStick = stick
+    }
+  },
+  setTitle(state, title) {
+    state.title = title
+  },
+  setGlobalLoading(state, loading) {
+    state.globalLoading = loading
+  },
+  setMainFullScreen(state, fullScreen) {
+    state.mainFullScreen = fullScreen
+  },
+  setScrollerState(state, scrollerState) {
+    state.scrollerState = {
+      ...state.scrollerState,
+      ...scrollerState
+    }
   }
 }
 
@@ -18,12 +49,20 @@ const actions = {
   },
   updateNoticeHeight({ commit }, height) {
     commit('setNoticeHeight', height)
+  },
+  setNavStatus({ commit }, status) {
+    commit('setNavStatus', status)
   }
 }
 
 const getters = {
   appHeight: (state) => state.appHeight,
-  noticeHeight: (state) => state.noticeHeight
+  noticeHeight: (state) => state.noticeHeight,
+  navStick: (state) => state.navStick,
+  navFold: (state) => state.navFold,
+  title: (state) => state.title,
+  globalLoading: (state) => state.globalLoading,
+  mainFullScreen: (state) => state.mainFullScreen
 }
 
 export default {
