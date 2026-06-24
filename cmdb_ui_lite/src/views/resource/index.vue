@@ -31,6 +31,9 @@
                 :class="[isCollected(model) ? 'icon-star-shape' : 'icon-star']"
                 @click.prevent.stop="toggleCollection(model)">
               </i>
+              <div class="model-instance-count">
+                <instance-count :obj-id="model.bk_obj_id" :counts="instanceCounts" />
+              </div>
             </div>
           </div>
         </div>
@@ -48,13 +51,19 @@
 import { mapState, mapGetters, mapActions } from 'vuex'
 import debounce from 'lodash.debounce'
 import { MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
+import InstanceCount from '@/components/instance-count/index.vue'
+import { modelAPI } from '@/api/client'
 
 export default {
   name: 'ResourceIndex',
+  components: {
+    InstanceCount
+  },
   data() {
     return {
       filter: '',
-      matchedModels: null
+      matchedModels: null,
+      instanceCounts: []
     }
   },
   computed: {
@@ -94,6 +103,15 @@ export default {
     },
     isEmpty() {
       return this.filteredClassifications.length === 0
+    },
+    allObjIds() {
+      const ids = []
+      this.filteredClassifications.forEach((classify) => {
+        classify.bk_objects.forEach((model) => {
+          ids.push(model.bk_obj_id)
+        })
+      })
+      return ids
     }
   },
   watch: {
@@ -101,6 +119,14 @@ export default {
       handler(val) {
         this.debounceFilter(val)
       }
+    },
+    allObjIds: {
+      handler(ids) {
+        if (ids.length > 0) {
+          this.loadInstanceCounts(ids)
+        }
+      },
+      immediate: true
     }
   },
   created() {
@@ -118,6 +144,19 @@ export default {
         await this.searchClassificationsObjects()
       } catch (error) {
         console.error('[ResourceIndex] 加载数据失败:', error)
+      }
+    },
+    async loadInstanceCounts(objIds) {
+      try {
+        const response = await modelAPI.getInstanceCounts(objIds)
+        this.instanceCounts = response.counts || []
+      } catch (error) {
+        console.error('[ResourceIndex] 加载实例数量失败:', error)
+        this.instanceCounts = objIds.map(id => ({
+          bk_obj_id: id,
+          inst_count: 0,
+          error: true
+        }))
       }
     },
     handleFilter(val) {
@@ -295,6 +334,17 @@ export default {
         color: #FFB400;
         display: inline-block;
       }
+    }
+
+    .model-instance-count {
+      float: right;
+      display: inline-block;
+      width: 35px;
+      font-size: 14px;
+      height: 24px;
+      line-height: 24px;
+      color: #C4C6CC;
+      text-align: right;
     }
   }
 }
