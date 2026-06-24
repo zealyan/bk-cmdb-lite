@@ -172,6 +172,7 @@
     </div>
 
     <bk-sideslider
+      transfer
       :is-show.sync="columnsConfig.show"
       :title="'列表显示属性配置'"
       :width="sidesliderWidth"
@@ -193,6 +194,7 @@
 
     <!-- 新增实例弹窗 -->
     <bk-sideslider
+      transfer
       :is-show.sync="createDialogVisible"
       :title="'新增实例'"
       :width="createSidesliderWidth"
@@ -221,6 +223,7 @@
 
     <!-- 批量更新弹窗 -->
     <bk-sideslider
+      transfer
       :is-show.sync="batchUpdateDialogVisible"
       :title="'批量更新'"
       :width="createSidesliderWidth"

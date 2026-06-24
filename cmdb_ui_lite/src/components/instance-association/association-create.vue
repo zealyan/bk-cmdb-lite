@@ -1,5 +1,6 @@
 <template>
   <bk-sideslider
+    transfer
     :is-show.sync="sliderShow"
     :title="'新增关联'"
     :width="sliderWidth"
