@@ -78,7 +78,7 @@ export default {
 }
 
 .views-layout {
-  height: calc(100% - 52px);
+  height: calc(100% - 58px);
   overflow: hidden;
   background: #f5f7fa;
   position: relative;

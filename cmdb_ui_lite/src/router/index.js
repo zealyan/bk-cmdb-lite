@@ -6,7 +6,9 @@ import {
   MENU_RESOURCE_MANAGEMENT,
   MENU_RESOURCE_HOST,
   MENU_RESOURCE_INSTANCE,
-  MENU_RESOURCE_INSTANCE_DETAILS
+  MENU_RESOURCE_INSTANCE_DETAILS,
+  MENU_MODEL,
+  MENU_MODEL_MANAGEMENT
 } from '@/dictionary/menu-symbol'
 
 Vue.use(VueRouter)
@@ -75,6 +77,32 @@ const routes = [
         meta: {
           menu: {
             i18n: '实例详情'
+          },
+          layout: {
+            breadcrumbs: true
+          }
+        }
+      }
+    ]
+  },
+  {
+    name: MENU_MODEL,
+    component: dynamicRouterView,
+    path: '/model',
+    redirect: { name: MENU_MODEL_MANAGEMENT },
+    meta: {
+      menu: {
+        i18n: '模型'
+      }
+    },
+    children: [
+      {
+        name: MENU_MODEL_MANAGEMENT,
+        path: 'index',
+        component: () => import('@/views/model/index.vue'),
+        meta: {
+          menu: {
+            i18n: '模型管理'
           },
           layout: {
             breadcrumbs: true

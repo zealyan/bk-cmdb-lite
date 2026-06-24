@@ -1,75 +1,138 @@
 <template>
-  <div class="cmdb-navigation">
-    <div class="navigation-header">
-      <div class="header-logo">
-        <span class="logo-icon bk-icon icon-cc-home"></span>
-        <span class="logo-text">CMDB</span>
-      </div>
-      <nav class="header-nav">
-        <router-link to="/resource/index">资源</router-link>
-      </nav>
+  <header class="header-layout">
+    <div class="logo">
+      <router-link class="logo-link" :to="{ name: MENU_RESOURCE_MANAGEMENT }">
+        <span class="logo-icon bk-icon icon-cc-cmdb"></span>
+        <span class="logo-text">配置平台</span>
+      </router-link>
     </div>
-  </div>
+    <nav class="header-nav">
+      <router-link
+        class="header-link"
+        v-for="nav in headerMenus"
+        :to="getHeaderLink(nav)"
+        :key="nav.id"
+        :class="{ active: isLinkActive(nav) }">
+        {{ nav.i18n }}
+      </router-link>
+    </nav>
+    <section class="header-info">
+    </section>
+  </header>
 </template>
 
 <script>
+import menu from '@/dictionary/menu'
+import {
+  MENU_RESOURCE,
+  MENU_MODEL,
+  MENU_RESOURCE_MANAGEMENT,
+  MENU_MODEL_MANAGEMENT
+} from '@/dictionary/menu-symbol'
+
 export default {
-  name: 'CmdbHeader'
+  name: 'CmdbHeader',
+  data() {
+    return {
+      MENU_RESOURCE_MANAGEMENT,
+      MENU_MODEL_MANAGEMENT
+    }
+  },
+  computed: {
+    headerMenus() {
+      return menu
+    }
+  },
+  methods: {
+    isLinkActive(nav) {
+      const [topRoute] = this.$route.matched
+      if (!topRoute) {
+        return false
+      }
+      return topRoute.name === nav.id
+    },
+    getHeaderLink(nav) {
+      const firstChild = nav.menu && nav.menu[0]
+      if (firstChild && firstChild.route) {
+        return firstChild.route
+      }
+      return { name: nav.id }
+    }
+  }
 }
 </script>
 
 <style lang="scss" scoped>
-.cmdb-navigation {
-  height: 52px;
-  background: #1a1a1a;
+.header-layout {
+  position: relative;
+  display: flex;
+  height: 58px;
+  background-color: #182132;
+  z-index: 1002;
   flex-shrink: 0;
 }
 
-.navigation-header {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
-}
+.logo {
+  flex: 292px 0 0;
+  font-size: 0;
 
-.header-logo {
-  display: flex;
-  align-items: center;
-  margin-right: 40px;
-
-  .logo-icon {
-    font-size: 20px;
-    margin-right: 8px;
-  }
-
-  .logo-text {
-    font-weight: 700;
-    font-size: 16px;
+  .logo-link {
+    display: inline-flex;
+    align-items: center;
+    height: 58px;
+    margin-left: 24px;
     color: #fff;
+    font-size: 16px;
+    text-decoration: none;
+
+    .logo-icon {
+      font-size: 24px;
+      margin-right: 10px;
+      color: #3a84ff;
+    }
+
+    .logo-text {
+      font-weight: 500;
+      font-size: 16px;
+      color: #fff;
+      letter-spacing: 1px;
+    }
   }
 }
 
 .header-nav {
-  display: flex;
-  gap: 8px;
+  flex: 3;
+  font-size: 0;
+  white-space: nowrap;
 
-  a {
-    color: rgba(255, 255, 255, 0.65);
-    text-decoration: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+  .header-link {
+    display: inline-block;
+    vertical-align: middle;
+    height: 58px;
+    line-height: 58px;
+    padding: 0 25px;
+    color: #96A2B9;
     font-size: 14px;
+    text-decoration: none;
     transition: all 0.2s;
 
     &:hover {
-      color: #fff;
-      background: rgba(255, 255, 255, 0.1);
+      background-color: rgba(49, 64, 94, 0.5);
+      color: #C2CEE5;
     }
 
-    &.router-link-active {
+    &.router-link-active,
+    &.active {
+      background-color: rgba(49, 64, 94, 1);
       color: #fff;
-      background: #175ee5;
     }
   }
+}
+
+.header-info {
+  flex: 1;
+  text-align: right;
+  white-space: nowrap;
+  font-size: 0;
 }
 </style>

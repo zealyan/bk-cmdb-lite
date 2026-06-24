@@ -448,7 +448,7 @@ export default {
       const mainScroller = document.querySelector('.main-scroller')
       const baseHeight = mainScroller
         ? mainScroller.getBoundingClientRect().height
-        : (this.$APP?.height || window.innerHeight) - 52 - 53
+        : (this.$APP?.height || window.innerHeight) - 58 - 53
       return Math.max(200, baseHeight - tableTop - 63 - 12)
     },
     hasFilterCondition() {
