@@ -37,9 +37,9 @@
 </template>
 
 <script>
-import { mapGetters } from 'vuex'
+import { mapGetters, mapActions } from 'vuex'
 import MENU_DICTIONARY from '@/dictionary/menu'
-import { MENU_RESOURCE, MENU_MODEL } from '@/dictionary/menu-symbol'
+import { MENU_RESOURCE, MENU_MODEL, MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'DynamicNavigation',
@@ -50,6 +50,8 @@ export default {
   },
   computed: {
     ...mapGetters(['navStick', 'navFold']),
+    ...mapGetters('userCustom', ['resourceCollection']),
+    ...mapGetters('objectModelClassify', ['models']),
     unfold() {
       return this.navStick || !this.navFold
     },
@@ -57,12 +59,33 @@ export default {
       const [topRoute] = this.$route.matched
       return topRoute?.name || MENU_RESOURCE
     },
+    collectionMenus() {
+      return this.resourceCollection.map((id) => {
+        const model = this.models.find(m => m.bk_obj_id === id)
+        return {
+          id: `collection_${id}`,
+          i18n: model?.bk_obj_name || id,
+          icon: model?.bk_obj_icon || 'icon-cc-default',
+          route: {
+            name: MENU_RESOURCE_INSTANCE,
+            params: {
+              objId: id
+            }
+          }
+        }
+      })
+    },
     currentMenus() {
       const target = MENU_DICTIONARY.find(menu => menu.id === this.owner)
-      return (target && target.menu) || []
+      const menus = [...((target && target.menu) || [])]
+      if (this.owner === MENU_RESOURCE && this.collectionMenus.length > 0) {
+        menus.splice(1, 0, ...this.collectionMenus)
+      }
+      return menus
     }
   },
   methods: {
+    ...mapActions('userCustom', ['searchUsercustom']),
     handleMouseEnter() {
       if (this.timer) {
         clearTimeout(this.timer)
@@ -79,6 +102,13 @@ export default {
         fold: !this.navFold,
         stick: !this.navStick
       })
+    }
+  },
+  async mounted() {
+    try {
+      await this.searchUsercustom()
+    } catch (e) {
+      console.error('[DynamicNavigation] 加载用户配置失败:', e)
     }
   }
 }

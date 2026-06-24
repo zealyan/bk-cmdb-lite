@@ -4,6 +4,7 @@ export const MENU_RESOURCE = 'menu_resource'
 export const MENU_MODEL = 'menu_model'
 
 export const MENU_RESOURCE_MANAGEMENT = 'menu_resource_management'
+export const MENU_RESOURCE_COLLECTION = 'menu_resource_collection'
 export const MENU_RESOURCE_INSTANCE = 'menu_resource_instance'
 export const MENU_RESOURCE_INSTANCE_DETAILS = 'menu_resource_instance_details'
 

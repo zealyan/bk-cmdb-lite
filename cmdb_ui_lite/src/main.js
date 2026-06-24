@@ -27,28 +27,35 @@ const app = new Vue({
   async created() {
     console.log('[App] 应用启动中...')
     
-    // 加载用户配置到 Vuex Store
+    // 并行加载模型分类数据和用户配置
     try {
-      console.log('[App] 正在加载用户配置...')
-      const allCustom = await userCustom.searchUserCustom()
+      console.log('[App] 正在加载模型分类和用户配置...')
       
-      // 确保 allCustom 是对象
-      if (allCustom && typeof allCustom === 'object') {
-        this.$store.dispatch('loadAllUserCustom', allCustom)
-        console.log('[App] ✅ 用户配置已加载到 Vuex Store')
-        console.log('[App] 加载的配置项:', Object.keys(allCustom))
-        
-        // 打印自定义列配置
-        Object.keys(allCustom).forEach(key => {
-          if (key.includes('custom_table_columns')) {
-            console.log(`[App]   ${key}:`, allCustom[key])
-          }
-        })
+      const [classificationsData, userCustomData] = await Promise.allSettled([
+        this.$store.dispatch('objectModelClassify/searchClassificationsObjects'),
+        this.$store.dispatch('userCustom/searchUsercustom')
+      ])
+      
+      if (classificationsData.status === 'fulfilled') {
+        console.log('[App] ✅ 模型分类数据已加载')
       } else {
-        console.warn('[App] ⚠️ 用户配置为空或格式错误:', allCustom)
+        console.error('[App] ❌ 模型分类数据加载失败:', classificationsData.reason)
       }
+      
+      if (userCustomData.status === 'fulfilled') {
+        console.log('[App] ✅ 用户配置已加载')
+        console.log('[App] 加载的配置项:', Object.keys(userCustomData.value || {}))
+      } else {
+        console.error('[App] ❌ 用户配置加载失败:', userCustomData.reason)
+      }
+
+      // 兼容旧方式：加载到全局 state
+      if (userCustomData.status === 'fulfilled' && userCustomData.value) {
+        this.$store.dispatch('loadAllUserCustom', userCustomData.value)
+      }
+      
     } catch (e) {
-      console.error('[App] ❌ 加载用户配置失败:', e)
+      console.error('[App] ❌ 初始化加载失败:', e)
     }
     
     console.log('[App] 应用启动完成')

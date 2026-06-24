@@ -50,7 +50,7 @@
 <script>
 import { mapState, mapGetters, mapActions } from 'vuex'
 import debounce from 'lodash.debounce'
-import { MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
+import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_COLLECTION } from '@/dictionary/menu-symbol'
 import InstanceCount from '@/components/instance-count/index.vue'
 import { modelAPI } from '@/api/client'
 
@@ -74,6 +74,7 @@ export default {
     ...mapGetters('objectModelClassify', {
       classifications: 'classifications'
     }),
+    ...mapGetters('userCustom', ['resourceCollection']),
     filteredClassifications() {
       const result = []
       this.classifications.forEach((classification) => {
@@ -134,16 +135,28 @@ export default {
   },
   async mounted() {
     await this.loadData()
+    await this.loadUserCustom()
   },
   methods: {
     ...mapActions('objectModelClassify', [
       'searchClassificationsObjects'
+    ]),
+    ...mapActions('userCustom', [
+      'searchUsercustom',
+      'saveUsercustom'
     ]),
     async loadData() {
       try {
         await this.searchClassificationsObjects()
       } catch (error) {
         console.error('[ResourceIndex] 加载数据失败:', error)
+      }
+    },
+    async loadUserCustom() {
+      try {
+        await this.searchUsercustom()
+      } catch (error) {
+        console.error('[ResourceIndex] 加载用户配置失败:', error)
       }
     },
     async loadInstanceCounts(objIds) {
@@ -191,13 +204,32 @@ export default {
       })
     },
     isCollected(model) {
-      return false
+      return this.resourceCollection.includes(model.bk_obj_id)
     },
-    toggleCollection(model) {
-      this.$bkMessage({
-        message: `收藏功能开发中：${model.bk_obj_name}`,
-        theme: 'primary'
-      })
+    async toggleCollection(model) {
+      const isCollected = this.isCollected(model)
+      const oldCollection = this.resourceCollection || []
+      let newCollection
+      if (isCollected) {
+        newCollection = oldCollection.filter(id => id !== model.bk_obj_id)
+      } else {
+        newCollection = [...oldCollection, model.bk_obj_id]
+      }
+      try {
+        await this.saveUsercustom({
+          [MENU_RESOURCE_COLLECTION]: newCollection
+        })
+        this.$bkMessage({
+          message: isCollected ? '已取消收藏' : '已添加收藏',
+          theme: 'primary'
+        })
+      } catch (error) {
+        console.error('[ResourceIndex] 收藏操作失败:', error)
+        this.$bkMessage({
+          message: '操作失败，请重试',
+          theme: 'error'
+        })
+      }
     }
   }
 }
