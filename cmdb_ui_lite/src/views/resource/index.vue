@@ -25,7 +25,7 @@
               v-for="(model) in classify.bk_objects"
               :key="model.bk_obj_id"
               @click="redirect(model)">
-              <i :class="['model-icon','bk-icon', model['bk_obj_icon']]"></i>
+              <i :class="['model-icon','bk-icon', model['bk_obj_icon'] || 'icon-cc-default']"></i>
               <span class="model-name">{{model['bk_obj_name']}}</span>
               <i class="model-star bk-icon"
                 :class="[isCollected(model) ? 'icon-star-shape' : 'icon-star']"

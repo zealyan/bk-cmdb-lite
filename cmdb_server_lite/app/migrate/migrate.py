@@ -97,6 +97,10 @@ SYSTEM_FIELDS = {
     'modifier'
 }
 
+DEFAULT_OBJ_ICON = 'icon-cc-default'
+DEFAULT_CLASSIFICATION_ICON = 'icon-cc-default'
+DEFAULT_ASST_ICON = 'icon-cc-default'
+
 # 系统属性定义
 SYSTEM_PROPERTIES = [
     {
@@ -254,7 +258,7 @@ class DatabaseMigrator:
                 "id": cls["id"],
                 "bk_classification_id": cls["bk_classification_id"],
                 "bk_classification_name": cls["bk_classification_name"],
-                "bk_classification_icon": cls["bk_classification_icon"],
+                "bk_classification_icon": cls.get("bk_classification_icon") or DEFAULT_CLASSIFICATION_ICON,
                 "ispre": cls["ispre"]
             })
         logger.info(f"迁移 {len(CLASSIFICATIONS)} 个分类")
@@ -328,7 +332,7 @@ class DatabaseMigrator:
                     id INTEGER PRIMARY KEY,
                     bk_classification_id VARCHAR NOT NULL UNIQUE,
                     bk_classification_name VARCHAR NOT NULL,
-                    bk_classification_icon VARCHAR,
+                    bk_classification_icon VARCHAR DEFAULT 'icon-cc-default',
                     ispre BOOLEAN DEFAULT false,
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
@@ -339,7 +343,7 @@ class DatabaseMigrator:
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_obj_name VARCHAR NOT NULL,
-                    bk_obj_icon VARCHAR,
+                    bk_obj_icon VARCHAR DEFAULT 'icon-cc-default',
                     bk_classification_id VARCHAR,
                     ispre BOOLEAN DEFAULT false,
                     bk_ishidden BOOLEAN DEFAULT false,
@@ -407,7 +411,7 @@ class DatabaseMigrator:
                     id INTEGER,
                     bk_asst_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_asst_name VARCHAR NOT NULL,
-                    bk_asst_icon VARCHAR,
+                    bk_asst_icon VARCHAR DEFAULT 'icon-cc-default',
                     src_des VARCHAR DEFAULT '',
                     dest_des VARCHAR DEFAULT '',
                     direction VARCHAR DEFAULT 'forward',
@@ -494,7 +498,7 @@ class DatabaseMigrator:
                 'id': idx + 1,
                 'bk_obj_id': model_id,
                 'bk_obj_name': model.get("bk_obj_name"),
-                'bk_obj_icon': model.get("bk_obj_icon"),
+                'bk_obj_icon': model.get("bk_obj_icon") or DEFAULT_OBJ_ICON,
                 'bk_classification_id': classification_id,
                 'ispre': True,
                 'obj_sort_number': idx
@@ -917,12 +921,13 @@ class DatabaseMigrator:
         for idx, asst_type in enumerate(asst_types, 1):
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_AsstDes 
-                (id, bk_asst_id, bk_asst_name, src_des, dest_des, direction, ispre, bk_supplier_account, creator, modifier)
-                VALUES (:id, :bk_asst_id, :bk_asst_name, :src_des, :dest_des, :direction, :ispre, :bk_supplier_account, 'admin', 'admin')
+                (id, bk_asst_id, bk_asst_name, bk_asst_icon, src_des, dest_des, direction, ispre, bk_supplier_account, creator, modifier)
+                VALUES (:id, :bk_asst_id, :bk_asst_name, :bk_asst_icon, :src_des, :dest_des, :direction, :ispre, :bk_supplier_account, 'admin', 'admin')
             """, {
                 "id": idx,
                 "bk_asst_id": asst_type["bk_asst_id"],
                 "bk_asst_name": asst_type["bk_asst_name"],
+                "bk_asst_icon": asst_type.get("bk_asst_icon") or DEFAULT_ASST_ICON,
                 "src_des": asst_type["src_des"],
                 "dest_des": asst_type["dest_des"],
                 "direction": asst_type["direction"],
