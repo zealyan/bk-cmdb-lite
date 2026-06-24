@@ -811,7 +811,10 @@ export default {
         const filterTagRef = this.$refs?.filterTagRef
         const el = filterTagRef?.$el || filterTagRef
         if (el && el.getBoundingClientRect) {
-          this.filterTagHeight = el.getBoundingClientRect().height
+          const style = getComputedStyle(el)
+          const marginTop = parseFloat(style.marginTop) || 0
+          const marginBottom = parseFloat(style.marginBottom) || 0
+          this.filterTagHeight = el.getBoundingClientRect().height + marginTop + marginBottom
         } else {
           this.filterTagHeight = 0
         }
