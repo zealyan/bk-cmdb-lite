@@ -58,7 +58,7 @@ class UserService:
         try:
             config_key = f"columns_{obj_id}"
             result = query_one(
-                'user/select_user_custom.sql', 
+                'user/select_user_custom_by_key.sql', 
                 {'user_name': user_name, 'config_key': config_key}
             )
             if result:

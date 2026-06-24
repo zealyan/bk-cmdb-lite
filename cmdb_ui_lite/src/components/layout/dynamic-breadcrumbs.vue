@@ -44,9 +44,12 @@ export default {
     }
   },
   watch: {
-    $route() {
-      this.$store.commit('setCustomBreadcrumbs', { enable: false })
-      this.$store.commit('setTitle', '')
+    $route(newRoute, oldRoute) {
+      if (newRoute.name !== oldRoute.name ||
+          JSON.stringify(newRoute.params) !== JSON.stringify(oldRoute.params)) {
+        this.$store.commit('setCustomBreadcrumbs', { enable: false })
+        this.$store.commit('setTitle', '')
+      }
     }
   },
   methods: {
