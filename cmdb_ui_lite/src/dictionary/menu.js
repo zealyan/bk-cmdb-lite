@@ -2,7 +2,6 @@ import {
   MENU_RESOURCE,
   MENU_MODEL,
   MENU_RESOURCE_MANAGEMENT,
-  MENU_RESOURCE_HOST,
   MENU_MODEL_MANAGEMENT
 } from './menu-symbol'
 
@@ -15,13 +14,6 @@ const menus = [{
     icon: 'icon-cc-square',
     route: {
       name: MENU_RESOURCE_MANAGEMENT
-    }
-  }, {
-    id: MENU_RESOURCE_HOST,
-    i18n: '主机',
-    icon: 'icon-cc-host',
-    route: {
-      name: MENU_RESOURCE_HOST
     }
   }]
 }, {

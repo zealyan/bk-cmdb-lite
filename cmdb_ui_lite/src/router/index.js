@@ -4,7 +4,6 @@ import dynamicRouterView from '@/components/layout/dynamic-router-view'
 import {
   MENU_RESOURCE,
   MENU_RESOURCE_MANAGEMENT,
-  MENU_RESOURCE_HOST,
   MENU_RESOURCE_INSTANCE,
   MENU_RESOURCE_INSTANCE_DETAILS,
   MENU_MODEL,
@@ -41,11 +40,6 @@ const routes = [
             breadcrumbs: true
           }
         }
-      },
-      {
-        name: MENU_RESOURCE_HOST,
-        path: 'host',
-        redirect: { name: MENU_RESOURCE_INSTANCE, params: { objId: 'bk_host' } }
       },
       {
         name: MENU_RESOURCE_INSTANCE,
