@@ -1,5 +1,6 @@
 <template>
   <bk-sideslider
+    transfer
     :is-show.sync="sliderShow"
     :title="'新增关联'"
     :width="sliderWidth"
@@ -678,6 +679,30 @@ export default {
               field: this.filter.id,
               operator: 'not_in',
               value: values
+            })
+          } else if (this.filter.operator === '$gt') {
+            conditions.push({
+              field: this.filter.id,
+              operator: 'greater_than',
+              value: value
+            })
+          } else if (this.filter.operator === '$gte') {
+            conditions.push({
+              field: this.filter.id,
+              operator: 'greater_or_equal',
+              value: value
+            })
+          } else if (this.filter.operator === '$lt') {
+            conditions.push({
+              field: this.filter.id,
+              operator: 'less_than',
+              value: value
+            })
+          } else if (this.filter.operator === '$lte') {
+            conditions.push({
+              field: this.filter.id,
+              operator: 'less_or_equal',
+              value: value
             })
           }
         }

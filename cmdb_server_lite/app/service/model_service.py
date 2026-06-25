@@ -1,19 +1,28 @@
 from app.db.executor import query_all, query_one
 import json
 
+DEFAULT_OBJ_ICON = 'icon-cc-default'
+
 class ModelService:
     
     @staticmethod
     def get_all_models():
         """获取所有模型"""
-        return query_all('model/select_models.sql', {})
+        models = query_all('model/select_models.sql', {})
+        for model in models:
+            if not model.get('bk_obj_icon'):
+                model['bk_obj_icon'] = DEFAULT_OBJ_ICON
+        return models
     
     @staticmethod
     def get_model_by_id(model_id):
         """获取模型详情"""
-        return query_one('model/select_model_by_id.sql', {
+        model = query_one('model/select_model_by_id.sql', {
             'model_id': model_id
         })
+        if model and not model.get('bk_obj_icon'):
+            model['bk_obj_icon'] = DEFAULT_OBJ_ICON
+        return model
     
     @staticmethod
     def get_model_attributes(model_id):

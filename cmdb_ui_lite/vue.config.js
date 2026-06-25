@@ -5,6 +5,13 @@ module.exports = {
   outputDir: 'dist',
   assetsDir: 'static',
   productionSourceMap: false,
+  css: {
+    loaderOptions: {
+      scss: {
+        additionalData: `@import "@/assets/scss/_vars.scss"; @import "@/assets/scss/_mixins.scss";`
+      }
+    }
+  },
   devServer: {
     port: 8080,
     open: false,

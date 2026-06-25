@@ -172,6 +172,7 @@
     </div>
 
     <bk-sideslider
+      transfer
       :is-show.sync="columnsConfig.show"
       :title="'列表显示属性配置'"
       :width="sidesliderWidth"
@@ -193,6 +194,7 @@
 
     <!-- 新增实例弹窗 -->
     <bk-sideslider
+      transfer
       :is-show.sync="createDialogVisible"
       :title="'新增实例'"
       :width="createSidesliderWidth"
@@ -221,6 +223,7 @@
 
     <!-- 批量更新弹窗 -->
     <bk-sideslider
+      transfer
       :is-show.sync="batchUpdateDialogVisible"
       :title="'批量更新'"
       :width="createSidesliderWidth"
@@ -264,9 +267,12 @@ import routerQuery from '@/utils/router-query'
 import QS from 'qs'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
+import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
+import AppMixin from '@/mixins/app'
 
 export default {
   name: 'GeneralModel',
+  mixins: [AppMixin],
   components: {
     ColumnsConfig,
     FilterTag,
@@ -299,6 +305,7 @@ export default {
       createFormLoading: false,
       batchUpdateDialogVisible: false,
       batchUpdateFormLoading: false,
+      modelIndex: modelIndex.models,
       table: {
         list: [],
         header: [],
@@ -335,12 +342,14 @@ export default {
       isUrlUpdateTriggered: false,
       searchTimeout: null,
       filterTagHeight: 0,
-      tableMaxHeight: 600
+      tableMaxHeight: 600,
+      MENU_RESOURCE_INSTANCE_DETAILS,
+      MENU_RESOURCE_MANAGEMENT
     }
   },
   computed: {
     modelName() {
-      const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)
+      const model = (this.modelIndex || []).find(m => m.bk_obj_id === this.objId)
       return model ? model.bk_obj_name : this.objId
     },
     searchableProperties() {
@@ -440,13 +449,7 @@ export default {
       return this.enumOptions.filter(opt => opt.name.toLowerCase().includes(query))
     },
     tableContentHeight() {
-      // 计算从表格顶部到窗口底部的距离
-      // 表格顶部位置 = 面包屑(40) + padding(15) + 工具栏(32) + margin(14) = 101
-      // 窗口底部位置 = window.innerHeight
-      // 可用空间 = window.innerHeight - 表格顶部位置 - 分页高度(63) - 底部缓冲(12)
-      const tableTop = 40 + 15 + 32 + 14 + (this.filterTagHeight || 0)
-      const baseHeight = this.$APP?.height || window.innerHeight
-      return Math.max(200, baseHeight - tableTop - 63 - 12)
+      return Math.max(200, this.$APP.height - (this.filterTagHeight || 0) - 190)
     },
     hasFilterCondition() {
       return this.visibleFilterTags.length > 0
@@ -514,6 +517,7 @@ export default {
   },
   created() {
     this.objId = this.$route.params.objId || 'bk_switch'
+    this.updateBreadcrumbs()
 
     this.stopRouteQueryWatch = routerQuery.watch('*', (query, oldQuery) => {
       console.log('[Index.watch] URL变化被触发', { query, oldQuery })
@@ -693,6 +697,7 @@ export default {
       handler(newObjId) {
         if (newObjId !== this.objId) {
           this.objId = newObjId || 'bk_switch'
+          this.updateBreadcrumbs()
           this.restoreStateFromUrl()
           this.loadModelData()
         }
@@ -788,33 +793,48 @@ export default {
     }
   },
   methods: {
+    updateBreadcrumbs() {
+      this.$nextTick(() => {
+        this.$store.commit('setCustomBreadcrumbs', {
+          enable: true,
+          title: this.modelName,
+          backward: () => {
+            this.$router.push({
+              name: this.MENU_RESOURCE_MANAGEMENT
+            })
+          }
+        })
+      })
+    },
     updateFilterTagHeight() {
       setTimeout(() => {
         const filterTagRef = this.$refs?.filterTagRef
         const el = filterTagRef?.$el || filterTagRef
         if (el && el.getBoundingClientRect) {
-          this.filterTagHeight = el.getBoundingClientRect().height
+          const style = getComputedStyle(el)
+          const marginTop = parseFloat(style.marginTop) || 0
+          const marginBottom = parseFloat(style.marginBottom) || 0
+          this.filterTagHeight = el.getBoundingClientRect().height + marginTop + marginBottom
         } else {
           this.filterTagHeight = 0
         }
       }, 300)
     },
     calculateTableHeight() {
-      // 通过 DOM 直接获取 .views-layout 实际可用高度, 这样不受视口变化影响
-      // .views-layout 高度 = 100vh - 52 (header)
-      // 减去内容区上方的: breadcrumbs(40) + general-model-layout padding-top(15) + options(32) + margin(14) = 101
-      // 减去内容区下方的: buffer(12) = 12
-      // 总减法 = 52 (header) + 40 (breadcrumbs) + 15 (padding) + 32 (options) + 14 (margin) + 12 (buffer) = 165
-      const viewsLayout = document.querySelector('.views-layout')
-      if (viewsLayout) {
-        const layoutHeight = viewsLayout.getBoundingClientRect().height
-        const newHeight = Math.max(200, layoutHeight - 40 - 15 - 32 - 14 - 12 - (this.filterTagHeight || 0))
-        console.log('[calculateTableHeight] viewsLayout.height:', layoutHeight, 'filterTagHeight:', this.filterTagHeight, 'newHeight:', newHeight, 'oldHeight:', this.tableMaxHeight)
+      // 通过 DOM 直接获取 .main-scroller 实际可用高度, 这样不受视口变化影响
+      // main-scroller 高度 = main-layout 高度 = views-layout 高度 - 面包屑(53)
+      // 减去内容区上方的: general-model-layout padding-top(15) + options(32) + margin(14) = 61
+      // 减去内容区下方的: buffer(12) + pagination(63) = 75
+      const mainScroller = document.querySelector('.main-scroller')
+      if (mainScroller) {
+        const scrollerHeight = mainScroller.getBoundingClientRect().height
+        const newHeight = Math.max(200, scrollerHeight - 15 - 32 - 14 - 12 - 63 - (this.filterTagHeight || 0))
+        console.log('[calculateTableHeight] mainScroller.height:', scrollerHeight, 'filterTagHeight:', this.filterTagHeight, 'newHeight:', newHeight, 'oldHeight:', this.tableMaxHeight)
         this.tableMaxHeight = newHeight
       } else {
         // fallback: 使用 $APP.height 推算
-        const contentHeight = (this.$APP?.height || window.innerHeight) - 52 - 40
-        this.tableMaxHeight = Math.max(200, contentHeight - (this.filterTagHeight || 0) - 73)
+        const contentHeight = (this.$APP?.height || window.innerHeight) - 52 - 53
+        this.tableMaxHeight = Math.max(200, contentHeight - (this.filterTagHeight || 0) - 15 - 32 - 14 - 12 - 63)
       }
     },
     async loadModelData(searchParams = null) {
@@ -1969,7 +1989,7 @@ export default {
       })
       this.prevInstanceId = instance.bk_inst_id
       this.$router.push({
-        name: 'ResourceInstanceDetails',
+        name: MENU_RESOURCE_INSTANCE_DETAILS,
         params: { objId: this.objId, instId: instance.bk_inst_id }
       })
     },
@@ -2261,7 +2281,7 @@ export default {
     },
     goBackToResource() {
       console.log('[Persistence] goBackToResource called, navigating to /resource')
-      this.$router.push({ name: 'Resource' })
+      this.$router.push({ name: MENU_RESOURCE_MANAGEMENT })
     }
   }
 }
@@ -2280,7 +2300,8 @@ export default {
   margin-top: 0;
 }
 
-.models-table {
+.general-model-layout .models-table {
+  margin-top: 0 !important;
 }
 
 .models-options {
@@ -2684,10 +2705,6 @@ export default {
   }
 }
 
-.models-table {
-  margin-top: 14px;
-}
-
 .bk-table-pagination-wrapper {
   background: #fff;
   border-top: 1px solid #eaeaea;
@@ -2745,10 +2762,6 @@ export default {
 
 .filter-tag-wrapper {
   margin-top: 10px;
-}
-
-.filter-tag-wrapper ~ .models-table {
-  margin-top: 0;
 }
 
 @media screen and (max-width: 768px) {

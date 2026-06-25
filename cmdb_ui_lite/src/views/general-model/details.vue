@@ -65,6 +65,7 @@ import EditableProperty from '@/components/property/editable-property.vue'
 import { modelAPI } from '@/api/client'
 import modelIndex from '@/assets/api/index.json'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
+import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'ModelDetails',
@@ -86,7 +87,9 @@ export default {
       isDataReady: false,
       associationLoading: false,
       editingPropertyId: null,
-      associationKey: 0
+      associationKey: 0,
+      MENU_RESOURCE_INSTANCE,
+      MENU_RESOURCE_MANAGEMENT
     }
   },
   computed: {
@@ -222,6 +225,10 @@ export default {
         
         this.isDataReady = true
         
+        this.$nextTick(() => {
+          this.updateBreadcrumbs()
+        })
+        
       } catch (error) {
         console.error('加载实例数据失败:', error)
       } finally {
@@ -264,12 +271,28 @@ export default {
       this.$router.go(-1)
     },
     goToResource () {
-      this.$router.push({ name: 'Resource' })
+      this.$router.push({ name: MENU_RESOURCE_MANAGEMENT })
     },
     goToInstanceList () {
       this.$router.push({
-        name: 'GeneralModel',
+        name: MENU_RESOURCE_INSTANCE,
         params: { objId: this.objId }
+      })
+    },
+    updateBreadcrumbs () {
+      const objId = this.objId
+      const title = `${this.modelName} ${this.instanceName ? '【' + this.instanceName + '】' : ''}`
+      this.$nextTick(() => {
+        this.$store.commit('setCustomBreadcrumbs', {
+          enable: true,
+          title: title,
+          backward: () => {
+            this.$router.push({
+              name: MENU_RESOURCE_INSTANCE,
+              params: { objId }
+            })
+          }
+        })
       })
     },
     viewInstance () {

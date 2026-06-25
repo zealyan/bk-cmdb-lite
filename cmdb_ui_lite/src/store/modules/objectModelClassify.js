@@ -67,6 +67,9 @@ const actions = {
       const data = Array.isArray(response) ? response : (response.data || response.result || [])
       console.log('[ObjectModelClassify] 处理后的数据:', data)
       
+      data?.forEach(group => group?.bk_objects
+        ?.sort((first, last) => (first?.obj_sort_number ?? 0) - (last?.obj_sort_number ?? 0)))
+      
       commit('SET_CLASSIFICATIONS_WITH_OBJECTS', data)
       return data
     } catch (error) {

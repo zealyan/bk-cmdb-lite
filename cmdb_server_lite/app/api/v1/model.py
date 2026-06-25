@@ -244,3 +244,35 @@ def get_related_instances(instance_id):
     except Exception as e:
         logger.error(f"Error getting related instances: {e}")
         return jsonify({'detail': str(e)}), 500
+
+
+@model_bp.route('/instances/count', methods=['POST'])
+def get_instances_count():
+    """批量获取模型实例数量统计"""
+    try:
+        data = request.get_json() or {}
+        obj_ids = data.get('obj_ids', [])
+        
+        if not obj_ids:
+            return jsonify({'counts': []})
+        
+        counts = []
+        for obj_id in obj_ids:
+            try:
+                count = InstanceService.count_instances(obj_id)
+                counts.append({
+                    'bk_obj_id': obj_id,
+                    'inst_count': count
+                })
+            except Exception as e:
+                logger.error(f"Error counting instances for {obj_id}: {e}")
+                counts.append({
+                    'bk_obj_id': obj_id,
+                    'inst_count': 0,
+                    'error': str(e)
+                })
+        
+        return jsonify({'counts': counts})
+    except Exception as e:
+        logger.error(f"Error getting instances count: {e}")
+        return jsonify({'detail': str(e)}), 500

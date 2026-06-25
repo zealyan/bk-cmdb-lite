@@ -159,6 +159,11 @@ export const modelAPI = {
   // 批量更新实例（格式2：多个实例使用相同数据）
   batchUpdateInstancesWithSameData (modelId, ids, data) {
     return http.put(`/api/v1/models/${modelId}/instances`, { ids, data })
+  },
+
+  // 批量获取模型实例数量统计
+  getInstanceCounts (objIds = []) {
+    return http.post('/api/v1/models/instances/count', { obj_ids: objIds })
   }
 }
 

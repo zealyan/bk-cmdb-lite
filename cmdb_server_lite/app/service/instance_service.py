@@ -182,7 +182,8 @@ class InstanceService:
                 if is_fuzzy:
                     op = '$regex'
                 
-                where_clause, param_counter = InstanceService._build_condition(field, op, value, params, param_counter)
+                field_type = attr_type_map.get(field, '')
+                where_clause, param_counter = InstanceService._build_condition(field, op, value, params, param_counter, field_type)
                 if where_clause:
                     where_clauses.append(where_clause)
         
@@ -193,16 +194,36 @@ class InstanceService:
 
             # 处理日期范围
             if search_start or search_end:
+                field_type = attr_type_map.get(safe_field, '')
+                is_numeric = field_type in ('int', 'long', 'float', 'double')
                 if search_start:
-                    safe_start = str(search_start).strip()
+                    if is_numeric:
+                        try:
+                            if field_type in ('int', 'long'):
+                                params['search_start'] = int(search_start)
+                            else:
+                                params['search_start'] = float(search_start)
+                        except (ValueError, TypeError):
+                            params['search_start'] = str(search_start).strip()
+                    else:
+                        params['search_start'] = str(search_start).strip()
                     where_clauses.append(f'"{safe_field}" >= :search_start')
-                    params['search_start'] = safe_start
                 if search_end:
-                    safe_end = str(search_end).strip()
+                    if is_numeric:
+                        try:
+                            if field_type in ('int', 'long'):
+                                params['search_end'] = int(search_end)
+                            else:
+                                params['search_end'] = float(search_end)
+                        except (ValueError, TypeError):
+                            params['search_end'] = str(search_end).strip()
+                    else:
+                        params['search_end'] = str(search_end).strip()
                     where_clauses.append(f'"{safe_field}" <= :search_end')
-                    params['search_end'] = safe_end
             else:
                 # 处理普通搜索
+                field_type = attr_type_map.get(safe_field, '')
+                is_numeric_field = field_type in ('int', 'long', 'float', 'double')
                 if search_values:
                     # 兼容字符串（逗号分隔）和列表两种输入形式
                     if isinstance(search_values, str):
@@ -217,14 +238,34 @@ class InstanceService:
                             parsed_val = InstanceService._parse_bool_value_for_search(v)
                             if parsed_val is not None:
                                 val_list.append(parsed_val)
+                    elif is_numeric_field:
+                        val_list = []
+                        for v in raw_values:
+                            if v is None or v == '':
+                                continue
+                            try:
+                                if field_type in ('int', 'long'):
+                                    val_list.append(int(v))
+                                else:
+                                    val_list.append(float(v))
+                            except (ValueError, TypeError):
+                                val_list.append(str(v).strip())
                     else:
                         val_list = [str(v).strip() for v in raw_values if v]
                 elif search_value:
                     if is_bool_field:
                         parsed = InstanceService._parse_bool_value_for_search(search_value)
                         val_list = [parsed] if parsed is not None else []
+                    elif is_numeric_field:
+                        try:
+                            if field_type in ('int', 'long'):
+                                val_list = [int(search_value)]
+                            else:
+                                val_list = [float(search_value)]
+                        except (ValueError, TypeError):
+                            val_list = [str(search_value).strip()]
                     else:
-                        val_list = [search_value.strip()]
+                        val_list = [str(search_value).strip()]
                 else:
                     val_list = []
                 
@@ -423,11 +464,14 @@ class InstanceService:
         return 1 if bool(value) else 0
 
     @staticmethod
-    def _build_condition(field, op, value, params, param_counter):
+    def _build_condition(field, op, value, params, param_counter, field_type=''):
         """构建单个条件（使用参数化查询）"""
         safe_field = field.strip()
         if not safe_field.replace('_', '').replace('-', '').isalnum():
             return None, param_counter
+
+        numeric_types = ('int', 'long', 'float', 'double')
+        is_numeric = field_type in numeric_types
 
         # 解析多个值。如果值已经是整数/布尔类型，保持原样（避免 bool 的 1/0 被转成字符串）
         if isinstance(value, list):
@@ -435,18 +479,38 @@ class InstanceService:
             for v in value:
                 if v is None or (isinstance(v, str) and v.strip() == ''):
                     continue
-                if isinstance(v, (int, float)) and not isinstance(v, bool):
-                    val_list.append(v)
-                elif isinstance(v, bool):
+                if isinstance(v, bool):
                     val_list.append(1 if v else 0)
+                elif isinstance(v, (int, float)):
+                    val_list.append(v)
+                elif is_numeric:
+                    try:
+                        if field_type in ('int', 'long'):
+                            val_list.append(int(v))
+                        else:
+                            val_list.append(float(v))
+                    except (ValueError, TypeError):
+                        val_list.append(str(v).strip())
                 else:
                     val_list.append(str(v).strip())
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            val_list = [value]
         elif isinstance(value, bool):
             val_list = [1 if value else 0]
+        elif isinstance(value, (int, float)):
+            val_list = [value]
         elif isinstance(value, str):
-            val_list = [v.strip() for v in value.split(',') if v.strip()]
+            raw_values = [v.strip() for v in value.split(',') if v.strip()]
+            if is_numeric:
+                val_list = []
+                for v in raw_values:
+                    try:
+                        if field_type in ('int', 'long'):
+                            val_list.append(int(v))
+                        else:
+                            val_list.append(float(v))
+                    except (ValueError, TypeError):
+                        val_list.append(v)
+            else:
+                val_list = raw_values
         else:
             val_list = [str(value).strip()]
         

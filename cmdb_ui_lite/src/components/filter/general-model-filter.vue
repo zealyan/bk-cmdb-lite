@@ -1,5 +1,6 @@
 <template>
   <bk-sideslider
+    transfer
     :is-show.sync="isShow"
     :title="title"
     :width="sidesliderWidth"

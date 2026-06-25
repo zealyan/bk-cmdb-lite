@@ -1,67 +1,69 @@
 <template>
-  <div class="cmdb-page">
-    <div class="page-header">
-      <h2>资源目录</h2>
+  <div class="classify-layout clearfix">
+    <div class="classify-filter">
+      <bk-input class="filter-input"
+        clearable
+        placeholder="请输入关键字"
+        right-icon="icon-search"
+        v-model.trim="filter">
+      </bk-input>
     </div>
-
-    <div v-bkloading="{ isLoading: loading }" class="resource-content">
-      <div v-if="error" class="error-message">
-        <i class="bk-icon icon-cc-tips"></i>
-        <span>{{ error }}</span>
-        <bk-button text theme="primary" @click="loadData">重试</bk-button>
-      </div>
-
-      <template v-else>
-        <div
-          v-for="classification in classificationsWithModels"
-          :key="classification.bk_classification_id"
-          class="classification-section">
-          <div class="classification-header">
-            <i :class="getClassificationIcon(classification.bk_classification_id)"></i>
-            <h3>{{ classification.bk_classification_name }}</h3>
-            <span class="model-count">{{ classification.bk_objects?.length || 0 }} 个模型</span>
-          </div>
-
-          <div class="resource-grid">
-            <div
-              v-for="model in classification.bk_objects"
+    <div v-show="!isEmpty">
+      <div class="classify-waterfall fl"
+        v-for="col in classifyColumns.length"
+        :key="col">
+        <div class="classify"
+          v-for="classify in classifyColumns[col - 1]"
+          :key="classify['bk_classification_id']">
+          <h4 class="classify-name" :title="classify['bk_classification_name']">
+            <span class="classify-name-text">{{classify['bk_classification_name']}}</span>
+            <span class="classify-name-count">{{classify.bk_objects.length}}</span>
+          </h4>
+          <div class="models-layout">
+            <div :class="['models-link']"
+              :title="model['bk_obj_name']"
+              v-for="(model) in classify.bk_objects"
               :key="model.bk_obj_id"
-              class="resource-card"
-              :class="{ 'is-hover': hoveredModel === model.bk_obj_id }"
-              @click="handleModelClick(model)"
-              @mouseenter="hoveredModel = model.bk_obj_id"
-              @mouseleave="hoveredModel = null">
-              <div class="card-icon" :class="getIconClass(model.bk_obj_id)">
-                <i :class="'bk-icon ' + (model.bk_obj_icon || 'icon-cc-default')"></i>
-              </div>
-              <div class="card-info">
-                <h4>{{ model.bk_obj_name }}</h4>
-                <p>{{ getModelDescription(model.bk_obj_id) }}</p>
-              </div>
-              <div class="card-arrow">
-                <i class="bk-icon icon-cc-arrow-square-right"></i>
+              @click="redirect(model)">
+              <i :class="['model-icon','bk-icon', model['bk_obj_icon'] || 'icon-cc-default']"></i>
+              <span class="model-name">{{model['bk_obj_name']}}</span>
+              <i class="model-star bk-icon"
+                :class="[isCollected(model) ? 'icon-star-shape' : 'icon-star']"
+                @click.prevent.stop="toggleCollection(model)">
+              </i>
+              <div class="model-instance-count">
+                <instance-count :obj-id="model.bk_obj_id" :counts="instanceCounts" />
               </div>
             </div>
           </div>
         </div>
-
-        <div v-if="classificationsWithModels.length === 0 && !loading" class="empty-state">
-          <i class="bk-icon icon-cc-search-list"></i>
-          <p>暂无可用的资源模型</p>
-        </div>
-      </template>
+      </div>
+    </div>
+    <div v-if="isEmpty && !loading" class="cmdb-data-empty">
+      <i class="bk-icon icon-search-list"></i>
+      <p>暂无匹配的资源模型</p>
+      <bk-button text theme="primary" @click="handleClearFilter">清空</bk-button>
     </div>
   </div>
 </template>
 
 <script>
 import { mapState, mapGetters, mapActions } from 'vuex'
+import debounce from 'lodash.debounce'
+import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_COLLECTION } from '@/dictionary/menu-symbol'
+import InstanceCount from '@/components/instance-count/index.vue'
+import { modelAPI } from '@/api/client'
 
 export default {
   name: 'ResourceIndex',
+  components: {
+    InstanceCount
+  },
   data() {
     return {
-      hoveredModel: null
+      filter: '',
+      matchedModels: null,
+      instanceCounts: []
     }
   },
   computed: {
@@ -70,18 +72,79 @@ export default {
       error: 'error'
     }),
     ...mapGetters('objectModelClassify', {
-      classifications: 'classifications',
-      classificationsWithModels: 'classifications'
-    })
+      classifications: 'classifications'
+    }),
+    ...mapGetters('userCustom', ['resourceCollection']),
+    filteredClassifications() {
+      const result = []
+      this.classifications.forEach((classification) => {
+        const models = classification.bk_objects.filter((model) => {
+          const isMatched = this.matchedModels ? this.matchedModels.includes(model.bk_obj_id) : true
+          return isMatched
+        })
+        if (models.length) {
+          result.push({
+            ...classification,
+            bk_objects: models
+          })
+        }
+      })
+      return result
+    },
+    classifyColumns() {
+      const colHeight = [0, 0, 0, 0]
+      const classifyColumns = [[], [], [], []]
+      this.filteredClassifications.forEach((classify) => {
+        const minColHeight = Math.min(...colHeight)
+        const rowIndex = colHeight.indexOf(minColHeight)
+        classifyColumns[rowIndex].push(classify)
+        colHeight[rowIndex] += this.calcWaterfallHeight(classify)
+      })
+      return classifyColumns
+    },
+    isEmpty() {
+      return this.filteredClassifications.length === 0
+    },
+    allObjIds() {
+      const ids = []
+      this.filteredClassifications.forEach((classify) => {
+        classify.bk_objects.forEach((model) => {
+          ids.push(model.bk_obj_id)
+        })
+      })
+      return ids
+    }
+  },
+  watch: {
+    filter: {
+      handler(val) {
+        this.debounceFilter(val)
+      }
+    },
+    allObjIds: {
+      handler(ids) {
+        if (ids.length > 0) {
+          this.loadInstanceCounts(ids)
+        }
+      },
+      immediate: true
+    }
+  },
+  created() {
+    this.debounceFilter = debounce(this.handleFilter, 300)
   },
   async mounted() {
     await this.loadData()
+    await this.loadUserCustom()
   },
   methods: {
     ...mapActions('objectModelClassify', [
       'searchClassificationsObjects'
     ]),
-
+    ...mapActions('userCustom', [
+      'searchUsercustom',
+      'saveUsercustom'
+    ]),
     async loadData() {
       try {
         await this.searchClassificationsObjects()
@@ -89,261 +152,265 @@ export default {
         console.error('[ResourceIndex] 加载数据失败:', error)
       }
     },
-
-    handleModelClick(model) {
-      console.log('[ResourceIndex] 点击模型:', model.bk_obj_id, model.bk_obj_name)
+    async loadUserCustom() {
+      try {
+        await this.searchUsercustom()
+      } catch (error) {
+        console.error('[ResourceIndex] 加载用户配置失败:', error)
+      }
+    },
+    async loadInstanceCounts(objIds) {
+      try {
+        const response = await modelAPI.getInstanceCounts(objIds)
+        this.instanceCounts = response.counts || []
+      } catch (error) {
+        console.error('[ResourceIndex] 加载实例数量失败:', error)
+        this.instanceCounts = objIds.map(id => ({
+          bk_obj_id: id,
+          inst_count: 0,
+          error: true
+        }))
+      }
+    },
+    handleFilter(val) {
+      if (!val) {
+        this.matchedModels = null
+        return
+      }
+      const keyword = val.toLowerCase()
+      const matched = []
+      this.classifications.forEach((classification) => {
+        classification.bk_objects.forEach((model) => {
+          if (
+            model.bk_obj_name.toLowerCase().includes(keyword) ||
+            model.bk_obj_id.toLowerCase().includes(keyword)
+          ) {
+            matched.push(model.bk_obj_id)
+          }
+        })
+      })
+      this.matchedModels = matched
+    },
+    handleClearFilter() {
+      this.filter = ''
+      this.matchedModels = null
+    },
+    calcWaterfallHeight(classify) {
+      return 46 + 16 + (classify.bk_objects.length * 36)
+    },
+    redirect(model) {
       this.$router.push({
-        name: 'ResourceInstanceList',
-        params: { objId: model.bk_obj_id }
+        name: MENU_RESOURCE_INSTANCE,
+        params: {
+          objId: model.bk_obj_id
+        }
       })
     },
-
-    getIconClass(objId) {
-      const iconMap = {
-        bk_switch: 'switch-icon',
-        bk_host: 'host-icon',
-        bk_slb: 'lb-icon',
-        bk_slb_server: 'server-icon',
-        bk_slb_listener: 'listener-icon'
-      }
-      return iconMap[objId] || 'default-icon'
+    isCollected(model) {
+      return this.resourceCollection.includes(model.bk_obj_id)
     },
-
-    getClassificationIcon(classificationId) {
-      const iconMap = {
-        bk_network: 'bk-icon icon-cc-network',
-        bk_host_manage: 'bk-icon icon-cc-host',
-        bk_loadbalance: 'bk-icon icon-cc-loadbalance'
+    async toggleCollection(model) {
+      const isCollected = this.isCollected(model)
+      const oldCollection = this.resourceCollection || []
+      let newCollection
+      if (isCollected) {
+        newCollection = oldCollection.filter(id => id !== model.bk_obj_id)
+      } else {
+        newCollection = [...oldCollection, model.bk_obj_id]
       }
-      return iconMap[classificationId] || 'bk-icon icon-cc-app'
-    },
-
-    getModelDescription(objId) {
-      const descMap = {
-        bk_switch: '交换机网络设备管理',
-        bk_host: '管理所有主机资源',
-        bk_slb: '负载均衡器实例',
-        bk_slb_server: '后端服务器实例',
-        bk_slb_listener: '负载均衡监听器'
+      try {
+        await this.saveUsercustom({
+          [MENU_RESOURCE_COLLECTION]: newCollection
+        })
+        this.$bkMessage({
+          message: isCollected ? '已取消收藏' : '已添加收藏',
+          theme: 'primary'
+        })
+      } catch (error) {
+        console.error('[ResourceIndex] 收藏操作失败:', error)
+        this.$bkMessage({
+          message: '操作失败，请重试',
+          theme: 'error'
+        })
       }
-      return descMap[objId] || '查看和管理实例'
     }
   }
 }
 </script>
 
 <style lang="scss" scoped>
-.cmdb-page {
+.classify-layout {
   padding: 20px;
+  min-height: 100%;
 }
 
-.page-header {
-  margin-bottom: 24px;
+.classify-filter {
+  margin-bottom: 20px;
 
-  h2 {
-    font-size: 20px;
-    font-weight: 600;
-    color: #303133;
-    margin: 0;
+  .filter-input {
+    width: 280px;
   }
 }
 
-.resource-content {
-  min-height: 200px;
-}
+.classify-waterfall {
+  width: 25%;
+  padding: 0 10px;
+  box-sizing: border-box;
 
-.error-message {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px;
-  background: #fff1f0;
-  border: 1px solid #ffa198;
-  border-radius: 4px;
-  color: #ea3636;
-
-  .bk-icon {
-    font-size: 16px;
+  &:first-child {
+    padding-left: 0;
   }
-}
-
-.classification-section {
-  margin-bottom: 32px;
 
   &:last-child {
-    margin-bottom: 0;
+    padding-right: 0;
   }
 }
 
-.classification-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #eaeaea;
+.classify {
+  margin: 0 0 20px 0;
+  background-color: #fff;
+  border: 1px solid #ebf0f5;
+  box-shadow: 0px 3px 6px 0px rgba(51, 60, 72, 0.05);
+}
 
-  .bk-icon {
-    font-size: 20px;
-    color: #3a84ff;
+.classify-name {
+  padding: 13px 5px;
+  margin: 0 20px;
+  line-height: 20px;
+  font-size: 0;
+  color: #313238;
+  border-bottom: 1px solid #ebf0f5;
+
+  &-text {
+    display: inline-block;
+    padding: 0 2px 0 0;
+    vertical-align: middle;
+    max-width: calc(100% - 40px);
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: #303133;
-    margin: 0;
-  }
-
-  .model-count {
+  &-count {
+    display: inline-block;
+    width: 40px;
+    vertical-align: middle;
     font-size: 12px;
     color: #979ba5;
-    background: #f0f1f5;
-    padding: 2px 8px;
-    border-radius: 10px;
   }
 }
 
-.resource-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
+.models-layout {
+  padding: 8px 0;
 
-.resource-card {
-  background: #fff;
-  border-radius: 4px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  border: 1px solid #eaeaea;
-  position: relative;
-  overflow: hidden;
+  .models-link {
+    display: block;
+    height: 38px;
+    font-size: 0;
+    position: relative;
+    padding: 7px 25px;
+    cursor: pointer;
 
-  &::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: transparent;
-    transition: background 0.2s;
-  }
-
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
-    border-color: #3a84ff;
-
-    &::before {
-      background: #3a84ff;
+    &:hover {
+      background-color: #ecf3ff;
     }
 
-    .card-arrow {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  .card-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    color: #fff;
-    flex-shrink: 0;
-
-    &.host-icon {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    &:before {
+      content: "";
+      display: inline-block;
+      height: 100%;
+      vertical-align: middle;
     }
 
-    &.switch-icon {
-      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    &:hover .model-icon,
+    &:hover .model-name {
+      color: #3A84FF;
     }
 
-    &.lb-icon {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    &:hover .model-star {
+      display: inline-block;
     }
 
-    &.server-icon {
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    .model-icon,
+    .model-name {
+      display: inline-block;
+      vertical-align: middle;
     }
 
-    &.listener-icon {
-      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    .model-icon {
+      font-size: 16px;
+      color: #798AAD;
     }
 
-    &.default-icon {
-      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-      color: #63656e;
-    }
-
-    .bk-icon {
-      font-size: 24px;
-    }
-  }
-
-  .card-info {
-    flex: 1;
-    min-width: 0;
-
-    h4 {
-      font-size: 15px;
-      font-weight: 600;
-      color: #303133;
-      margin: 0 0 4px 0;
+    .model-name {
+      max-width: calc(100% - 80px);
+      margin: 0 0 0 12px;
+      font-size: 14px;
+      line-height: 24px;
+      color: #313238;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    p {
-      font-size: 13px;
-      color: #909399;
-      margin: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    .model-star {
+      display: none;
+      width: 24px;
+      height: 24px;
+      margin-left: 5px;
+      line-height: 24px;
+      text-align: center;
+      font-size: 14px;
+      cursor: pointer;
+      vertical-align: middle;
+
+      &.icon-star-shape {
+        color: #FFB400;
+        display: inline-block;
+      }
     }
-  }
 
-  .card-arrow {
-    flex-shrink: 0;
-    opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.2s;
-
-    .bk-icon {
-      font-size: 20px;
-      color: #3a84ff;
+    .model-instance-count {
+      float: right;
+      display: inline-block;
+      width: 35px;
+      font-size: 14px;
+      height: 24px;
+      line-height: 24px;
+      color: #C4C6CC;
+      text-align: right;
     }
   }
 }
 
-.empty-state {
+.cmdb-data-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
   color: #979ba5;
 
   .bk-icon {
-    font-size: 48px;
+    font-size: 64px;
     margin-bottom: 16px;
+    color: #c4c6cc;
   }
 
   p {
     font-size: 14px;
-    margin: 0;
+    margin: 0 0 12px 0;
   }
+}
+
+.fl {
+  float: left;
+}
+
+.clearfix::after {
+  content: "";
+  display: table;
+  clear: both;
 }
 </style>
