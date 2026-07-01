@@ -261,7 +261,6 @@ import FormMultiple from '@/components/ui/form/form-multiple.vue'
 import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
-import modelIndex from '@/assets/api/index.json'
 import { modelAPI, userCustom } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
@@ -305,7 +304,6 @@ export default {
       createFormLoading: false,
       batchUpdateDialogVisible: false,
       batchUpdateFormLoading: false,
-      modelIndex: modelIndex.models,
       table: {
         list: [],
         header: [],
@@ -352,8 +350,7 @@ export default {
       if (this.modelData && this.modelData.bk_obj_name) {
         return this.modelData.bk_obj_name
       }
-      const model = (this.modelIndex || []).find(m => m.bk_obj_id === this.objId)
-      return model ? model.bk_obj_name : this.objId
+      return this.objId
     },
     searchableProperties() {
       // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)

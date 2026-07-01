@@ -63,7 +63,6 @@
 import InstanceAssociation from '@/components/instance-association/index.vue'
 import EditableProperty from '@/components/property/editable-property.vue'
 import { modelAPI } from '@/api/client'
-import modelIndex from '@/assets/api/index.json'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
 import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
 
@@ -79,7 +78,7 @@ export default {
       objId: '',
       instId: null,
       instanceData: {},
-      modelIndex: modelIndex.models,
+      modelData: null,
       apiAssociations: [],
       apiRelations: [],
       apiAttributes: {},
@@ -142,8 +141,10 @@ export default {
       return []
     },
     modelName () {
-      const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)
-      return model?.bk_obj_name || this.objId
+      if (this.modelData && this.modelData.bk_obj_name) {
+        return this.modelData.bk_obj_name
+      }
+      return this.objId
     },
     instanceName () {
       if (this.instanceData.bk_inst_name) {
@@ -221,6 +222,15 @@ export default {
             .filter(p => p.bk_property_index !== -1)
             .sort((a, b) => a.bk_property_index - b.bk_property_index)
           this.$set(this.apiAttributes, this.objId, { info: sortedAttrs })
+        }
+        
+        try {
+          const modelResponse = await modelAPI.getModel(this.objId)
+          if (modelResponse && modelResponse.model) {
+            this.modelData = modelResponse.model
+          }
+        } catch (err) {
+          console.error('加载模型详情失败:', err)
         }
         
         this.isDataReady = true
