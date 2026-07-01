@@ -155,7 +155,7 @@
             :sortable="getColumnSortable(column.id)"
             :show-overflow-tooltip="true">
             <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-              <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+              <bk-button :text="true" :primary="true" class="cell-id-button" @click="handleViewDetails(row)">
                 {{ row[column.id] }}
               </bk-button>
             </template>
@@ -2999,6 +2999,18 @@ export default {
 @media screen and (max-width: 768px) {
   .batch-update-info {
     padding: 12px 16px;
+  }
+}
+
+// 表格实例ID列样式 - 确保文本不换行，显示省略号
+.models-table {
+  :deep(.cell-id-button) {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
   }
 }
 </style>
