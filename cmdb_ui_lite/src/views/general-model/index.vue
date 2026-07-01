@@ -349,6 +349,9 @@ export default {
   },
   computed: {
     modelName() {
+      if (this.modelData && this.modelData.bk_obj_name) {
+        return this.modelData.bk_obj_name
+      }
       const model = (this.modelIndex || []).find(m => m.bk_obj_id === this.objId)
       return model ? model.bk_obj_name : this.objId
     },
@@ -868,6 +871,16 @@ export default {
         this.allProperties = attrResult.attributes || []
         this.defaultColumns = attrResult.default_columns || []
         console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns)
+
+        try {
+          const modelResult = await modelAPI.getModel(this.objId)
+          if (modelResult && modelResult.model && modelResult.model.bk_obj_name) {
+            this.modelData = modelResult.model
+            this.updateBreadcrumbs()
+          }
+        } catch (e) {
+          console.log('[Index.loadModelData] 获取模型详情失败:', e)
+        }
 
         // Load saved columns config
         try {
