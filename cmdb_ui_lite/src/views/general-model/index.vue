@@ -155,9 +155,9 @@
             :sortable="getColumnSortable(column.id)"
             :show-overflow-tooltip="true">
             <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-              <bk-button :text="true" :primary="true" class="cell-id-button" @click="handleViewDetails(row)">
+              <span class="cell-id-link" @click="handleViewDetails(row)">
                 {{ row[column.id] }}
-              </bk-button>
+              </span>
             </template>
             <template v-else #default="{ row }">
               {{ formatCellValue(row[column.id], column) }}
@@ -3002,26 +3002,13 @@ export default {
   }
 }
 
-// 表格实例ID列样式 - 确保文本不换行，显示省略号
-.models-table-wrapper {
-  :deep(.bk-table-body) {
-    .cell-id-button {
-      display: inline-block !important;
-      width: auto !important;
-      max-width: 100% !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-      vertical-align: middle !important;
-      
-      span {
-        display: inline-block !important;
-        max-width: 100% !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
-      }
-    }
+// 表格实例ID列样式 - 蓝色可点击链接，与其他列一样溢出隐藏
+.cell-id-link {
+  color: #3a84ff;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
   }
 }
 </style>
