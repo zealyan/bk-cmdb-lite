@@ -3003,14 +3003,25 @@ export default {
 }
 
 // 表格实例ID列样式 - 确保文本不换行，显示省略号
-.models-table {
-  :deep(.cell-id-button) {
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: middle;
+.models-table-wrapper {
+  :deep(.bk-table-body) {
+    .cell-id-button {
+      display: inline-block !important;
+      width: auto !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      vertical-align: middle !important;
+      
+      span {
+        display: inline-block !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+      }
+    }
   }
 }
 </style>
