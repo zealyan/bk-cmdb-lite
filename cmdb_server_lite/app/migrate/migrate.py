@@ -142,7 +142,7 @@ SYSTEM_PROPERTIES = [
     {
         "bk_property_id": "bk_inst_name",
         "bk_property_name": "实例名称",
-        "bk_property_type": "string",
+        "bk_property_type": "singlechar",
         "isrequired": True,
         "isreadonly": False,
         "editable": True,
@@ -160,7 +160,7 @@ SYSTEM_PROPERTIES = [
     {
         "bk_property_id": "bk_obj_id",
         "bk_property_name": "模型ID",
-        "bk_property_type": "string",
+        "bk_property_type": "singlechar",
         "isrequired": True,
         "isreadonly": True,
         "editable": False,
@@ -588,7 +588,7 @@ class DatabaseMigrator:
                 
                 # 先插入系统属性
                 for sys_prop in SYSTEM_PROPERTIES:
-                    prop_type = sys_prop.get("bk_property_type", "string")
+                    prop_type = sys_prop.get("bk_property_type", "singlechar")
                     option = sys_prop.get("option")
                     option = self.process_option(prop_type, option)
                     
@@ -633,7 +633,7 @@ class DatabaseMigrator:
                     if bk_property_id in SYSTEM_FIELDS:
                         continue
                     
-                    prop_type = prop.get("bk_property_type", "string")
+                    prop_type = prop.get("bk_property_type", "singlechar")
                     option = prop.get("option")
                     option = self.process_option(prop_type, option)
                     
@@ -732,8 +732,11 @@ class DatabaseMigrator:
         type_mapping = {
             'int': 'INTEGER',
             'long': 'BIGINT',
-            'string': 'TEXT',
+            'singlechar': 'VARCHAR',
+            'shortchar': 'VARCHAR',
+            'longchar': 'TEXT',
             'char': 'VARCHAR',
+            'text': 'TEXT',
             'float': 'FLOAT',
             'double': 'DOUBLE',
             'date': 'DATE',

@@ -378,7 +378,7 @@ export default {
       const propertyType = property.bk_property_type
       if (!propertyType) return false
       const supportedTypes = [
-        'singlechar', 'longchar', 'shortchar', 'text', 'string',
+        'singlechar', 'longchar', 'shortchar', 'text',
         'enum', 'int', 'bool', 'time', 'date', 'float', 'list', 'map'
       ]
       return supportedTypes.includes(propertyType)
