@@ -209,6 +209,7 @@
             :properties="allProperties"
             :values="createForm"
             :type="'create'"
+            :model-id="objId"
             :show-options="true"
             :submitting="createFormLoading"
             :is-mobile="isMobileDevice"

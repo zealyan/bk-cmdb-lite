@@ -612,7 +612,61 @@ class InstanceService:
         sql = f'SELECT COUNT(*) as total FROM "{table_name}"'
         result = query_one(sql, {})
         return result.get('total', 0) if result else 0
-    
+
+    @staticmethod
+    def get_unique_attributes(model_id):
+        """获取模型的唯一属性列表（isonly=true 且 bk_isapi=false）"""
+        from app.service.model_service import ModelService
+        attributes = ModelService.get_model_attributes(model_id)
+        unique_attrs = []
+        for attr in attributes:
+            if attr.get('isonly') and not attr.get('bk_isapi'):
+                unique_attrs.append(attr)
+        return unique_attrs
+
+    @staticmethod
+    def check_unique(model_id, data, exclude_instance_id=None):
+        """
+        校验实例数据的唯一性
+        :param model_id: 模型ID
+        :param data: 实例数据 dict
+        :param exclude_instance_id: 排除的实例ID（更新时用，排除自身）
+        :return: list of dict [{property_id, property_name, value}] 重复的字段列表
+        """
+        table_name = InstanceService._get_table_name(model_id)
+        unique_attrs = InstanceService.get_unique_attributes(model_id)
+
+        if not unique_attrs:
+            return []
+
+        duplicates = []
+        for attr in unique_attrs:
+            prop_id = attr.get('bk_property_id')
+            prop_name = attr.get('bk_property_name', prop_id)
+            value = data.get(prop_id)
+
+            if value is None or value == '':
+                continue
+
+            sql_parts = [f'SELECT COUNT(*) as cnt FROM "{table_name}" WHERE "{prop_id}" = :value']
+            params = {'value': value}
+
+            if exclude_instance_id is not None:
+                sql_parts.append('AND bk_inst_id != :exclude_id')
+                params['exclude_id'] = exclude_instance_id
+
+            sql = ' '.join(sql_parts)
+            result = query_one(sql, params)
+
+            if result and result.get('cnt', 0) > 0:
+                duplicates.append({
+                    'property_id': prop_id,
+                    'property_name': prop_name,
+                    'value': value
+                })
+
+        return duplicates
+
     @staticmethod
     def create_instance(model_id, data):
         """创建实例"""
@@ -628,6 +682,11 @@ class InstanceService:
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
         data.setdefault('last_time', now)
+
+        duplicates = InstanceService.check_unique(model_id, data)
+        if duplicates:
+            msg = '; '.join([f"{d['property_name']}已存在: {d['value']}" for d in duplicates])
+            raise ValueError(msg)
 
         # 清理字段，只保留安全字段
         from app.service.model_service import ModelService
@@ -683,6 +742,11 @@ class InstanceService:
         table_name = InstanceService._get_table_name(model_id)
 
         data['last_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        duplicates = InstanceService.check_unique(model_id, data, exclude_instance_id=instance_id)
+        if duplicates:
+            msg = '; '.join([f"{d['property_name']}已存在: {d['value']}" for d in duplicates])
+            raise ValueError(msg)
 
         # 获取有效字段
         from app.service.model_service import ModelService

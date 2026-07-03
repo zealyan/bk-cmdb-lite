@@ -136,6 +136,14 @@ export const modelAPI = {
     return http.post(`/api/v1/models/${modelId}/instances/check-associations`, { ids })
   },
 
+  // 校验实例数据的唯一性
+  checkInstanceUnique (modelId, data, excludeInstanceId = null) {
+    return http.post(`/api/v1/models/${modelId}/instances/check-unique`, {
+      data,
+      exclude_instance_id: excludeInstanceId
+    })
+  },
+
   // 删除实例（支持批量）
   deleteInstances (modelId, ids = []) {
     return http.delete(`/api/v1/models/${modelId}/instances`, { data: { ids } })

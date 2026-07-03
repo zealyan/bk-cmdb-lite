@@ -106,6 +106,23 @@ def get_instance(model_id, instance_id):
 
 
 
+@model_bp.route('/<model_id>/instances/check-unique', methods=['POST'])
+def check_instance_unique(model_id):
+    """校验实例数据的唯一性"""
+    try:
+        data = request.get_json() or {}
+        instance_data = data.get('data', {})
+        exclude_instance_id = data.get('exclude_instance_id')
+
+        duplicates = InstanceService.check_unique(model_id, instance_data, exclude_instance_id)
+        return jsonify({
+            'is_unique': len(duplicates) == 0,
+            'duplicates': duplicates
+        }), 200
+    except Exception as e:
+        logger.error(f"Error checking unique for {model_id}: {e}")
+        return jsonify({'detail': str(e)}), 500
+
 @model_bp.route('/<model_id>/instances', methods=['POST'])
 def create_instance(model_id):
     """创建新的模型实例"""
