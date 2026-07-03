@@ -881,14 +881,25 @@ class InstanceService:
         if not ids:
             return 0
 
-        table_name = InstanceService._get_table_name(model_id)
-
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data['last_time'] = now
 
-        # 获取有效字段
-        from app.service.model_service import ModelService
-        attributes = ModelService.get_model_attributes(model_id)
+        # 检查是否更新了唯一字段（与原项目保持一致，禁止批量更新唯一字段）
+        unique_constraints = InstanceService.get_object_unique_constraints(model_id)
+        unique_property_ids = set()
+        for constraint in unique_constraints:
+            keys = constraint.get('keys', [])
+            for key in keys:
+                property_id = key.get('bk_property_id')
+                if property_id:
+                    unique_property_ids.add(property_id)
+
+        for field_name in data.keys():
+            if field_name != 'last_time' and field_name in unique_property_ids:
+                raise ValidationException('不允许批量更新唯一字段')
+
+        table_name = InstanceService._get_table_name(model_id)
+
         # 构建属性ID到属性类型的映射
         attr_type_map = {}
         for attr in attributes:

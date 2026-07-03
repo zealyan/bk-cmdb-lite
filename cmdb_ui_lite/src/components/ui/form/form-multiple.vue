@@ -67,6 +67,7 @@
 
 <script>
 import { parseOption, charLength, getMaxCharsByType } from '@/utils/validate-utils'
+import { modelAPI } from '@/api/client'
 export default {
   name: 'cmdb-form-multiple',
   props: {
@@ -89,6 +90,10 @@ export default {
     uneditableProperties: {
       type: Array,
       default: () => []
+    },
+    modelId: {
+      type: String,
+      default: ''
     }
   },
   data() {
@@ -97,7 +102,8 @@ export default {
       editable: {},
       initialValues: {},
       groupState: {},
-      errorMessages: {}
+      errorMessages: {},
+      uniquePropertyIds: []
     }
   },
   computed: {
@@ -146,6 +152,7 @@ export default {
     this.initValues()
     this.initEditableStatus()
     this.initGroupState()
+    this.fetchUniqueProperties()
   },
   watch: {
     properties: {
@@ -195,14 +202,38 @@ export default {
       const isAsst = ['singleasst', 'multiasst'].includes(property.bk_property_type)
       const isUneditable = this.uneditableProperties.includes(property.bk_property_id)
       const isBuiltinUneditable = BUILTIN_UNEDITABLE_FIELDS.includes(property.bk_property_id)
+      const isUnique = this.uniquePropertyIds.includes(property.bk_property_id)
       
-      return editable && !isapi && !isonly && !isAsst && !isUneditable && !isBuiltinUneditable
+      return editable && !isapi && !isonly && !isAsst && !isUneditable && !isBuiltinUneditable && !isUnique
     },
     isDisabledForbidden(property) {
       return !this.isPropertyEditable(property)
     },
     isFullWidth(property) {
       return ['innerTable', 'table', 'text', 'longchar'].includes(property.bk_property_type)
+    },
+    fetchUniqueProperties() {
+      if (!this.modelId) return
+      modelAPI.searchObjectUnique(this.modelId).then((result) => {
+        const uniquePropertyIds = []
+        if (result && result.info && Array.isArray(result.info)) {
+          result.info.forEach((constraint) => {
+            if (constraint.keys && Array.isArray(constraint.keys)) {
+              constraint.keys.forEach((key) => {
+                if (key.key_kind === 'property' && key.key_id) {
+                  const property = this.properties.find((p) => p.id === key.key_id)
+                  if (property) {
+                    uniquePropertyIds.push(property.bk_property_id)
+                  }
+                }
+              })
+            }
+          })
+        }
+        this.uniquePropertyIds = uniquePropertyIds
+      }).catch(() => {
+        this.uniquePropertyIds = []
+      })
     },
     hasPropertiesInGroup(properties) {
       return properties.filter(p => this.isPropertyEditable(p))

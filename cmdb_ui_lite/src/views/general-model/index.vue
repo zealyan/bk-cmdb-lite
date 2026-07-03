@@ -243,6 +243,7 @@
             :properties="allProperties"
             :show-options="true"
             :submitting="batchUpdateFormLoading"
+            :model-id="objId"
             submit-text="更新"
             @submit="handleBatchUpdateSubmit"
             @cancel="handleBatchUpdateDialogClose">

@@ -3,7 +3,7 @@ from app.service.model_service import ModelService
 from app.service.instance_service import InstanceService
 from app.service.association_service import AssociationService
 from app.utils.logger import get_logger
-from app.utils.exceptions import APIException
+from app.utils.exceptions import APIException, ValidationException
 
 logger = get_logger('api.model')
 model_bp = Blueprint('model', __name__)
@@ -194,6 +194,10 @@ def batch_update_instances(model_id):
             })
         else:
             return jsonify({'detail': 'Invalid request format'}), 400
+    except ValidationException as e:
+        return jsonify(e.to_dict()), e.status_code
+    except APIException as e:
+        return jsonify(e.to_dict()), e.status_code
     except Exception as e:
         logger.error(f"Error updating instances: {e}")
         return jsonify({'detail': str(e)}), 500
