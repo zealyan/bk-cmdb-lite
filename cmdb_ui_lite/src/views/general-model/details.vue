@@ -312,6 +312,8 @@ export default {
     },
     async handlePropertyConfirm ({ property, value, changed }) {
       if (!changed) {
+        // 值没有变化，关闭编辑态
+        this.editingPropertyId = null
         return
       }
 
@@ -328,6 +330,8 @@ export default {
         })
         
         this.$set(this.instanceData, property.bk_property_id, value)
+        // 保存成功，关闭编辑态
+        this.editingPropertyId = null
       } catch (error) {
         console.error('更新属性失败:', error)
         let errorMsg = error.message || '未知错误'
@@ -341,9 +345,10 @@ export default {
           }
         }
         this.$bkMessage({
-          message: '属性更新失败: ' + errorMsg,
+          message: errorMsg,
           theme: 'error'
         })
+        // 保存失败，保持编辑态打开，让用户可以继续编辑
       }
     }
   }
