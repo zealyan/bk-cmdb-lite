@@ -148,11 +148,11 @@ export default {
       return Object.values(groups).sort((a, b) => (groupOrder[a.bk_group_id] || 99) - (groupOrder[b.bk_group_id] || 99))
     }
   },
-  created() {
+  async created() {
+    await this.fetchUniqueProperties()
     this.initValues()
     this.initEditableStatus()
     this.initGroupState()
-    this.fetchUniqueProperties()
   },
   watch: {
     properties: {
