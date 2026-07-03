@@ -102,6 +102,18 @@ DEFAULT_CLASSIFICATION_ICON = 'icon-cc-default'
 DEFAULT_ASST_ICON = 'icon-cc-default'
 
 # 系统属性定义
+# 与原项目规则保持一致，参考:
+# - /workspace/bk-cmdb/src/scene_server/admin_server/upgrader/y3.10.202302062350/add_project.go (bk_project 的 id 字段)
+# - /workspace/bk-cmdb/src/scene_server/admin_server/upgrader/history/v3.0.8/objAttDescData.go (bk_inst_name 字段)
+# - /workspace/bk-cmdb/src/source_controller/coreservice/core/instances/instance_validate.go (bk_obj_id 跳过验证)
+#
+# 原项目规则:
+# - bk_isapi=true: API 字段，对页面不可见（前端过滤）
+# - bk_issystem=true: 系统内部字段，不返回前端
+# - id 字段: 原项目仅在 bk_project 模型显式创建，只设 bk_isapi=true，不设 bk_issystem
+# - bk_inst_id 字段: 原项目不在 cc_ObjAttDes 中维护，简化版保留时参考 id 规则
+# - bk_inst_name 字段: 原项目配置 ispre=true, isrequired=true, isonly=true, editable=true，bk_issystem=false（用户可见可编辑）
+# - bk_obj_id 字段: 原项目不在 cc_ObjAttDes 中维护，由系统自动注入；简化版保留时设 bk_issystem=true（系统内部字段）
 SYSTEM_PROPERTIES = [
     {
         "bk_property_id": "id",
@@ -113,8 +125,8 @@ SYSTEM_PROPERTIES = [
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": True,   # 内部数据库字段，与原项目保持一致：设置为API字段，在表单和搜索中过滤
-        "bk_issystem": True,
+        "bk_isapi": True,   # API 字段，前端隐藏（原项目 bk_project 规则）
+        "bk_issystem": False,  # 修复：原项目 id 字段只设 bk_isapi=true，不设 bk_issystem
         "ispre": True,
         "bk_property_index": -1,
         "bk_property_group": "default",
@@ -132,8 +144,8 @@ SYSTEM_PROPERTIES = [
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": True,  # 与原项目保持一致：设置为API字段，在表单和搜索中过滤
-        "bk_issystem": True,
+        "bk_isapi": True,  # API 字段，前端隐藏（参考 id 字段规则）
+        "bk_issystem": False,  # 修复：参考 id 字段规则，API 字段非系统字段
         "ispre": True,
         "bk_property_index": 0,
         "bk_property_group": "default",
@@ -152,7 +164,7 @@ SYSTEM_PROPERTIES = [
         "bk_ispassword": False,
         "bk_ishidden": False,
         "bk_isapi": False,
-        "bk_issystem": True,
+        "bk_issystem": False,  # 修复：原项目 bk_inst_name 不是系统字段，用户可见可编辑
         "ispre": True,
         "bk_property_index": 1,
         "bk_property_group": "default",
@@ -171,7 +183,7 @@ SYSTEM_PROPERTIES = [
         "bk_ispassword": False,
         "bk_ishidden": True,
         "bk_isapi": True,
-        "bk_issystem": True,
+        "bk_issystem": True,  # 保持：系统内部字段，由后端自动注入，不返回前端
         "ispre": True,
         "bk_property_index": 2,
         "bk_property_group": "default",
