@@ -215,12 +215,14 @@ export default {
     fetchUniqueProperties() {
       if (!this.modelId) return
       modelAPI.searchObjectUnique(this.modelId).then((result) => {
+        // 收集所有唯一约束中涉及的字段（不去重，因为 includes 判断本身就不受重复影响）
         const uniquePropertyIds = []
         if (result && result.info && Array.isArray(result.info)) {
           result.info.forEach((constraint) => {
             if (constraint.keys && Array.isArray(constraint.keys)) {
               constraint.keys.forEach((key) => {
                 if (key.key_kind === 'property' && key.key_id) {
+                  // 通过 key_id (属性整数ID) 查找对应的属性
                   const property = this.properties.find((p) => p.id === key.key_id)
                   if (property) {
                     uniquePropertyIds.push(property.bk_property_id)
@@ -230,6 +232,8 @@ export default {
             }
           })
         }
+        // 支持多条唯一约束：如 实例名 单独唯一、实例名+管理IP 组合唯一
+        // 两条约束涉及的字段都会被隐藏（bk_inst_name 和 bk_management_ip 都不可批量更新）
         this.uniquePropertyIds = uniquePropertyIds
       }).catch(() => {
         this.uniquePropertyIds = []
