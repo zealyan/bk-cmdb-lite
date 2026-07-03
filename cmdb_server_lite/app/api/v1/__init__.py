@@ -6,6 +6,7 @@ from .model import model_bp, instance_bp
 from .association import association_bp
 from .relation import relation_bp
 from .user import user_bp
+from .unique import unique_bp
 
 def register_v1_routes(app):
     """注册 v1 版本的所有路由"""
@@ -18,3 +19,4 @@ def register_v1_routes(app):
     # 旧版 API 路径保持向后兼容
     app.register_blueprint(association_bp)
     app.register_blueprint(user_bp)
+    app.register_blueprint(unique_bp)

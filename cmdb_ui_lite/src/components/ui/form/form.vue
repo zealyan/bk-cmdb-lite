@@ -64,7 +64,6 @@
 
 <script>
 import { parseOption, validateValue, charLength, getMaxCharsByType } from '@/utils/validate-utils'
-import { modelAPI } from '@/api/client'
 import isEqual from 'lodash/isEqual'
 
 // 不能更新修改的字段(在可能发生编辑操作的页面里不显示出来)
@@ -126,8 +125,7 @@ export default {
     return {
       groupState: {},
       errorMessages: {},
-      initialValues: {},
-      uniqueChecking: {}
+      initialValues: {}
     }
   },
   computed: {
@@ -302,47 +300,7 @@ export default {
       this.$emit('update:values', newValues)
       this.$emit('input', propertyId, value)
     },
-    handleBlur(property) {
-      const value = this.values[property.bk_property_id]
-      const syncValid = this.validateProperty(property.bk_property_id, value)
-      if (syncValid && property.isonly && this.modelId) {
-        this.validateUnique(property, value)
-      }
-    },
-    async validateUnique(property, value) {
-      const propId = property.bk_property_id
-      if (value === undefined || value === null || value === '') {
-        this.$delete(this.uniqueChecking, propId)
-        return true
-      }
-
-      this.$set(this.uniqueChecking, propId, true)
-      this.$delete(this.errorMessages, propId)
-
-      try {
-        const data = {}
-        data[propId] = value
-        const result = await modelAPI.checkInstanceUnique(
-          this.modelId,
-          data,
-          this.type === 'update' ? this.instanceId : null
-        )
-
-        if (result && result.duplicates && result.duplicates.length > 0) {
-          const dup = result.duplicates[0]
-          this.$set(this.errorMessages, propId, `${dup.property_name}已存在: ${dup.value}`)
-          this.$set(this.uniqueChecking, propId, false)
-          return false
-        }
-
-        this.$delete(this.errorMessages, propId)
-        this.$set(this.uniqueChecking, propId, false)
-        return true
-      } catch (e) {
-        this.$set(this.uniqueChecking, propId, false)
-        return true
-      }
-    },
+    handleBlur() {},
     validateProperty(propertyId, value) {
       const property = this.properties.find(p => p.bk_property_id === propertyId)
       if (!property) return true
@@ -460,40 +418,8 @@ export default {
       this.errorMessages = errors
       return isValid
     },
-    async validateAllUnique() {
-      if (!this.modelId) {
-        return true
-      }
-
-      const uniqueProps = []
-      this.groupedPropertiesList.forEach(group => {
-        group.properties.forEach(property => {
-          if (property.isonly && this.checkEditable(property)) {
-            uniqueProps.push(property)
-          }
-        })
-      })
-
-      if (uniqueProps.length === 0) {
-        return true
-      }
-
-      let allValid = true
-      for (const prop of uniqueProps) {
-        const value = this.values[prop.bk_property_id]
-        const valid = await this.validateUnique(prop, value)
-        if (!valid) {
-          allValid = false
-        }
-      }
-      return allValid
-    },
-    async handleSave() {
+    handleSave() {
       if (!this.validateAll()) {
-        return
-      }
-      const uniqueValid = await this.validateAllUnique()
-      if (!uniqueValid) {
         return
       }
       this.$emit('submit', { ...this.values })

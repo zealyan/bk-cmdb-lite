@@ -615,42 +615,107 @@ class InstanceService:
 
     @staticmethod
     def get_unique_attributes(model_id):
-        """获取模型的唯一属性列表（isonly=true 且 bk_isapi=false）"""
+        """获取模型的唯一属性列表（从 cc_ObjectUnique 表读取）"""
         from app.service.model_service import ModelService
+        
+        unique_constraints = ModelService.get_object_unique(model_id)
+        if not unique_constraints:
+            return []
+        
         attributes = ModelService.get_model_attributes(model_id)
+        attr_map = {attr.get('id'): attr for attr in attributes}
+        
         unique_attrs = []
-        for attr in attributes:
-            if attr.get('isonly') and not attr.get('bk_isapi'):
-                unique_attrs.append(attr)
+        for constraint in unique_constraints:
+            keys = constraint.get('keys', [])
+            for key in keys:
+                if key.get('key_kind') == 'property':
+                    attr_id = key.get('key_id')
+                    attr = attr_map.get(attr_id)
+                    if attr and not attr.get('bk_isapi'):
+                        unique_attrs.append(attr)
+        
         return unique_attrs
-
+    
+    @staticmethod
+    def get_object_unique_constraints(model_id):
+        """获取模型的唯一约束定义（包含组合键）"""
+        from app.service.model_service import ModelService
+        
+        constraints = ModelService.get_object_unique(model_id)
+        if not constraints:
+            return []
+        
+        attributes = ModelService.get_model_attributes(model_id)
+        attr_map = {attr.get('id'): attr for attr in attributes}
+        
+        result = []
+        for constraint in constraints:
+            keys = constraint.get('keys', [])
+            constraint_attrs = []
+            for key in keys:
+                if key.get('key_kind') == 'property':
+                    attr_id = key.get('key_id')
+                    attr = attr_map.get(attr_id)
+                    if attr:
+                        constraint_attrs.append(attr)
+            if constraint_attrs:
+                result.append({
+                    'id': constraint.get('id'),
+                    'keys': constraint_attrs
+                })
+        
+        return result
+    
     @staticmethod
     def check_unique(model_id, data, exclude_instance_id=None):
         """
-        校验实例数据的唯一性
+        校验实例数据的唯一性（支持组合唯一键）
         :param model_id: 模型ID
         :param data: 实例数据 dict
         :param exclude_instance_id: 排除的实例ID（更新时用，排除自身）
         :return: list of dict [{property_id, property_name, value}] 重复的字段列表
         """
         table_name = InstanceService._get_table_name(model_id)
-        unique_attrs = InstanceService.get_unique_attributes(model_id)
+        unique_constraints = InstanceService.get_object_unique_constraints(model_id)
 
-        if not unique_attrs:
+        if not unique_constraints:
             return []
 
         duplicates = []
-        for attr in unique_attrs:
-            prop_id = attr.get('bk_property_id')
-            prop_name = attr.get('bk_property_name', prop_id)
-            value = data.get(prop_id)
-
-            if value is None or value == '':
+        for constraint in unique_constraints:
+            constraint_attrs = constraint.get('keys', [])
+            
+            all_keys_present = True
+            key_values = {}
+            key_names = []
+            
+            for attr in constraint_attrs:
+                prop_id = attr.get('bk_property_id')
+                prop_name = attr.get('bk_property_name', prop_id)
+                value = data.get(prop_id)
+                
+                if value is None or value == '':
+                    all_keys_present = False
+                    break
+                
+                key_values[prop_id] = value
+                key_names.append(prop_name)
+            
+            if not all_keys_present:
                 continue
-
-            sql_parts = [f'SELECT COUNT(*) as cnt FROM "{table_name}" WHERE "{prop_id}" = :value']
-            params = {'value': value}
-
+            
+            sql_parts = [f'SELECT COUNT(*) as cnt FROM "{table_name}" WHERE']
+            where_clauses = []
+            params = {}
+            
+            for idx, (prop_id, value) in enumerate(key_values.items()):
+                param_name = f'val_{idx}'
+                where_clauses.append(f'"{prop_id}" = :{param_name}')
+                params[param_name] = value
+            
+            sql_parts.append(' AND '.join(where_clauses))
+            
             if exclude_instance_id is not None:
                 sql_parts.append('AND bk_inst_id != :exclude_id')
                 params['exclude_id'] = exclude_instance_id
@@ -659,11 +724,14 @@ class InstanceService:
             result = query_one(sql, params)
 
             if result and result.get('cnt', 0) > 0:
-                duplicates.append({
-                    'property_id': prop_id,
-                    'property_name': prop_name,
-                    'value': value
-                })
+                for prop_id, value in key_values.items():
+                    attr = next((a for a in constraint_attrs if a.get('bk_property_id') == prop_id), None)
+                    if attr:
+                        duplicates.append({
+                            'property_id': prop_id,
+                            'property_name': attr.get('bk_property_name', prop_id),
+                            'value': value
+                        })
 
         return duplicates
 

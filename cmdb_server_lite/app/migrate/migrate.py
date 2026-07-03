@@ -460,6 +460,18 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
+            "cc_ObjectUnique": """
+                CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
+                    _id VARCHAR,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bk_template_id INTEGER DEFAULT 0,
+                    bk_obj_id VARCHAR NOT NULL,
+                    keys TEXT,
+                    ispre BOOLEAN DEFAULT false,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """,
             "user_custom": """
                 CREATE TABLE IF NOT EXISTS user_custom (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1120,7 +1132,45 @@ class DatabaseMigrator:
         # 步骤9: 迁移关联关系数据
         self.migrate_associations()
 
+        # 步骤10: 迁移唯一约束数据
+        self.migrate_object_unique()
+
         logger.info("数据库初始化迁移完成!")
+
+    def migrate_object_unique(self):
+        """迁移唯一约束数据"""
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        
+        unique_id = 1
+        for model in models:
+            model_id = model['bk_obj_id']
+            
+            attr_result = self.execute_query("""
+                SELECT id FROM cc_ObjAttDes 
+                WHERE bk_obj_id = :model_id AND bk_property_id = 'bk_inst_name'
+            """, {"model_id": model_id})
+            
+            if attr_result:
+                attr_id = attr_result[0]['id']
+                keys = json.dumps([{
+                    "key_kind": "property",
+                    "key_id": attr_id
+                }])
+                
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjectUnique 
+                    (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+                """, {
+                    '_id': f"{model_id}_bk_inst_name",
+                    'id': unique_id,
+                    'bk_obj_id': model_id,
+                    'keys': keys,
+                    'ispre': True
+                })
+                unique_id += 1
+        
+        logger.info(f"迁移了 {len(models)} 个唯一约束")
 
 
 if __name__ == "__main__":
