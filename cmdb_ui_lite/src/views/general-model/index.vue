@@ -1062,8 +1062,7 @@ export default {
       } else {
         headerProperties = this.getDefaultHeaderProperties(properties, fixedPropertyIds)
       }
-      if (fixedPropertyIds.length) {
-        // 过滤掉 headerProperties 中已有的固定字段，避免重复
+      if (fixedPropertyIds.length && !customColumns.length) {
         headerProperties = headerProperties.filter(property => !fixedPropertyIds.includes(property.bk_property_id))
         const fixedProperties = []
         fixedPropertyIds.forEach((id) => {
