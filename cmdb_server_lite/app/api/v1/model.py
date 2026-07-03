@@ -136,6 +136,9 @@ def create_instance(model_id):
             'data': result,
             'message': '实例创建成功'
         }), 201
+    except ValueError as e:
+        # 唯一性校验失败返回 400
+        return jsonify({'detail': str(e)}), 400
     except Exception as e:
         logger.error(f"Error creating instance: {e}")
         return jsonify({'detail': str(e)}), 500
@@ -152,6 +155,9 @@ def update_instance(model_id, instance_id):
             'data': result,
             'message': 'Instance updated successfully'
         })
+    except ValueError as e:
+        # 唯一性校验失败返回 400
+        return jsonify({'detail': str(e)}), 400
     except Exception as e:
         logger.error(f"Error updating instance: {e}")
         return jsonify({'detail': str(e)}), 500

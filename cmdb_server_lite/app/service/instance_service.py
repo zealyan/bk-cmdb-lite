@@ -733,7 +733,16 @@ class InstanceService:
                             'value': value
                         })
 
-        return duplicates
+        # 去重：同一属性ID+值组合只保留一个（避免多约束同时触发时重复报错）
+        seen = set()
+        unique_duplicates = []
+        for d in duplicates:
+            key = (d['property_id'], d['value'])
+            if key not in seen:
+                seen.add(key)
+                unique_duplicates.append(d)
+
+        return unique_duplicates
 
     @staticmethod
     def create_instance(model_id, data):
