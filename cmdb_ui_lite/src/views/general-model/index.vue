@@ -804,6 +804,35 @@ export default {
     }
   },
   methods: {
+    /**
+     * 创建合成的 bk_inst_id 属性（前端注入）
+     * 与原项目 createIdProperty 保持一致:
+     * 参考: /workspace/bk-cmdb/src/ui/src/service/property/property.js#L17-L40
+     *
+     * 后端 for_web 过滤了 bk_isapi=true 的字段（包括 bk_inst_id），
+     * 前端通过此方法注入合成的 bk_inst_id 属性，用于:
+     * 1. 在表头第一位显示"实例ID"列（bk_property_index: -1，优先级最高）
+     * 2. 作为 disabledColumns 中的固定字段，不可移除、不可拖动
+     * 3. 支持点击跳转到实例详情
+     */
+    createIdProperty(objId) {
+      return {
+        id: Date.now(),
+        bk_obj_id: objId,
+        bk_property_id: 'bk_inst_id',
+        bk_property_name: '实例ID',
+        bk_property_index: -1,
+        bk_property_type: 'int',
+        isonly: true,
+        ispre: true,
+        bk_isapi: true,
+        bk_issystem: true,
+        isreadonly: true,
+        editable: false,
+        bk_property_group: null,
+        _is_inject_: true
+      }
+    },
     updateBreadcrumbs() {
       this.$nextTick(() => {
         this.$store.commit('setCustomBreadcrumbs', {
@@ -876,9 +905,18 @@ export default {
 
         const attrResult = await modelAPI.getModelAttributes(this.objId)
 
-        this.allProperties = attrResult.attributes || []
+        // 与原项目保持一致: 后端 for_web 过滤了 bk_isapi=true 的字段（如 bk_inst_id），
+        // 前端通过 createIdProperty 注入合成的 bk_inst_id 属性，用于在表头第一位显示"ID"列
+        // 参考: /workspace/bk-cmdb/src/ui/src/service/property/property.js createIdProperty
+        // 参考: /workspace/bk-cmdb/src/ui/src/store/modules/api/object-model-property.js searchObjectAttribute
+        const rawAttributes = attrResult.attributes || []
+        const alreadyInject = rawAttributes.some(property => property._is_inject_)
+        if (!alreadyInject) {
+          rawAttributes.unshift(this.createIdProperty(this.objId))
+        }
+        this.allProperties = rawAttributes
         this.defaultColumns = attrResult.default_columns || []
-        console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns)
+        console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns, 'allProperties count:', this.allProperties.length)
 
         try {
           const modelResult = await modelAPI.getModel(this.objId)
