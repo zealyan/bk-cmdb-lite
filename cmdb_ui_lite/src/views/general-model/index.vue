@@ -1107,17 +1107,24 @@ export default {
 
       console.log('[Debug] headerProperties:', headerProperties.length)
 
-      this.table.header = headerProperties.map(property => ({
+      // 与原项目保持一致: 数组长度不变时需要先清空再赋值，否则表头无法实时更新
+      // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue updateTableHeader 方法
+      // 原项目注释: "数组length在没有变化时候，需要先清空数组在赋值。否则表头无法实时更新"
+      const newHeader = headerProperties.map(property => ({
         id: property.bk_property_id,
         name: property.bk_property_name,
         property
       }))
+      this.table.header = []
+      this.$nextTick(() => {
+        this.table.header = newHeader
+      })
 
       // 与原项目保持一致: 始终同步 columnsConfig.selected 为当前表头属性
       // 这样抽屉打开时显示的已选属性与表格列保持一致
       this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
 
-      console.log('[Debug] table.header:', this.table.header.length)
+      console.log('[Debug] table.header will be updated via $nextTick, count:', newHeader.length)
       console.log('[Debug] columnsConfig.selected synced to:', this.columnsConfig.selected)
     },
     formatCellValue(value, column) {
