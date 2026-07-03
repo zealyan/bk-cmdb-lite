@@ -217,7 +217,13 @@ export default {
       } else if (this.localSelected.length < this.min) {
         this.$bkInfo(`至少选择${this.min}项`)
       } else {
-        const properties = [...this.undragbbleProperties, ...this.localDrabbleProperties]
+        const properties = []
+        this.localSelected.forEach((propertyId) => {
+          const property = this.properties.find(p => p.bk_property_id === propertyId)
+          if (property) {
+            properties.push(property)
+          }
+        })
         this.$emit('on-apply', properties)
         this.$emit('apply', properties)
       }

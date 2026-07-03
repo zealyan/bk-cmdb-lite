@@ -1030,23 +1030,15 @@ export default {
         .slice(0, 6)
     },
     getCustomHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
-      // 与原项目一致: 按自定义列ID查找属性，过滤系统字段
       const columnProperties = []
       customColumns.forEach((propertyId) => {
         const columnProperty = properties.find(property => property.bk_property_id === propertyId)
         if (!columnProperty) {
           return
         }
-        // 保留固定字段
-        if (fixedPropertyIds.includes(columnProperty.bk_property_id)) {
-          columnProperties.push(columnProperty)
-          return
-        }
-        // 过滤 API 字段
         if (columnProperty.bk_isapi) {
           return
         }
-        // 过滤内部数据库 ID 字段
         if (columnProperty.bk_property_id === 'id') {
           return
         }
