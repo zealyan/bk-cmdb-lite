@@ -1170,7 +1170,40 @@ class DatabaseMigrator:
                 })
                 unique_id += 1
         
-        logger.info(f"迁移了 {len(models)} 个唯一约束")
+        # 为交换机添加组合唯一约束（实例名称 + 管理IP）
+        switch_inst_name_result = self.execute_query("""
+            SELECT id FROM cc_ObjAttDes 
+            WHERE bk_obj_id = 'bk_switch' AND bk_property_id = 'bk_inst_name'
+        """)
+        switch_management_ip_result = self.execute_query("""
+            SELECT id FROM cc_ObjAttDes 
+            WHERE bk_obj_id = 'bk_switch' AND bk_property_id = 'management_ip'
+        """)
+        
+        if switch_inst_name_result and switch_management_ip_result:
+            inst_name_id = switch_inst_name_result[0]['id']
+            management_ip_id = switch_management_ip_result[0]['id']
+            
+            combo_keys = json.dumps([
+                {"key_kind": "property", "key_id": inst_name_id},
+                {"key_kind": "property", "key_id": management_ip_id}
+            ])
+            
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjectUnique 
+                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+            """, {
+                '_id': "bk_switch_bk_inst_name_management_ip",
+                'id': unique_id,
+                'bk_obj_id': 'bk_switch',
+                'keys': combo_keys,
+                'ispre': True
+            })
+            unique_id += 1
+            logger.info("为交换机模型添加了组合唯一约束（实例名称 + 管理IP）")
+        
+        logger.info(f"迁移了 {unique_id - 1} 个唯一约束")
 
 
 if __name__ == "__main__":
