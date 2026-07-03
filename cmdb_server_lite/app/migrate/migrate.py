@@ -1203,6 +1203,33 @@ class DatabaseMigrator:
             unique_id += 1
             logger.info("为交换机模型添加了组合唯一约束（实例名称 + 管理IP）")
         
+        # 为主机添加外网IP唯一约束
+        host_outer_ip_result = self.execute_query("""
+            SELECT id FROM cc_ObjAttDes 
+            WHERE bk_obj_id = 'bk_host' AND bk_property_id = 'bk_host_outerip'
+        """)
+        
+        if host_outer_ip_result:
+            outer_ip_id = host_outer_ip_result[0]['id']
+            
+            outer_ip_keys = json.dumps([
+                {"key_kind": "property", "key_id": outer_ip_id}
+            ])
+            
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjectUnique 
+                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+            """, {
+                '_id': "bk_host_bk_host_outerip",
+                'id': unique_id,
+                'bk_obj_id': 'bk_host',
+                'keys': outer_ip_keys,
+                'ispre': True
+            })
+            unique_id += 1
+            logger.info("为主机模型添加了外网IP唯一约束")
+        
         logger.info(f"迁移了 {unique_id - 1} 个唯一约束")
 
 
