@@ -1,6 +1,7 @@
 from app.db.executor import query_all, query_one, execute
 from app.db.engine import get_session
 from app.utils.tools import generate_id
+from app.utils.exceptions import ValidationException
 from datetime import datetime
 import json
 
@@ -763,7 +764,7 @@ class InstanceService:
         duplicates = InstanceService.check_unique(model_id, data)
         if duplicates:
             msg = '; '.join([f"{d['property_name']}已存在: {d['value']}" for d in duplicates])
-            raise ValueError(msg)
+            raise ValidationException(msg)
 
         # 清理字段，只保留安全字段
         from app.service.model_service import ModelService
@@ -803,7 +804,7 @@ class InstanceService:
                     clean_data[key] = str(value)
 
         if not clean_data:
-            raise ValueError('No valid data to insert')
+            raise ValidationException('No valid data to update')
 
         columns = list(clean_data.keys())
         placeholders = [f':{col}' for col in columns]
@@ -823,7 +824,7 @@ class InstanceService:
         duplicates = InstanceService.check_unique(model_id, data, exclude_instance_id=instance_id)
         if duplicates:
             msg = '; '.join([f"{d['property_name']}已存在: {d['value']}" for d in duplicates])
-            raise ValueError(msg)
+            raise ValidationException(msg)
 
         # 获取有效字段
         from app.service.model_service import ModelService
