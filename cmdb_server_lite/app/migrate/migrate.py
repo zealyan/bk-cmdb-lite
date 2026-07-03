@@ -109,6 +109,7 @@ SYSTEM_PROPERTIES = [
         "bk_property_type": "int",
         "isrequired": False,
         "isreadonly": True,
+        "isonly": True,
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
@@ -127,6 +128,7 @@ SYSTEM_PROPERTIES = [
         "bk_property_type": "int",
         "isrequired": False,
         "isreadonly": True,
+        "isonly": True,
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
@@ -145,6 +147,7 @@ SYSTEM_PROPERTIES = [
         "bk_property_type": "singlechar",
         "isrequired": True,
         "isreadonly": False,
+        "isonly": True,
         "editable": True,
         "bk_ispassword": False,
         "bk_ishidden": False,
@@ -163,6 +166,7 @@ SYSTEM_PROPERTIES = [
         "bk_property_type": "singlechar",
         "isrequired": True,
         "isreadonly": True,
+        "isonly": False,
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": True,
@@ -388,6 +392,7 @@ class DatabaseMigrator:
                     bk_ispassword BOOLEAN DEFAULT false,
                     bk_ishidden BOOLEAN DEFAULT false,
                     isreadonly BOOLEAN DEFAULT false,
+                    isonly BOOLEAN DEFAULT false,
                     editable BOOLEAN DEFAULT true,
                     bk_isapi BOOLEAN DEFAULT false,
                     bk_issystem BOOLEAN DEFAULT false,
@@ -593,14 +598,14 @@ class DatabaseMigrator:
                     option = self.process_option(prop_type, option)
                     
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes 
-                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
-                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
-                         bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre, 
+                        INSERT INTO cc_ObjAttDes
+                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                         bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
                          bk_property_index, bk_supplier_account)
-                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
-                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
-                                :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :option, 
+                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                                :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
                                 :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{sys_prop['bk_property_id']}",
@@ -614,6 +619,7 @@ class DatabaseMigrator:
                         'bk_ispassword': sys_prop['bk_ispassword'],
                         'bk_ishidden': sys_prop['bk_ishidden'],
                         'isreadonly': sys_prop['isreadonly'],
+                        'isonly': sys_prop['isonly'],
                         'bk_isapi': sys_prop['bk_isapi'],
                         'bk_issystem': sys_prop['bk_issystem'],
                         'option': option,
@@ -643,18 +649,19 @@ class DatabaseMigrator:
                     bk_issystem = prop.get("bk_issystem", False)
                     bk_isapi = prop.get("bk_isapi", False)
                     isreadonly = prop.get("isreadonly", False)
+                    isonly = prop.get("isonly", False)
                     editable = prop.get("editable", True)
                     bk_ishidden = prop.get("bk_ishidden", False)
-                    
+
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes 
-                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
-                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
-                         bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre, 
+                        INSERT INTO cc_ObjAttDes
+                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                         bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre,
                          bk_property_index, bk_supplier_account)
-                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
-                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
-                                :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :ismultiple, :option, 
+                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                                :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :ismultiple, :option,
                                 :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{bk_property_id}",
@@ -668,6 +675,7 @@ class DatabaseMigrator:
                         'bk_ispassword': prop.get("bk_ispassword", False),
                         'bk_ishidden': bk_ishidden,
                         'isreadonly': isreadonly,
+                        'isonly': isonly,
                         'bk_isapi': bk_isapi,
                         'bk_issystem': bk_issystem,
                         'ismultiple': is_multiple,
