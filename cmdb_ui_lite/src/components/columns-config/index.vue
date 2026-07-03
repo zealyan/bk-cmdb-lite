@@ -112,40 +112,26 @@ export default {
   },
   computed: {
     /**
-     * 获取可配置的属性列表（过滤掉系统字段）
-     * 与原项目保持一致：排除 bk_isapi=true 和 id 字段，但保留 disabledColumns 中的字段
+     * 与原项目保持一致: 只排序，不过滤
+     * 参考: /workspace/bk-cmdb/src/ui/src/components/columns-config/columns-config.vue sortedProperties
      */
     sortedProperties() {
-      return [...this.properties]
-        .filter(p => {
-          // 保留固定字段（如 bk_inst_id, bk_inst_name）
-          if (this.disabledColumns.includes(p.bk_property_id)) {
-            return true
-          }
-          // 过滤 API 字段
-          if (p.bk_isapi) {
-            return false
-          }
-          // 过滤内部数据库 ID 字段
-          if (p.bk_property_id === 'id') {
-            return false
-          }
-          return true
-        })
-        .sort((propertyA, propertyB) => 
-          propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
-        )
+      return [...this.properties].sort((propertyA, propertyB) =>
+        propertyA.bk_property_name.localeCompare(propertyB.bk_property_name, 'zh-Hans-CN', { sensitivity: 'accent' })
+      )
     },
     unselectedProperties() {
-      // 与原项目保持一致: 排除 disabledColumns 中的属性，不能选择系统字段
+      // 与原项目保持一致: 只排除已选 + 过滤搜索词，不显式处理 disabledColumns
+      // 因为 disabledColumns 中的字段会自动出现在 undragbbleProperties 中（已选状态），不会被列入未选
       return this.sortedProperties.filter((property) => {
-        const isDisabled = this.disabledColumns.includes(property.bk_property_id)
         const unselected = !this.localSelected.includes(property.bk_property_id)
         const includesFilter = property.bk_property_name.toLowerCase().indexOf(this.filter.toLowerCase()) !== -1
-        return !isDisabled && unselected && includesFilter
+        return unselected && includesFilter
       })
     },
     undragbbleProperties() {
+      // 与原项目保持一致: 按 disabledColumns 顺序展示固定字段（已选状态）
+      // 这些字段始终排在已选属性列表最前面，且不可拖动
       const undragbbleProperties = []
       this.disabledColumns.forEach((id) => {
         const isSelected = this.localSelected.includes(id)
@@ -172,10 +158,11 @@ export default {
         return drabbleProperties
       },
       set(value) {
+        // 与原项目保持一致: 固定字段始终在最前
         this.localSelected = [
-          ...this.undragbbleProperties.map(p => p.bk_property_id),
-          ...value.map(p => p.bk_property_id)
-        ]
+          ...this.undragbbleProperties,
+          ...value
+        ].map(property => property.bk_property_id)
       }
     }
   },
@@ -194,10 +181,7 @@ export default {
       )
     },
     selectProperty(property) {
-      // 与原项目保持一致: 不能选择 disabledColumns 中的属性
-      if (this.disabledColumns.includes(property.bk_property_id)) {
-        return
-      }
+      // 与原项目保持一致: 直接 push（disabledColumns 中的字段不会出现在 unselectedProperties 中）
       if (this.localSelected.length < this.max) {
         this.localSelected.push(property.bk_property_id)
       } else {
@@ -212,18 +196,14 @@ export default {
       }
     },
     handleApply() {
+      // 与原项目保持一致: 固定字段始终在最前，再拼接可拖动字段
+      // 这样保证 bk_inst_id 和 bk_inst_name 始终在已选属性列表的 1、2 位置
       if (this.localSelected.length > this.max) {
         this.$bkInfo(`最多选择${this.max}项`)
       } else if (this.localSelected.length < this.min) {
         this.$bkInfo(`至少选择${this.min}项`)
       } else {
-        const properties = []
-        this.localSelected.forEach((propertyId) => {
-          const property = this.properties.find(p => p.bk_property_id === propertyId)
-          if (property) {
-            properties.push(property)
-          }
-        })
+        const properties = [...this.undragbbleProperties, ...this.localDrabbleProperties]
         this.$emit('on-apply', properties)
         this.$emit('apply', properties)
       }

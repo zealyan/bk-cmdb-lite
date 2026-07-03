@@ -302,6 +302,10 @@ export default {
       modelData: null,
       allProperties: [],
       defaultColumns: [],
+      // 与原项目保持一致: customColumns 是从存储加载的自定义列配置（存储状态）
+      // columnsConfig.selected 是 UI 状态（抽屉中已勾选的属性），由 setTableHeader 同步更新
+      // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue customColumns computed
+      customColumns: [],
       selectedIds: [],
       hiddenUniqueProperties: [],
       createDialogVisible: false,
@@ -887,21 +891,23 @@ export default {
         }
 
         // Load saved columns config
+        // 与原项目保持一致: 存储数据加载到 customColumns（存储状态）
+        // columnsConfig.selected（UI 状态）由 setTableHeader 同步更新
         try {
           console.log('[Persistence] Calling getModelCustomColumns for objId:', this.objId)
           const savedColumns = await userCustom.getModelCustomColumns(this.objId)
           console.log('[Persistence] getModelCustomColumns result:', savedColumns)
           if (savedColumns && savedColumns.columns && savedColumns.columns.length > 0) {
-            this.columnsConfig.selected = savedColumns.columns
-            console.log('[Persistence] Set columnsConfig.selected to:', this.columnsConfig.selected)
+            this.customColumns = savedColumns.columns
+            console.log('[Persistence] Set customColumns to:', this.customColumns)
           } else {
             // 没有有效配置时，重置为空数组，使用默认规则
-            this.columnsConfig.selected = []
-            console.log('[Persistence] Reset columnsConfig.selected to empty array')
+            this.customColumns = []
+            console.log('[Persistence] Reset customColumns to empty array')
           }
         } catch (e) {
           console.log('[Persistence] No saved columns config found or error:', e)
-          this.columnsConfig.selected = []
+          this.customColumns = []
         }
 
         // 与原项目保持一致: 使用 searchableProperties 的过滤逻辑，排除 bk_isapi=true 和 id 字段
@@ -986,17 +992,12 @@ export default {
       }
     },
     /**
-     * 与原项目 getHeaderProperties 保持一致的表头生成逻辑
-     * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js
-     * - getPropertyPriority(property): 基于 bk_property_index，isonly(is only/unique)，isrequired 计算优先级，越小越高
-     * - getDefaultHeaderProperties(properties): 过滤系统字段后按优先级排序取前6个
-     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性，过滤系统字段
-     * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 合并固定字段+自定义/默认列
-     * 
-     * 系统字段判断规则：
-     * - bk_isapi=true 的字段（API 字段）应隐藏
-     * - bk_property_id === 'id' 的字段（内部数据库ID）应隐藏
-     * - 固定字段（fixedPropertyIds）如 bk_inst_id、bk_inst_name 始终保留
+     * 与原项目 tools.js 保持一致的表头生成逻辑
+     * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js#L269-L332
+     * - getPropertyPriority(property): 基于 bk_property_index，isonly，isrequired 计算优先级，越小越靠前
+     * - getDefaultHeaderProperties(properties): 按优先级排序取前6个（不过滤）
+     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性（简单映射，不过滤）
+     * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 始终将固定字段前置
      */
     getPropertyPriority(property) {
       let priority = property.bk_property_index ?? 0
@@ -1008,53 +1009,32 @@ export default {
       }
       return priority
     },
-    getDefaultHeaderProperties(properties, fixedPropertyIds = []) {
-      // 与原项目一致: 过滤系统字段，然后按优先级排序取前6个
-      const filteredProperties = properties.filter(p => {
-        // 保留固定字段
-        if (fixedPropertyIds.includes(p.bk_property_id)) {
-          return true
-        }
-        // 过滤 API 字段
-        if (p.bk_isapi) {
-          return false
-        }
-        // 过滤内部数据库 ID 字段
-        if (p.bk_property_id === 'id') {
-          return false
-        }
-        return true
-      })
-      return [...filteredProperties]
+    getDefaultHeaderProperties(properties) {
+      // 与原项目一致: 不过滤系统字段，按优先级排序取前6个
+      return [...properties]
         .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
         .slice(0, 6)
     },
-    getCustomHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
+    getCustomHeaderProperties(properties, customColumns) {
+      // 与原项目一致: 简单映射，不过滤任何字段
       const columnProperties = []
       customColumns.forEach((propertyId) => {
         const columnProperty = properties.find(property => property.bk_property_id === propertyId)
-        if (!columnProperty) {
-          return
+        if (columnProperty) {
+          columnProperties.push(columnProperty)
         }
-        if (columnProperty.bk_isapi) {
-          return
-        }
-        if (columnProperty.bk_property_id === 'id') {
-          return
-        }
-        columnProperties.push(columnProperty)
       })
       return columnProperties
     },
     getHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
-      // 与原项目保持一致
+      // 与原项目一致: 始终将固定字段前置
       let headerProperties
       if (customColumns && customColumns.length) {
-        headerProperties = this.getCustomHeaderProperties(properties, customColumns, fixedPropertyIds)
+        headerProperties = this.getCustomHeaderProperties(properties, customColumns)
       } else {
-        headerProperties = this.getDefaultHeaderProperties(properties, fixedPropertyIds)
+        headerProperties = this.getDefaultHeaderProperties(properties)
       }
-      if (fixedPropertyIds.length && !customColumns.length) {
+      if (fixedPropertyIds.length) {
         headerProperties = headerProperties.filter(property => !fixedPropertyIds.includes(property.bk_property_id))
         const fixedProperties = []
         fixedPropertyIds.forEach((id) => {
@@ -1070,14 +1050,17 @@ export default {
     setTableHeader() {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
-      console.log('[Debug] columnsConfig.selected:', this.columnsConfig.selected)
+      console.log('[Debug] customColumns:', this.customColumns)
       console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
 
-      // 与原项目保持一致: 优先使用用户自定义列，否则使用默认规则
-      const customColumns = this.columnsConfig.selected || []
+      // 与原项目保持一致: 从存储状态 customColumns 读取，不从 UI 状态 columnsConfig.selected 读取
+      // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue#L654-L667
+      const customColumns = this.customColumns || []
       const fixedPropertyIds = this.columnsConfig.disabledColumns || []
 
       // 调用与原项目一致的 getHeaderProperties 函数
+      // - 有自定义列时: 按自定义列顺序生成（固定字段始终前置）
+      // - 无自定义列时: 按默认优先级生成前6个（固定字段始终前置）
       const headerProperties = this.getHeaderProperties(
         this.allProperties,
         customColumns,
@@ -1092,13 +1075,12 @@ export default {
         property
       }))
 
-      // 仅当有自定义列配置时才同步 columnsConfig.selected
-      // 还原默认时不覆盖，保持空数组以使用默认规则
-      if (customColumns && customColumns.length > 0) {
-        this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
-      }
+      // 与原项目保持一致: 始终同步 columnsConfig.selected 为当前表头属性
+      // 这样抽屉打开时显示的已选属性与表格列保持一致
+      this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
 
       console.log('[Debug] table.header:', this.table.header.length)
+      console.log('[Debug] columnsConfig.selected synced to:', this.columnsConfig.selected)
     },
     formatCellValue(value, column) {
       if (value === null || value === undefined || value === '') {
@@ -2244,21 +2226,22 @@ export default {
     },
     async handleApplyColumns(properties) {
       console.log('[Persistence] handleApplyColumns called, properties:', properties)
-      this.columnsConfig.selected = properties.map(p => p.bk_property_id)
-      console.log('[Persistence] columnsConfig.selected updated to:', this.columnsConfig.selected)
+      // 与原项目保持一致: 更新存储状态 customColumns，UI 状态由 setTableHeader 同步
+      this.customColumns = properties.map(p => p.bk_property_id)
+      console.log('[Persistence] customColumns updated to:', this.customColumns)
       this.columnsConfig.show = false
       this.setTableHeader()
       console.log('[Persistence] setTableHeader called after apply')
-      
+
       // Save to both API and Vuex store for sharing
       try {
-        console.log('[Persistence] Calling saveModelCustomColumns for objId:', this.objId, 'columns:', this.columnsConfig.selected)
-        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.columnsConfig.selected)
+        console.log('[Persistence] Calling saveModelCustomColumns for objId:', this.objId, 'columns:', this.customColumns)
+        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.customColumns)
         console.log('[Persistence] saveModelCustomColumns result:', saveResult)
-        
+
         // Sync to Vuex store for sharing with association list
         const configKey = `${this.objId}_custom_table_columns`
-        this.$store.dispatch('saveUsercustom', { [configKey]: this.columnsConfig.selected })
+        this.$store.dispatch('saveUsercustom', { [configKey]: this.customColumns })
         console.log('[Persistence] Synced to Vuex store:', configKey)
       } catch (e) {
         console.error('[Persistence] Failed to save columns config:', e)
@@ -2271,18 +2254,20 @@ export default {
     },
     async handleResetColumns() {
       console.log('[Persistence] handleResetColumns called')
-      // 清空自定义列配置，使用默认规则
-      this.columnsConfig.selected = []
+      // 与原项目保持一致: 清空存储状态 customColumns（保存空数组到存储）
+      // setTableHeader 会基于空的 customColumns 生成默认列（含固定字段 bk_inst_id、bk_inst_name）
+      // 并同步更新 columnsConfig.selected，使抽屉再次打开时显示默认已选属性
+      this.customColumns = []
       this.columnsConfig.show = false
       this.setTableHeader()
       console.log('[Persistence] setTableHeader called after reset')
-      
+
       // 清空存储中的自定义列配置
       try {
         console.log('[Persistence] Clearing custom columns for objId:', this.objId)
         const saveResult = await userCustom.saveModelCustomColumns(this.objId, [])
         console.log('[Persistence] saveModelCustomColumns (clear) result:', saveResult)
-        
+
         // Sync to Vuex store for sharing with association list
         const configKey = `${this.objId}_custom_table_columns`
         this.$store.dispatch('saveUsercustom', { [configKey]: [] })
