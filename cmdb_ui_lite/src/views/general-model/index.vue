@@ -1092,8 +1092,11 @@ export default {
         property
       }))
 
-      // 同步更新 columnsConfig.selected，与原项目一致
-      this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
+      // 仅当有自定义列配置时才同步 columnsConfig.selected
+      // 还原默认时不覆盖，保持空数组以使用默认规则
+      if (customColumns && customColumns.length > 0) {
+        this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
+      }
 
       console.log('[Debug] table.header:', this.table.header.length)
     },
@@ -2267,25 +2270,25 @@ export default {
       this.columnsConfig.show = false
     },
     async handleResetColumns() {
-      console.log('[Persistence] handleResetColumns called, defaultColumns:', this.defaultColumns)
-      this.columnsConfig.selected = [...this.defaultColumns]
-      console.log('[Persistence] columnsConfig.selected reset to:', this.columnsConfig.selected)
+      console.log('[Persistence] handleResetColumns called')
+      // 清空自定义列配置，使用默认规则
+      this.columnsConfig.selected = []
       this.columnsConfig.show = false
       this.setTableHeader()
       console.log('[Persistence] setTableHeader called after reset')
       
-      // Save to both API and Vuex store for sharing
+      // 清空存储中的自定义列配置
       try {
-        console.log('[Persistence] Calling saveModelCustomColumns (reset) for objId:', this.objId, 'columns:', this.columnsConfig.selected)
-        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.columnsConfig.selected)
-        console.log('[Persistence] saveModelCustomColumns (reset) result:', saveResult)
+        console.log('[Persistence] Clearing custom columns for objId:', this.objId)
+        const saveResult = await userCustom.saveModelCustomColumns(this.objId, [])
+        console.log('[Persistence] saveModelCustomColumns (clear) result:', saveResult)
         
         // Sync to Vuex store for sharing with association list
         const configKey = `${this.objId}_custom_table_columns`
-        this.$store.dispatch('saveUsercustom', { [configKey]: this.columnsConfig.selected })
-        console.log('[Persistence] Synced reset to Vuex store:', configKey)
+        this.$store.dispatch('saveUsercustom', { [configKey]: [] })
+        console.log('[Persistence] Synced empty config to Vuex store:', configKey)
       } catch (e) {
-        console.error('[Persistence] Failed to save columns config (reset):', e)
+        console.error('[Persistence] Failed to clear columns config:', e)
       }
       this.$bkMessage({ message: '已还原默认配置', theme: 'success' })
     },
