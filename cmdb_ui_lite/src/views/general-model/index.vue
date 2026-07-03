@@ -237,6 +237,9 @@
           <div class="batch-update-info" v-if="selectedIds.length > 0">
             <i class="bk-icon icon-info-circle"></i>
             已选择 <strong>{{ selectedIds.length }}</strong> 个实例进行更新
+            <span v-if="hiddenUniqueProperties.length > 0" class="hidden-properties">
+              （已隐藏 <strong>{{ hiddenUniqueProperties.join('、') }}</strong>，原因：添加了唯一校验规则）
+            </span>
           </div>
           <form-multiple
             ref="formMultipleRef"
@@ -246,7 +249,8 @@
             :model-id="objId"
             submit-text="更新"
             @submit="handleBatchUpdateSubmit"
-            @cancel="handleBatchUpdateDialogClose">
+            @cancel="handleBatchUpdateDialogClose"
+            @unique-properties-changed="handleUniquePropertiesChanged">
           </form-multiple>
         </div>
       </template>
@@ -299,6 +303,7 @@ export default {
       allProperties: [],
       defaultColumns: [],
       selectedIds: [],
+      hiddenUniqueProperties: [],
       createDialogVisible: false,
       createForm: {},
       createFormInitial: {},
@@ -1745,9 +1750,13 @@ export default {
     },
     handleBatchUpdateDialogClose() {
       this.batchUpdateDialogVisible = false
+      this.hiddenUniqueProperties = []
       if (this.$refs.formMultipleRef) {
         this.$refs.formMultipleRef.reset()
       }
+    },
+    handleUniquePropertiesChanged(properties) {
+      this.hiddenUniqueProperties = properties || []
     },
     handleSelectionChange(selection) {
       this.selectedIds = selection.map(row => row.bk_inst_id)
@@ -3006,6 +3015,11 @@ export default {
   strong {
     color: #303133;
     font-weight: 500;
+  }
+
+  .hidden-properties {
+    color: #f56c6c;
+    font-size: 13px;
   }
 }
 

@@ -121,6 +121,17 @@ export default {
     hasAvailableGroups() {
       return this.groupedPropertiesList.some(group => this.hasPropertiesInGroup(group.properties).length > 0)
     },
+    hiddenUniqueProperties() {
+      const hiddenNames = []
+      const seen = new Set()
+      this.properties.forEach(property => {
+        if (this.uniquePropertyIds.includes(property.bk_property_id) && !seen.has(property.bk_property_id)) {
+          hiddenNames.push(property.bk_property_name)
+          seen.add(property.bk_property_id)
+        }
+      })
+      return hiddenNames
+    },
     groupedPropertiesList() {
       const groupNameMap = {
         'base': '基本信息',
@@ -235,8 +246,10 @@ export default {
         // 支持多条唯一约束：如 实例名 单独唯一、实例名+管理IP 组合唯一
         // 两条约束涉及的字段都会被隐藏（bk_inst_name 和 bk_management_ip 都不可批量更新）
         this.uniquePropertyIds = uniquePropertyIds
+        this.$emit('unique-properties-changed', this.hiddenUniqueProperties)
       }).catch(() => {
         this.uniquePropertyIds = []
+        this.$emit('unique-properties-changed', this.hiddenUniqueProperties)
       })
     },
     hasPropertiesInGroup(properties) {
