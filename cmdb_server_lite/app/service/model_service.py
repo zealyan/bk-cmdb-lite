@@ -25,8 +25,18 @@ class ModelService:
         return model
     
     @staticmethod
-    def get_model_attributes(model_id):
-        """获取模型属性"""
+    def get_model_attributes(model_id, for_web=False):
+        """获取模型属性
+
+        与原项目规则保持一致:
+        - for_web=False: 返回全部属性（后端内部使用，如验证、唯一性检查、类型映射）
+        - for_web=True: 过滤掉 bk_issystem=true 和 bk_isapi=true 的系统字段，
+          仅返回前端可见的属性。参考原项目 SearchObjectAttributeForWeb:
+          /workspace/bk-cmdb/src/scene_server/topo_server/service/object_attribute.go
+          中 combinationSearchObjectAttrCond 函数强制设置查询条件:
+            bk_issystem = false
+            bk_isapi = false
+        """
         attributes = query_all('model/select_model_attributes.sql', {
             'model_id': model_id
         })
@@ -71,6 +81,17 @@ class ModelService:
                     attr['option'] = parsed_option
                 except (json.JSONDecodeError, TypeError):
                     pass
+
+        # for_web=True 时，过滤掉系统字段和 API 字段（与原项目后端过滤规则一致）
+        # 原项目在 combinationSearchObjectAttrCond 中强制设置:
+        #   bk_issystem = false  → 过滤 bk_obj_id 等系统内部字段
+        #   bk_isapi = false     → 过滤 id、bk_inst_id 等 API 字段
+        # 这些字段不应返回给前端展示
+        if for_web:
+            attributes = [
+                attr for attr in attributes
+                if not attr.get('bk_issystem', False) and not attr.get('bk_isapi', False)
+            ]
 
         return attributes
     

@@ -34,9 +34,13 @@ def get_model_by_id(model_id):
 
 @model_bp.route('/<model_id>/attributes', methods=['GET'])
 def get_model_attributes(model_id):
-    """获取模型属性列表"""
+    """获取模型属性列表
+
+    与原项目 SearchObjectAttributeForWeb 一致:
+    过滤掉 bk_issystem=true 和 bk_isapi=true 的系统字段，仅返回前端可见的属性
+    """
     try:
-        attributes = ModelService.get_model_attributes(model_id)
+        attributes = ModelService.get_model_attributes(model_id, for_web=True)
         return jsonify({'attributes': attributes})
     except Exception as e:
         logger.error(f"Error getting model attributes: {e}")
