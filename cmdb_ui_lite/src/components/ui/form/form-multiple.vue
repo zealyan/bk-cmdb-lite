@@ -67,6 +67,7 @@
 
 <script>
 import { parseOption, charLength, getMaxCharsByType } from '@/utils/validate-utils'
+import { modelAPI } from '@/api/client'
 export default {
   name: 'cmdb-form-multiple',
   props: {
@@ -89,6 +90,10 @@ export default {
     uneditableProperties: {
       type: Array,
       default: () => []
+    },
+    modelId: {
+      type: String,
+      default: ''
     }
   },
   data() {
@@ -97,7 +102,8 @@ export default {
       editable: {},
       initialValues: {},
       groupState: {},
-      errorMessages: {}
+      errorMessages: {},
+      uniquePropertyIds: []
     }
   },
   computed: {
@@ -114,6 +120,17 @@ export default {
     },
     hasAvailableGroups() {
       return this.groupedPropertiesList.some(group => this.hasPropertiesInGroup(group.properties).length > 0)
+    },
+    hiddenUniqueProperties() {
+      const hiddenNames = []
+      const seen = new Set()
+      this.properties.forEach(property => {
+        if (this.uniquePropertyIds.includes(property.bk_property_id) && !seen.has(property.bk_property_id)) {
+          hiddenNames.push(property.bk_property_name)
+          seen.add(property.bk_property_id)
+        }
+      })
+      return hiddenNames
     },
     groupedPropertiesList() {
       const groupNameMap = {
@@ -142,7 +159,8 @@ export default {
       return Object.values(groups).sort((a, b) => (groupOrder[a.bk_group_id] || 99) - (groupOrder[b.bk_group_id] || 99))
     }
   },
-  created() {
+  async created() {
+    await this.fetchUniqueProperties()
     this.initValues()
     this.initEditableStatus()
     this.initGroupState()
@@ -195,14 +213,44 @@ export default {
       const isAsst = ['singleasst', 'multiasst'].includes(property.bk_property_type)
       const isUneditable = this.uneditableProperties.includes(property.bk_property_id)
       const isBuiltinUneditable = BUILTIN_UNEDITABLE_FIELDS.includes(property.bk_property_id)
+      const isUnique = this.uniquePropertyIds.includes(property.bk_property_id)
       
-      return editable && !isapi && !isonly && !isAsst && !isUneditable && !isBuiltinUneditable
+      return editable && !isapi && !isonly && !isAsst && !isUneditable && !isBuiltinUneditable && !isUnique
     },
     isDisabledForbidden(property) {
       return !this.isPropertyEditable(property)
     },
     isFullWidth(property) {
       return ['innerTable', 'table', 'text', 'longchar'].includes(property.bk_property_type)
+    },
+    fetchUniqueProperties() {
+      if (!this.modelId) return
+      modelAPI.searchObjectUnique(this.modelId).then((result) => {
+        // 收集所有唯一约束中涉及的字段（不去重，因为 includes 判断本身就不受重复影响）
+        const uniquePropertyIds = []
+        if (result && result.info && Array.isArray(result.info)) {
+          result.info.forEach((constraint) => {
+            if (constraint.keys && Array.isArray(constraint.keys)) {
+              constraint.keys.forEach((key) => {
+                if (key.key_kind === 'property' && key.key_id) {
+                  // 通过 key_id (属性整数ID) 查找对应的属性
+                  const property = this.properties.find((p) => p.id === key.key_id)
+                  if (property) {
+                    uniquePropertyIds.push(property.bk_property_id)
+                  }
+                }
+              })
+            }
+          })
+        }
+        // 支持多条唯一约束：如 实例名 单独唯一、实例名+管理IP 组合唯一
+        // 两条约束涉及的字段都会被隐藏（bk_inst_name 和 bk_management_ip 都不可批量更新）
+        this.uniquePropertyIds = uniquePropertyIds
+        this.$emit('unique-properties-changed', this.hiddenUniqueProperties)
+      }).catch(() => {
+        this.uniquePropertyIds = []
+        this.$emit('unique-properties-changed', this.hiddenUniqueProperties)
+      })
     },
     hasPropertiesInGroup(properties) {
       return properties.filter(p => this.isPropertyEditable(p))

@@ -90,7 +90,6 @@
 import { modelAPI } from '@/api/client'
 import associationAPI from '@/api/association'
 import associationPropertyFilter from './association-property-filter.vue'
-import modelIndex from '@/assets/api/index.json'
 
 export default {
   name: 'AssociationCreate',
@@ -114,7 +113,7 @@ export default {
   data() {
     return {
       sliderShow: false,
-      models: modelIndex.models,
+      models: [],
       associationType: [],
       associationObject: [],
       options: [],
@@ -196,12 +195,12 @@ export default {
     async initData() {
       console.log('[AssociationCreate] initData() started')
       console.log('[AssociationCreate] this.objId:', this.objId)
-      console.log('[AssociationCreate] this.models:', this.models.length, 'models')
       
       try {
         await Promise.all([
           this.getAssociationType(),
-          this.getObjAssociation()
+          this.getObjAssociation(),
+          this.loadModels()
         ])
         
         console.log('[AssociationCreate] After API calls:')
@@ -244,6 +243,17 @@ export default {
       } catch (e) {
         console.error('[AssociationCreate] getObjAssociation error:', e)
         this.associationObject = []
+      }
+    },
+    async loadModels() {
+      try {
+        const response = await modelAPI.listModels()
+        if (response && response.models) {
+          this.models = response.models
+        }
+      } catch (e) {
+        console.error('[AssociationCreate] loadModels error:', e)
+        this.models = []
       }
     },
     setAssociationOptions() {

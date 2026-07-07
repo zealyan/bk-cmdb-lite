@@ -245,7 +245,7 @@ export default {
         value: this.editValue,
         changed
       })
-      this.$emit('end-edit')
+      // 不在这里关闭编辑态，由父组件根据保存结果决定
     },
     cancelEdit() {
       this.$emit('end-edit')

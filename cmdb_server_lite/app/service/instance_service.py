@@ -1,6 +1,7 @@
 from app.db.executor import query_all, query_one, execute
 from app.db.engine import get_session
 from app.utils.tools import generate_id
+from app.utils.exceptions import ValidationException
 from datetime import datetime
 import json
 
@@ -612,7 +613,138 @@ class InstanceService:
         sql = f'SELECT COUNT(*) as total FROM "{table_name}"'
         result = query_one(sql, {})
         return result.get('total', 0) if result else 0
+
+    @staticmethod
+    def get_unique_attributes(model_id):
+        """获取模型的唯一属性列表（从 cc_ObjectUnique 表读取）"""
+        from app.service.model_service import ModelService
+        
+        unique_constraints = ModelService.get_object_unique(model_id)
+        if not unique_constraints:
+            return []
+        
+        attributes = ModelService.get_model_attributes(model_id)
+        attr_map = {attr.get('id'): attr for attr in attributes}
+        
+        unique_attrs = []
+        for constraint in unique_constraints:
+            keys = constraint.get('keys', [])
+            for key in keys:
+                if key.get('key_kind') == 'property':
+                    attr_id = key.get('key_id')
+                    attr = attr_map.get(attr_id)
+                    if attr and not attr.get('bk_isapi'):
+                        unique_attrs.append(attr)
+        
+        return unique_attrs
     
+    @staticmethod
+    def get_object_unique_constraints(model_id):
+        """获取模型的唯一约束定义（包含组合键）"""
+        from app.service.model_service import ModelService
+        
+        constraints = ModelService.get_object_unique(model_id)
+        if not constraints:
+            return []
+        
+        attributes = ModelService.get_model_attributes(model_id)
+        attr_map = {attr.get('id'): attr for attr in attributes}
+        
+        result = []
+        for constraint in constraints:
+            keys = constraint.get('keys', [])
+            constraint_attrs = []
+            for key in keys:
+                if key.get('key_kind') == 'property':
+                    attr_id = key.get('key_id')
+                    attr = attr_map.get(attr_id)
+                    if attr:
+                        constraint_attrs.append(attr)
+            if constraint_attrs:
+                result.append({
+                    'id': constraint.get('id'),
+                    'keys': constraint_attrs
+                })
+        
+        return result
+    
+    @staticmethod
+    def check_unique(model_id, data, exclude_instance_id=None):
+        """
+        校验实例数据的唯一性（支持组合唯一键）
+        :param model_id: 模型ID
+        :param data: 实例数据 dict
+        :param exclude_instance_id: 排除的实例ID（更新时用，排除自身）
+        :return: list of dict [{property_id, property_name, value}] 重复的字段列表
+        """
+        table_name = InstanceService._get_table_name(model_id)
+        unique_constraints = InstanceService.get_object_unique_constraints(model_id)
+
+        if not unique_constraints:
+            return []
+
+        duplicates = []
+        for constraint in unique_constraints:
+            constraint_attrs = constraint.get('keys', [])
+            
+            all_keys_present = True
+            key_values = {}
+            key_names = []
+            
+            for attr in constraint_attrs:
+                prop_id = attr.get('bk_property_id')
+                prop_name = attr.get('bk_property_name', prop_id)
+                value = data.get(prop_id)
+                
+                if value is None or value == '':
+                    all_keys_present = False
+                    break
+                
+                key_values[prop_id] = value
+                key_names.append(prop_name)
+            
+            if not all_keys_present:
+                continue
+            
+            sql_parts = [f'SELECT COUNT(*) as cnt FROM "{table_name}" WHERE']
+            where_clauses = []
+            params = {}
+            
+            for idx, (prop_id, value) in enumerate(key_values.items()):
+                param_name = f'val_{idx}'
+                where_clauses.append(f'"{prop_id}" = :{param_name}')
+                params[param_name] = value
+            
+            sql_parts.append(' AND '.join(where_clauses))
+            
+            if exclude_instance_id is not None:
+                sql_parts.append('AND bk_inst_id != :exclude_id')
+                params['exclude_id'] = exclude_instance_id
+
+            sql = ' '.join(sql_parts)
+            result = query_one(sql, params)
+
+            if result and result.get('cnt', 0) > 0:
+                for prop_id, value in key_values.items():
+                    attr = next((a for a in constraint_attrs if a.get('bk_property_id') == prop_id), None)
+                    if attr:
+                        duplicates.append({
+                            'property_id': prop_id,
+                            'property_name': attr.get('bk_property_name', prop_id),
+                            'value': value
+                        })
+
+        # 去重：同一属性ID+值组合只保留一个（避免多约束同时触发时重复报错）
+        seen = set()
+        unique_duplicates = []
+        for d in duplicates:
+            key = (d['property_id'], d['value'])
+            if key not in seen:
+                seen.add(key)
+                unique_duplicates.append(d)
+
+        return unique_duplicates
+
     @staticmethod
     def create_instance(model_id, data):
         """创建实例"""
@@ -628,6 +760,11 @@ class InstanceService:
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
         data.setdefault('last_time', now)
+
+        duplicates = InstanceService.check_unique(model_id, data)
+        if duplicates:
+            msg = '; '.join([f"{d['property_name']}已存在: {d['value']}" for d in duplicates])
+            raise ValidationException(msg)
 
         # 清理字段，只保留安全字段
         from app.service.model_service import ModelService
@@ -667,7 +804,7 @@ class InstanceService:
                     clean_data[key] = str(value)
 
         if not clean_data:
-            raise ValueError('No valid data to insert')
+            raise ValidationException('No valid data to update')
 
         columns = list(clean_data.keys())
         placeholders = [f':{col}' for col in columns]
@@ -683,6 +820,11 @@ class InstanceService:
         table_name = InstanceService._get_table_name(model_id)
 
         data['last_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        duplicates = InstanceService.check_unique(model_id, data, exclude_instance_id=instance_id)
+        if duplicates:
+            msg = '; '.join([f"{d['property_name']}已存在: {d['value']}" for d in duplicates])
+            raise ValidationException(msg)
 
         # 获取有效字段
         from app.service.model_service import ModelService
@@ -739,14 +881,25 @@ class InstanceService:
         if not ids:
             return 0
 
-        table_name = InstanceService._get_table_name(model_id)
-
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data['last_time'] = now
 
-        # 获取有效字段
-        from app.service.model_service import ModelService
-        attributes = ModelService.get_model_attributes(model_id)
+        # 检查是否更新了唯一字段（与原项目保持一致，禁止批量更新唯一字段）
+        unique_constraints = InstanceService.get_object_unique_constraints(model_id)
+        unique_property_ids = set()
+        for constraint in unique_constraints:
+            keys = constraint.get('keys', [])
+            for key in keys:
+                property_id = key.get('bk_property_id')
+                if property_id:
+                    unique_property_ids.add(property_id)
+
+        for field_name in data.keys():
+            if field_name != 'last_time' and field_name in unique_property_ids:
+                raise ValidationException('不允许批量更新唯一字段')
+
+        table_name = InstanceService._get_table_name(model_id)
+
         # 构建属性ID到属性类型的映射
         attr_type_map = {}
         for attr in attributes:

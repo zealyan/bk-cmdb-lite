@@ -102,6 +102,18 @@ DEFAULT_CLASSIFICATION_ICON = 'icon-cc-default'
 DEFAULT_ASST_ICON = 'icon-cc-default'
 
 # 系统属性定义
+# 与原项目规则保持一致，参考:
+# - /workspace/bk-cmdb/src/scene_server/admin_server/upgrader/y3.10.202302062350/add_project.go (bk_project 的 id 字段)
+# - /workspace/bk-cmdb/src/scene_server/admin_server/upgrader/history/v3.0.8/objAttDescData.go (bk_inst_name 字段)
+# - /workspace/bk-cmdb/src/source_controller/coreservice/core/instances/instance_validate.go (bk_obj_id 跳过验证)
+#
+# 原项目规则:
+# - bk_isapi=true: API 字段，对页面不可见（前端过滤）
+# - bk_issystem=true: 系统内部字段，不返回前端
+# - id 字段: 原项目仅在 bk_project 模型显式创建，只设 bk_isapi=true，不设 bk_issystem
+# - bk_inst_id 字段: 原项目不在 cc_ObjAttDes 中维护，简化版保留时参考 id 规则
+# - bk_inst_name 字段: 原项目配置 ispre=true, isrequired=true, isonly=true, editable=true，bk_issystem=false（用户可见可编辑）
+# - bk_obj_id 字段: 原项目不在 cc_ObjAttDes 中维护，由系统自动注入；简化版保留时设 bk_issystem=true（系统内部字段）
 SYSTEM_PROPERTIES = [
     {
         "bk_property_id": "id",
@@ -109,11 +121,12 @@ SYSTEM_PROPERTIES = [
         "bk_property_type": "int",
         "isrequired": False,
         "isreadonly": True,
+        "isonly": False,
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": True,   # 内部数据库字段，与原项目保持一致：设置为API字段，在表单和搜索中过滤
-        "bk_issystem": True,
+        "bk_isapi": True,   # API 字段，前端隐藏（原项目 bk_project 规则）
+        "bk_issystem": False,  # 修复：原项目 id 字段只设 bk_isapi=true，不设 bk_issystem
         "ispre": True,
         "bk_property_index": -1,
         "bk_property_group": "default",
@@ -127,11 +140,12 @@ SYSTEM_PROPERTIES = [
         "bk_property_type": "int",
         "isrequired": False,
         "isreadonly": True,
+        "isonly": False,
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": False,
-        "bk_isapi": True,  # 与原项目保持一致：设置为API字段，在表单和搜索中过滤
-        "bk_issystem": True,
+        "bk_isapi": True,  # API 字段，前端隐藏（参考 id 字段规则）
+        "bk_issystem": False,  # 修复：参考 id 字段规则，API 字段非系统字段
         "ispre": True,
         "bk_property_index": 0,
         "bk_property_group": "default",
@@ -142,14 +156,15 @@ SYSTEM_PROPERTIES = [
     {
         "bk_property_id": "bk_inst_name",
         "bk_property_name": "实例名称",
-        "bk_property_type": "string",
+        "bk_property_type": "singlechar",
         "isrequired": True,
         "isreadonly": False,
+        "isonly": True,
         "editable": True,
         "bk_ispassword": False,
         "bk_ishidden": False,
         "bk_isapi": False,
-        "bk_issystem": True,
+        "bk_issystem": False,  # 修复：原项目 bk_inst_name 不是系统字段，用户可见可编辑
         "ispre": True,
         "bk_property_index": 1,
         "bk_property_group": "default",
@@ -160,14 +175,15 @@ SYSTEM_PROPERTIES = [
     {
         "bk_property_id": "bk_obj_id",
         "bk_property_name": "模型ID",
-        "bk_property_type": "string",
+        "bk_property_type": "singlechar",
         "isrequired": True,
         "isreadonly": True,
+        "isonly": False,
         "editable": False,
         "bk_ispassword": False,
         "bk_ishidden": True,
         "bk_isapi": True,
-        "bk_issystem": True,
+        "bk_issystem": True,  # 保持：系统内部字段，由后端自动注入，不返回前端
         "ispre": True,
         "bk_property_index": 2,
         "bk_property_group": "default",
@@ -388,6 +404,7 @@ class DatabaseMigrator:
                     bk_ispassword BOOLEAN DEFAULT false,
                     bk_ishidden BOOLEAN DEFAULT false,
                     isreadonly BOOLEAN DEFAULT false,
+                    isonly BOOLEAN DEFAULT false,
                     editable BOOLEAN DEFAULT true,
                     bk_isapi BOOLEAN DEFAULT false,
                     bk_issystem BOOLEAN DEFAULT false,
@@ -453,6 +470,18 @@ class DatabaseMigrator:
                     bk_obj_asst_id VARCHAR NOT NULL,
                     bk_relation_type_id VARCHAR NOT NULL,
                     bk_supplier_account VARCHAR DEFAULT '0'
+                )
+            """,
+            "cc_ObjectUnique": """
+                CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
+                    _id VARCHAR,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bk_template_id INTEGER DEFAULT 0,
+                    bk_obj_id VARCHAR NOT NULL,
+                    keys TEXT,
+                    ispre BOOLEAN DEFAULT false,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """,
             "user_custom": """
@@ -588,19 +617,19 @@ class DatabaseMigrator:
                 
                 # 先插入系统属性
                 for sys_prop in SYSTEM_PROPERTIES:
-                    prop_type = sys_prop.get("bk_property_type", "string")
+                    prop_type = sys_prop.get("bk_property_type", "singlechar")
                     option = sys_prop.get("option")
                     option = self.process_option(prop_type, option)
                     
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes 
-                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
-                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
-                         bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre, 
+                        INSERT INTO cc_ObjAttDes
+                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                         bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
                          bk_property_index, bk_supplier_account)
-                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
-                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
-                                :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :option, 
+                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                                :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
                                 :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{sys_prop['bk_property_id']}",
@@ -614,6 +643,7 @@ class DatabaseMigrator:
                         'bk_ispassword': sys_prop['bk_ispassword'],
                         'bk_ishidden': sys_prop['bk_ishidden'],
                         'isreadonly': sys_prop['isreadonly'],
+                        'isonly': sys_prop['isonly'],
                         'bk_isapi': sys_prop['bk_isapi'],
                         'bk_issystem': sys_prop['bk_issystem'],
                         'option': option,
@@ -633,7 +663,7 @@ class DatabaseMigrator:
                     if bk_property_id in SYSTEM_FIELDS:
                         continue
                     
-                    prop_type = prop.get("bk_property_type", "string")
+                    prop_type = prop.get("bk_property_type", "singlechar")
                     option = prop.get("option")
                     option = self.process_option(prop_type, option)
                     
@@ -643,18 +673,19 @@ class DatabaseMigrator:
                     bk_issystem = prop.get("bk_issystem", False)
                     bk_isapi = prop.get("bk_isapi", False)
                     isreadonly = prop.get("isreadonly", False)
+                    isonly = prop.get("isonly", False)
                     editable = prop.get("editable", True)
                     bk_ishidden = prop.get("bk_ishidden", False)
-                    
+
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes 
-                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type, 
-                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly,
-                         bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre, 
+                        INSERT INTO cc_ObjAttDes
+                        (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                         bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                         bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre,
                          bk_property_index, bk_supplier_account)
-                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name, 
-                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword, 
-                                :bk_ishidden, :isreadonly, :bk_isapi, :bk_issystem, :ismultiple, :option, 
+                        VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                                :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                                :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :ismultiple, :option,
                                 :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
                     """, {
                         '_id': f"{model_id}.{bk_property_id}",
@@ -668,6 +699,7 @@ class DatabaseMigrator:
                         'bk_ispassword': prop.get("bk_ispassword", False),
                         'bk_ishidden': bk_ishidden,
                         'isreadonly': isreadonly,
+                        'isonly': isonly,
                         'bk_isapi': bk_isapi,
                         'bk_issystem': bk_issystem,
                         'ismultiple': is_multiple,
@@ -732,8 +764,11 @@ class DatabaseMigrator:
         type_mapping = {
             'int': 'INTEGER',
             'long': 'BIGINT',
-            'string': 'TEXT',
+            'singlechar': 'VARCHAR',
+            'shortchar': 'VARCHAR',
+            'longchar': 'TEXT',
             'char': 'VARCHAR',
+            'text': 'TEXT',
             'float': 'FLOAT',
             'double': 'DOUBLE',
             'date': 'DATE',
@@ -1109,7 +1144,105 @@ class DatabaseMigrator:
         # 步骤9: 迁移关联关系数据
         self.migrate_associations()
 
+        # 步骤10: 迁移唯一约束数据
+        self.migrate_object_unique()
+
         logger.info("数据库初始化迁移完成!")
+
+    def migrate_object_unique(self):
+        """迁移唯一约束数据"""
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        
+        unique_id = 1
+        for model in models:
+            model_id = model['bk_obj_id']
+            
+            attr_result = self.execute_query("""
+                SELECT id FROM cc_ObjAttDes 
+                WHERE bk_obj_id = :model_id AND bk_property_id = 'bk_inst_name'
+            """, {"model_id": model_id})
+            
+            if attr_result:
+                attr_id = attr_result[0]['id']
+                keys = json.dumps([{
+                    "key_kind": "property",
+                    "key_id": attr_id
+                }])
+                
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjectUnique 
+                    (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+                """, {
+                    '_id': f"{model_id}_bk_inst_name",
+                    'id': unique_id,
+                    'bk_obj_id': model_id,
+                    'keys': keys,
+                    'ispre': True
+                })
+                unique_id += 1
+        
+        # 为交换机添加组合唯一约束（实例名称 + 管理IP）
+        switch_inst_name_result = self.execute_query("""
+            SELECT id FROM cc_ObjAttDes 
+            WHERE bk_obj_id = 'bk_switch' AND bk_property_id = 'bk_inst_name'
+        """)
+        switch_management_ip_result = self.execute_query("""
+            SELECT id FROM cc_ObjAttDes 
+            WHERE bk_obj_id = 'bk_switch' AND bk_property_id = 'management_ip'
+        """)
+        
+        if switch_inst_name_result and switch_management_ip_result:
+            inst_name_id = switch_inst_name_result[0]['id']
+            management_ip_id = switch_management_ip_result[0]['id']
+            
+            combo_keys = json.dumps([
+                {"key_kind": "property", "key_id": inst_name_id},
+                {"key_kind": "property", "key_id": management_ip_id}
+            ])
+            
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjectUnique 
+                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+            """, {
+                '_id': "bk_switch_bk_inst_name_management_ip",
+                'id': unique_id,
+                'bk_obj_id': 'bk_switch',
+                'keys': combo_keys,
+                'ispre': True
+            })
+            unique_id += 1
+            logger.info("为交换机模型添加了组合唯一约束（实例名称 + 管理IP）")
+        
+        # 为主机添加外网IP唯一约束
+        host_outer_ip_result = self.execute_query("""
+            SELECT id FROM cc_ObjAttDes 
+            WHERE bk_obj_id = 'bk_host' AND bk_property_id = 'bk_host_outerip'
+        """)
+        
+        if host_outer_ip_result:
+            outer_ip_id = host_outer_ip_result[0]['id']
+            
+            outer_ip_keys = json.dumps([
+                {"key_kind": "property", "key_id": outer_ip_id}
+            ])
+            
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjectUnique 
+                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+            """, {
+                '_id': "bk_host_bk_host_outerip",
+                'id': unique_id,
+                'bk_obj_id': 'bk_host',
+                'keys': outer_ip_keys,
+                'ispre': True
+            })
+            unique_id += 1
+            logger.info("为主机模型添加了外网IP唯一约束")
+        
+        logger.info(f"迁移了 {unique_id - 1} 个唯一约束")
 
 
 if __name__ == "__main__":

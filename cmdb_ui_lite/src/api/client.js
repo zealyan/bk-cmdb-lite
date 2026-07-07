@@ -136,6 +136,14 @@ export const modelAPI = {
     return http.post(`/api/v1/models/${modelId}/instances/check-associations`, { ids })
   },
 
+  // 校验实例数据的唯一性
+  checkInstanceUnique (modelId, data, excludeInstanceId = null) {
+    return http.post(`/api/v1/models/${modelId}/instances/check-unique`, {
+      data,
+      exclude_instance_id: excludeInstanceId
+    })
+  },
+
   // 删除实例（支持批量）
   deleteInstances (modelId, ids = []) {
     return http.delete(`/api/v1/models/${modelId}/instances`, { data: { ids } })
@@ -164,6 +172,26 @@ export const modelAPI = {
   // 批量获取模型实例数量统计
   getInstanceCounts (objIds = []) {
     return http.post('/api/v1/models/instances/count', { obj_ids: objIds })
+  },
+
+  // 查询模型的唯一约束
+  searchObjectUnique (modelId) {
+    return http.post(`/find/objectunique/object/${modelId}`, [])
+  },
+
+  // 创建模型的唯一约束
+  createObjectUnique (modelId, keys) {
+    return http.post(`/create/objectunique/object/${modelId}`, { keys })
+  },
+
+  // 更新模型的唯一约束
+  updateObjectUnique (modelId, uniqueId, keys) {
+    return http.put(`/update/objectunique/object/${modelId}/unique/${uniqueId}`, { keys })
+  },
+
+  // 删除模型的唯一约束
+  deleteObjectUnique (modelId, uniqueId) {
+    return http.post(`/delete/objectunique/object/${modelId}/unique/${uniqueId}`)
   }
 }
 

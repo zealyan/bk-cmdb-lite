@@ -111,6 +111,14 @@ export default {
     disabledProperties: {
       type: Array,
       default: () => []
+    },
+    modelId: {
+      type: String,
+      default: ''
+    },
+    instanceId: {
+      type: [String, Number],
+      default: null
     }
   },
   data() {
@@ -292,10 +300,7 @@ export default {
       this.$emit('update:values', newValues)
       this.$emit('input', propertyId, value)
     },
-    handleBlur(property) {
-      const value = this.values[property.bk_property_id]
-      this.validateProperty(property.bk_property_id, value)
-    },
+    handleBlur() {},
     validateProperty(propertyId, value) {
       const property = this.properties.find(p => p.bk_property_id === propertyId)
       if (!property) return true
@@ -414,9 +419,10 @@ export default {
       return isValid
     },
     handleSave() {
-      if (this.validateAll()) {
-        this.$emit('submit', { ...this.values })
+      if (!this.validateAll()) {
+        return
       }
+      this.$emit('submit', { ...this.values })
     },
     handleCancel() {
       this.$emit('cancel')

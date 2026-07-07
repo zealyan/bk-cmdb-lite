@@ -63,7 +63,6 @@
 import InstanceAssociation from '@/components/instance-association/index.vue'
 import EditableProperty from '@/components/property/editable-property.vue'
 import { modelAPI } from '@/api/client'
-import modelIndex from '@/assets/api/index.json'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
 import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
 
@@ -79,7 +78,7 @@ export default {
       objId: '',
       instId: null,
       instanceData: {},
-      modelIndex: modelIndex.models,
+      modelData: null,
       apiAssociations: [],
       apiRelations: [],
       apiAttributes: {},
@@ -142,8 +141,10 @@ export default {
       return []
     },
     modelName () {
-      const model = this.modelIndex.find(m => m.bk_obj_id === this.objId)
-      return model?.bk_obj_name || this.objId
+      if (this.modelData && this.modelData.bk_obj_name) {
+        return this.modelData.bk_obj_name
+      }
+      return this.objId
     },
     instanceName () {
       if (this.instanceData.bk_inst_name) {
@@ -221,6 +222,15 @@ export default {
             .filter(p => p.bk_property_index !== -1)
             .sort((a, b) => a.bk_property_index - b.bk_property_index)
           this.$set(this.apiAttributes, this.objId, { info: sortedAttrs })
+        }
+        
+        try {
+          const modelResponse = await modelAPI.getModel(this.objId)
+          if (modelResponse && modelResponse.model) {
+            this.modelData = modelResponse.model
+          }
+        } catch (err) {
+          console.error('加载模型详情失败:', err)
         }
         
         this.isDataReady = true
@@ -302,6 +312,8 @@ export default {
     },
     async handlePropertyConfirm ({ property, value, changed }) {
       if (!changed) {
+        // 值没有变化，关闭编辑态
+        this.editingPropertyId = null
         return
       }
 
@@ -318,12 +330,25 @@ export default {
         })
         
         this.$set(this.instanceData, property.bk_property_id, value)
+        // 保存成功，关闭编辑态
+        this.editingPropertyId = null
       } catch (error) {
         console.error('更新属性失败:', error)
+        let errorMsg = error.message || '未知错误'
+        // 适配原项目 BaseResp 错误格式
+        if (error.response && error.response.data) {
+          const errorData = error.response.data
+          if (errorData.bk_error_msg) {
+            errorMsg = errorData.bk_error_msg
+          } else if (errorData.detail) {
+            errorMsg = errorData.detail
+          }
+        }
         this.$bkMessage({
-          message: '属性更新失败: ' + (error.message || '未知错误'),
+          message: errorMsg,
           theme: 'error'
         })
+        // 保存失败，保持编辑态打开，让用户可以继续编辑
       }
     }
   }

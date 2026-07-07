@@ -155,9 +155,9 @@
             :sortable="getColumnSortable(column.id)"
             :show-overflow-tooltip="true">
             <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
-              <bk-button :text="true" :primary="true" @click="handleViewDetails(row)">
+              <span class="cell-id-link" @click="handleViewDetails(row)">
                 {{ row[column.id] }}
-              </bk-button>
+              </span>
             </template>
             <template v-else #default="{ row }">
               {{ formatCellValue(row[column.id], column) }}
@@ -209,6 +209,7 @@
             :properties="allProperties"
             :values="createForm"
             :type="'create'"
+            :model-id="objId"
             :show-options="true"
             :submitting="createFormLoading"
             :is-mobile="isMobileDevice"
@@ -236,15 +237,20 @@
           <div class="batch-update-info" v-if="selectedIds.length > 0">
             <i class="bk-icon icon-info-circle"></i>
             已选择 <strong>{{ selectedIds.length }}</strong> 个实例进行更新
+            <span v-if="hiddenUniqueProperties.length > 0" class="hidden-properties">
+              （已隐藏 <strong>{{ hiddenUniqueProperties.join('、') }}</strong>，原因：添加了唯一校验规则）
+            </span>
           </div>
           <form-multiple
             ref="formMultipleRef"
             :properties="allProperties"
             :show-options="true"
             :submitting="batchUpdateFormLoading"
+            :model-id="objId"
             submit-text="更新"
             @submit="handleBatchUpdateSubmit"
-            @cancel="handleBatchUpdateDialogClose">
+            @cancel="handleBatchUpdateDialogClose"
+            @unique-properties-changed="handleUniquePropertiesChanged">
           </form-multiple>
         </div>
       </template>
@@ -261,7 +267,6 @@ import FormMultiple from '@/components/ui/form/form-multiple.vue'
 import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
-import modelIndex from '@/assets/api/index.json'
 import { modelAPI, userCustom } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
@@ -297,7 +302,12 @@ export default {
       modelData: null,
       allProperties: [],
       defaultColumns: [],
+      // 与原项目保持一致: customColumns 是从存储加载的自定义列配置（存储状态）
+      // columnsConfig.selected 是 UI 状态（抽屉中已勾选的属性），由 setTableHeader 同步更新
+      // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue customColumns computed
+      customColumns: [],
       selectedIds: [],
+      hiddenUniqueProperties: [],
       createDialogVisible: false,
       createForm: {},
       createFormInitial: {},
@@ -305,7 +315,6 @@ export default {
       createFormLoading: false,
       batchUpdateDialogVisible: false,
       batchUpdateFormLoading: false,
-      modelIndex: modelIndex.models,
       table: {
         list: [],
         header: [],
@@ -349,8 +358,10 @@ export default {
   },
   computed: {
     modelName() {
-      const model = (this.modelIndex || []).find(m => m.bk_obj_id === this.objId)
-      return model ? model.bk_obj_name : this.objId
+      if (this.modelData && this.modelData.bk_obj_name) {
+        return this.modelData.bk_obj_name
+      }
+      return this.objId
     },
     searchableProperties() {
       // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)
@@ -378,7 +389,7 @@ export default {
       const propertyType = property.bk_property_type
       if (!propertyType) return false
       const supportedTypes = [
-        'singlechar', 'longchar', 'shortchar', 'text', 'string',
+        'singlechar', 'longchar', 'shortchar', 'text',
         'enum', 'int', 'bool', 'time', 'date', 'float', 'list', 'map'
       ]
       return supportedTypes.includes(propertyType)
@@ -793,6 +804,35 @@ export default {
     }
   },
   methods: {
+    /**
+     * 创建合成的 bk_inst_id 属性（前端注入）
+     * 与原项目 createIdProperty 保持一致:
+     * 参考: /workspace/bk-cmdb/src/ui/src/service/property/property.js#L17-L40
+     *
+     * 后端 for_web 过滤了 bk_isapi=true 的字段（包括 bk_inst_id），
+     * 前端通过此方法注入合成的 bk_inst_id 属性，用于:
+     * 1. 在表头第一位显示"实例ID"列（bk_property_index: -1，优先级最高）
+     * 2. 作为 disabledColumns 中的固定字段，不可移除、不可拖动
+     * 3. 支持点击跳转到实例详情
+     */
+    createIdProperty(objId) {
+      return {
+        id: Date.now(),
+        bk_obj_id: objId,
+        bk_property_id: 'bk_inst_id',
+        bk_property_name: '实例ID',
+        bk_property_index: -1,
+        bk_property_type: 'int',
+        isonly: true,
+        ispre: true,
+        bk_isapi: true,
+        bk_issystem: true,
+        isreadonly: true,
+        editable: false,
+        bk_property_group: null,
+        _is_inject_: true
+      }
+    },
     updateBreadcrumbs() {
       this.$nextTick(() => {
         this.$store.commit('setCustomBreadcrumbs', {
@@ -865,26 +905,47 @@ export default {
 
         const attrResult = await modelAPI.getModelAttributes(this.objId)
 
-        this.allProperties = attrResult.attributes || []
+        // 与原项目保持一致: 后端 for_web 过滤了 bk_isapi=true 的字段（如 bk_inst_id），
+        // 前端通过 createIdProperty 注入合成的 bk_inst_id 属性，用于在表头第一位显示"ID"列
+        // 参考: /workspace/bk-cmdb/src/ui/src/service/property/property.js createIdProperty
+        // 参考: /workspace/bk-cmdb/src/ui/src/store/modules/api/object-model-property.js searchObjectAttribute
+        const rawAttributes = attrResult.attributes || []
+        const alreadyInject = rawAttributes.some(property => property._is_inject_)
+        if (!alreadyInject) {
+          rawAttributes.unshift(this.createIdProperty(this.objId))
+        }
+        this.allProperties = rawAttributes
         this.defaultColumns = attrResult.default_columns || []
-        console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns)
+        console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns, 'allProperties count:', this.allProperties.length)
+
+        try {
+          const modelResult = await modelAPI.getModel(this.objId)
+          if (modelResult && modelResult.model && modelResult.model.bk_obj_name) {
+            this.modelData = modelResult.model
+            this.updateBreadcrumbs()
+          }
+        } catch (e) {
+          console.log('[Index.loadModelData] 获取模型详情失败:', e)
+        }
 
         // Load saved columns config
+        // 与原项目保持一致: 存储数据加载到 customColumns（存储状态）
+        // columnsConfig.selected（UI 状态）由 setTableHeader 同步更新
         try {
           console.log('[Persistence] Calling getModelCustomColumns for objId:', this.objId)
           const savedColumns = await userCustom.getModelCustomColumns(this.objId)
           console.log('[Persistence] getModelCustomColumns result:', savedColumns)
           if (savedColumns && savedColumns.columns && savedColumns.columns.length > 0) {
-            this.columnsConfig.selected = savedColumns.columns
-            console.log('[Persistence] Set columnsConfig.selected to:', this.columnsConfig.selected)
+            this.customColumns = savedColumns.columns
+            console.log('[Persistence] Set customColumns to:', this.customColumns)
           } else {
             // 没有有效配置时，重置为空数组，使用默认规则
-            this.columnsConfig.selected = []
-            console.log('[Persistence] Reset columnsConfig.selected to empty array')
+            this.customColumns = []
+            console.log('[Persistence] Reset customColumns to empty array')
           }
         } catch (e) {
           console.log('[Persistence] No saved columns config found or error:', e)
-          this.columnsConfig.selected = []
+          this.customColumns = []
         }
 
         // 与原项目保持一致: 使用 searchableProperties 的过滤逻辑，排除 bk_isapi=true 和 id 字段
@@ -969,17 +1030,12 @@ export default {
       }
     },
     /**
-     * 与原项目 getHeaderProperties 保持一致的表头生成逻辑
-     * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js
-     * - getPropertyPriority(property): 基于 bk_property_index，isonly(is only/unique)，isrequired 计算优先级，越小越高
-     * - getDefaultHeaderProperties(properties): 过滤系统字段后按优先级排序取前6个
-     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性，过滤系统字段
-     * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 合并固定字段+自定义/默认列
-     * 
-     * 系统字段判断规则：
-     * - bk_isapi=true 的字段（API 字段）应隐藏
-     * - bk_property_id === 'id' 的字段（内部数据库ID）应隐藏
-     * - 固定字段（fixedPropertyIds）如 bk_inst_id、bk_inst_name 始终保留
+     * 与原项目 tools.js 保持一致的表头生成逻辑
+     * 参考: /workspace/bk-cmdb/src/ui/src/utils/tools.js#L269-L332
+     * - getPropertyPriority(property): 基于 bk_property_index，isonly，isrequired 计算优先级，越小越靠前
+     * - getDefaultHeaderProperties(properties): 按优先级排序取前6个（不过滤）
+     * - getCustomHeaderProperties(properties, customColumns): 按自定义列ID查找属性（简单映射，不过滤）
+     * - getHeaderProperties(properties, customColumns, fixedPropertyIds): 始终将固定字段前置
      */
     getPropertyPriority(property) {
       let priority = property.bk_property_index ?? 0
@@ -991,62 +1047,32 @@ export default {
       }
       return priority
     },
-    getDefaultHeaderProperties(properties, fixedPropertyIds = []) {
-      // 与原项目一致: 过滤系统字段，然后按优先级排序取前6个
-      const filteredProperties = properties.filter(p => {
-        // 保留固定字段
-        if (fixedPropertyIds.includes(p.bk_property_id)) {
-          return true
-        }
-        // 过滤 API 字段
-        if (p.bk_isapi) {
-          return false
-        }
-        // 过滤内部数据库 ID 字段
-        if (p.bk_property_id === 'id') {
-          return false
-        }
-        return true
-      })
-      return [...filteredProperties]
+    getDefaultHeaderProperties(properties) {
+      // 与原项目一致: 不过滤系统字段，按优先级排序取前6个
+      return [...properties]
         .sort((A, B) => this.getPropertyPriority(A) - this.getPropertyPriority(B))
         .slice(0, 6)
     },
-    getCustomHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
-      // 与原项目一致: 按自定义列ID查找属性，过滤系统字段
+    getCustomHeaderProperties(properties, customColumns) {
+      // 与原项目一致: 简单映射，不过滤任何字段
       const columnProperties = []
       customColumns.forEach((propertyId) => {
         const columnProperty = properties.find(property => property.bk_property_id === propertyId)
-        if (!columnProperty) {
-          return
-        }
-        // 保留固定字段
-        if (fixedPropertyIds.includes(columnProperty.bk_property_id)) {
+        if (columnProperty) {
           columnProperties.push(columnProperty)
-          return
         }
-        // 过滤 API 字段
-        if (columnProperty.bk_isapi) {
-          return
-        }
-        // 过滤内部数据库 ID 字段
-        if (columnProperty.bk_property_id === 'id') {
-          return
-        }
-        columnProperties.push(columnProperty)
       })
       return columnProperties
     },
     getHeaderProperties(properties, customColumns, fixedPropertyIds = []) {
-      // 与原项目保持一致
+      // 与原项目一致: 始终将固定字段前置
       let headerProperties
       if (customColumns && customColumns.length) {
-        headerProperties = this.getCustomHeaderProperties(properties, customColumns, fixedPropertyIds)
+        headerProperties = this.getCustomHeaderProperties(properties, customColumns)
       } else {
-        headerProperties = this.getDefaultHeaderProperties(properties, fixedPropertyIds)
+        headerProperties = this.getDefaultHeaderProperties(properties)
       }
       if (fixedPropertyIds.length) {
-        // 过滤掉 headerProperties 中已有的固定字段，避免重复
         headerProperties = headerProperties.filter(property => !fixedPropertyIds.includes(property.bk_property_id))
         const fixedProperties = []
         fixedPropertyIds.forEach((id) => {
@@ -1062,14 +1088,17 @@ export default {
     setTableHeader() {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
-      console.log('[Debug] columnsConfig.selected:', this.columnsConfig.selected)
+      console.log('[Debug] customColumns:', this.customColumns)
       console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
 
-      // 与原项目保持一致: 优先使用用户自定义列，否则使用默认规则
-      const customColumns = this.columnsConfig.selected || []
+      // 与原项目保持一致: 从存储状态 customColumns 读取，不从 UI 状态 columnsConfig.selected 读取
+      // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue#L654-L667
+      const customColumns = this.customColumns || []
       const fixedPropertyIds = this.columnsConfig.disabledColumns || []
 
       // 调用与原项目一致的 getHeaderProperties 函数
+      // - 有自定义列时: 按自定义列顺序生成（固定字段始终前置）
+      // - 无自定义列时: 按默认优先级生成前6个（固定字段始终前置）
       const headerProperties = this.getHeaderProperties(
         this.allProperties,
         customColumns,
@@ -1078,16 +1107,25 @@ export default {
 
       console.log('[Debug] headerProperties:', headerProperties.length)
 
-      this.table.header = headerProperties.map(property => ({
+      // 与原项目保持一致: 数组长度不变时需要先清空再赋值，否则表头无法实时更新
+      // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue updateTableHeader 方法
+      // 原项目注释: "数组length在没有变化时候，需要先清空数组在赋值。否则表头无法实时更新"
+      const newHeader = headerProperties.map(property => ({
         id: property.bk_property_id,
         name: property.bk_property_name,
         property
       }))
+      this.table.header = []
+      this.$nextTick(() => {
+        this.table.header = newHeader
+      })
 
-      // 同步更新 columnsConfig.selected，与原项目一致
+      // 与原项目保持一致: 始终同步 columnsConfig.selected 为当前表头属性
+      // 这样抽屉打开时显示的已选属性与表格列保持一致
       this.columnsConfig.selected = headerProperties.map(property => property.bk_property_id)
 
-      console.log('[Debug] table.header:', this.table.header.length)
+      console.log('[Debug] table.header will be updated via $nextTick, count:', newHeader.length)
+      console.log('[Debug] columnsConfig.selected synced to:', this.columnsConfig.selected)
     },
     formatCellValue(value, column) {
       if (value === null || value === undefined || value === '') {
@@ -1733,9 +1771,13 @@ export default {
     },
     handleBatchUpdateDialogClose() {
       this.batchUpdateDialogVisible = false
+      this.hiddenUniqueProperties = []
       if (this.$refs.formMultipleRef) {
         this.$refs.formMultipleRef.reset()
       }
+    },
+    handleUniquePropertiesChanged(properties) {
+      this.hiddenUniqueProperties = properties || []
     },
     handleSelectionChange(selection) {
       this.selectedIds = selection.map(row => row.bk_inst_id)
@@ -1935,16 +1977,17 @@ export default {
       } catch (error) {
         console.error('Create instance error:', error)
         let errorMsg = '创建失败，请稍后重试'
-        
-        if (error.response && error.response.status === 400) {
+
+        if (error.response) {
           const errorData = error.response.data
-          if (errorData && errorData.detail && errorData.detail.errors) {
-            errorMsg = errorData.detail.errors.join('; ')
+          // 适配原项目 BaseResp 错误格式: { result: false, bk_error_code: xxx, bk_error_msg: 'xxx' }
+          if (errorData && errorData.bk_error_msg) {
+            errorMsg = errorData.bk_error_msg
           } else if (errorData && errorData.detail) {
             errorMsg = errorData.detail
           }
         }
-        
+
         this.$bkMessage({ message: errorMsg, theme: 'error' })
       } finally {
         this.createFormLoading = false
@@ -2228,21 +2271,22 @@ export default {
     },
     async handleApplyColumns(properties) {
       console.log('[Persistence] handleApplyColumns called, properties:', properties)
-      this.columnsConfig.selected = properties.map(p => p.bk_property_id)
-      console.log('[Persistence] columnsConfig.selected updated to:', this.columnsConfig.selected)
+      // 与原项目保持一致: 更新存储状态 customColumns，UI 状态由 setTableHeader 同步
+      this.customColumns = properties.map(p => p.bk_property_id)
+      console.log('[Persistence] customColumns updated to:', this.customColumns)
       this.columnsConfig.show = false
       this.setTableHeader()
       console.log('[Persistence] setTableHeader called after apply')
-      
+
       // Save to both API and Vuex store for sharing
       try {
-        console.log('[Persistence] Calling saveModelCustomColumns for objId:', this.objId, 'columns:', this.columnsConfig.selected)
-        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.columnsConfig.selected)
+        console.log('[Persistence] Calling saveModelCustomColumns for objId:', this.objId, 'columns:', this.customColumns)
+        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.customColumns)
         console.log('[Persistence] saveModelCustomColumns result:', saveResult)
-        
+
         // Sync to Vuex store for sharing with association list
         const configKey = `${this.objId}_custom_table_columns`
-        this.$store.dispatch('saveUsercustom', { [configKey]: this.columnsConfig.selected })
+        this.$store.dispatch('saveUsercustom', { [configKey]: this.customColumns })
         console.log('[Persistence] Synced to Vuex store:', configKey)
       } catch (e) {
         console.error('[Persistence] Failed to save columns config:', e)
@@ -2254,25 +2298,27 @@ export default {
       this.columnsConfig.show = false
     },
     async handleResetColumns() {
-      console.log('[Persistence] handleResetColumns called, defaultColumns:', this.defaultColumns)
-      this.columnsConfig.selected = [...this.defaultColumns]
-      console.log('[Persistence] columnsConfig.selected reset to:', this.columnsConfig.selected)
+      console.log('[Persistence] handleResetColumns called')
+      // 与原项目保持一致: 清空存储状态 customColumns（保存空数组到存储）
+      // setTableHeader 会基于空的 customColumns 生成默认列（含固定字段 bk_inst_id、bk_inst_name）
+      // 并同步更新 columnsConfig.selected，使抽屉再次打开时显示默认已选属性
+      this.customColumns = []
       this.columnsConfig.show = false
       this.setTableHeader()
       console.log('[Persistence] setTableHeader called after reset')
-      
-      // Save to both API and Vuex store for sharing
+
+      // 清空存储中的自定义列配置
       try {
-        console.log('[Persistence] Calling saveModelCustomColumns (reset) for objId:', this.objId, 'columns:', this.columnsConfig.selected)
-        const saveResult = await userCustom.saveModelCustomColumns(this.objId, this.columnsConfig.selected)
-        console.log('[Persistence] saveModelCustomColumns (reset) result:', saveResult)
-        
+        console.log('[Persistence] Clearing custom columns for objId:', this.objId)
+        const saveResult = await userCustom.saveModelCustomColumns(this.objId, [])
+        console.log('[Persistence] saveModelCustomColumns (clear) result:', saveResult)
+
         // Sync to Vuex store for sharing with association list
         const configKey = `${this.objId}_custom_table_columns`
-        this.$store.dispatch('saveUsercustom', { [configKey]: this.columnsConfig.selected })
-        console.log('[Persistence] Synced reset to Vuex store:', configKey)
+        this.$store.dispatch('saveUsercustom', { [configKey]: [] })
+        console.log('[Persistence] Synced empty config to Vuex store:', configKey)
       } catch (e) {
-        console.error('[Persistence] Failed to save columns config (reset):', e)
+        console.error('[Persistence] Failed to clear columns config:', e)
       }
       this.$bkMessage({ message: '已还原默认配置', theme: 'success' })
     },
@@ -2994,11 +3040,26 @@ export default {
     color: #303133;
     font-weight: 500;
   }
+
+  .hidden-properties {
+    color: #f56c6c;
+    font-size: 13px;
+  }
 }
 
 @media screen and (max-width: 768px) {
   .batch-update-info {
     padding: 12px 16px;
+  }
+}
+
+// 表格实例ID列样式 - 蓝色可点击链接，与其他列一样溢出隐藏
+.cell-id-link {
+  color: #3a84ff;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
   }
 }
 </style>

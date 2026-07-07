@@ -3,6 +3,7 @@ from app.service.model_service import ModelService
 from app.service.instance_service import InstanceService
 from app.service.association_service import AssociationService
 from app.utils.logger import get_logger
+from app.utils.exceptions import APIException, ValidationException
 
 logger = get_logger('api.model')
 model_bp = Blueprint('model', __name__)
@@ -33,9 +34,13 @@ def get_model_by_id(model_id):
 
 @model_bp.route('/<model_id>/attributes', methods=['GET'])
 def get_model_attributes(model_id):
-    """获取模型属性列表"""
+    """获取模型属性列表
+
+    与原项目 SearchObjectAttributeForWeb 一致:
+    过滤掉 bk_issystem=true 和 bk_isapi=true 的系统字段，仅返回前端可见的属性
+    """
     try:
-        attributes = ModelService.get_model_attributes(model_id)
+        attributes = ModelService.get_model_attributes(model_id, for_web=True)
         return jsonify({'attributes': attributes})
     except Exception as e:
         logger.error(f"Error getting model attributes: {e}")
@@ -106,6 +111,23 @@ def get_instance(model_id, instance_id):
 
 
 
+@model_bp.route('/<model_id>/instances/check-unique', methods=['POST'])
+def check_instance_unique(model_id):
+    """校验实例数据的唯一性"""
+    try:
+        data = request.get_json() or {}
+        instance_data = data.get('data', {})
+        exclude_instance_id = data.get('exclude_instance_id')
+
+        duplicates = InstanceService.check_unique(model_id, instance_data, exclude_instance_id)
+        return jsonify({
+            'is_unique': len(duplicates) == 0,
+            'duplicates': duplicates
+        }), 200
+    except Exception as e:
+        logger.error(f"Error checking unique for {model_id}: {e}")
+        return jsonify({'detail': str(e)}), 500
+
 @model_bp.route('/<model_id>/instances', methods=['POST'])
 def create_instance(model_id):
     """创建新的模型实例"""
@@ -119,6 +141,9 @@ def create_instance(model_id):
             'data': result,
             'message': '实例创建成功'
         }), 201
+    except APIException as e:
+        # 业务异常返回统一格式（与原项目 BaseResp 一致）
+        return jsonify(e.to_dict()), e.status_code
     except Exception as e:
         logger.error(f"Error creating instance: {e}")
         return jsonify({'detail': str(e)}), 500
@@ -135,6 +160,9 @@ def update_instance(model_id, instance_id):
             'data': result,
             'message': 'Instance updated successfully'
         })
+    except APIException as e:
+        # 业务异常返回统一格式（与原项目 BaseResp 一致）
+        return jsonify(e.to_dict()), e.status_code
     except Exception as e:
         logger.error(f"Error updating instance: {e}")
         return jsonify({'detail': str(e)}), 500
@@ -170,6 +198,10 @@ def batch_update_instances(model_id):
             })
         else:
             return jsonify({'detail': 'Invalid request format'}), 400
+    except ValidationException as e:
+        return jsonify(e.to_dict()), e.status_code
+    except APIException as e:
+        return jsonify(e.to_dict()), e.status_code
     except Exception as e:
         logger.error(f"Error updating instances: {e}")
         return jsonify({'detail': str(e)}), 500
