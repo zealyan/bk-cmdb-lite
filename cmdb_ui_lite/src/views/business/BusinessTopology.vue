@@ -1,6 +1,6 @@
 <template>
   <div class="business-topology">
-    <div class="topology-layout">
+    <div class="topology-layout" ref="topologyLayout">
       <div
         class="left-panel"
         :class="{ 'is-collapsed': leftCollapsed }"
@@ -11,21 +11,27 @@
           @node-select="handleNodeSelect">
         </topology-tree>
 
-        <!-- resize 分隔条，位于左侧面板右侧边缘 -->
+        <!-- resize 分隔条，位于左侧面板右侧边缘（展开态显示） -->
         <div
-          v-if="!leftCollapsed"
+          v-show="!leftCollapsed"
           class="resize-handler"
           @mousedown.left="handleResizeStart"
           @dblclick="toggleLeftPanel">
           <i
-            class="collapse-icon bk-icon"
-            :class="leftCollapsed ? 'icon-angle-right' : 'icon-angle-left'"
+            class="collapse-icon bk-icon icon-angle-left"
             @click.stop="toggleLeftPanel">
           </i>
         </div>
       </div>
 
-      <!-- resize 代理虚线 -->
+      <!-- 收起后显示的展开按钮（收起态显示） -->
+      <i
+        v-show="leftCollapsed"
+        class="expand-btn bk-icon icon-angle-right"
+        @click="toggleLeftPanel">
+      </i>
+
+      <!-- resize 代理虚线（相对于 topology-layout 定位） -->
       <i class="resize-proxy" ref="resizeProxy"></i>
       <!-- resize 遮罩 -->
       <div class="resize-mask" ref="resizeMask"></div>
@@ -106,9 +112,8 @@ export default {
     handleResizeStart(event) {
       if (this.leftCollapsed) return
       const $handler = event.currentTarget
-      const handlerRect = $handler.getBoundingClientRect()
-      const $leftPanel = this.$el.querySelector('.left-panel')
-      const panelRect = $leftPanel.getBoundingClientRect()
+      const $layout = this.$refs.topologyLayout
+      const layoutRect = $layout.getBoundingClientRect()
       const $resizeProxy = this.$refs.resizeProxy
       const $resizeMask = this.$refs.resizeMask
 
@@ -116,13 +121,16 @@ export default {
       $resizeProxy.style.visibility = 'visible'
       $resizeMask.style.display = 'block'
 
-      // 记录初始状态
+      // handler 右边相对于 layout 左边的距离 = 面板右边位置
+      const handlerRight = $handler.getBoundingClientRect().right - layoutRect.left
+
+      // 记录初始状态（都是相对于 layout 容器的坐标）
       this.resizeState = {
-        startMouseLeft: event.clientX,
-        startLeft: handlerRect.right - panelRect.left
+        startMouseLeft: event.clientX - layoutRect.left,
+        startLeft: handlerRight
       }
 
-      // 设置代理线位置
+      // 设置代理线位置（相对于 layout）
       $resizeProxy.style.top = '0'
       $resizeProxy.style.left = `${this.resizeState.startLeft}px`
       $resizeProxy.style.height = '100%'
@@ -138,8 +146,13 @@ export default {
     },
     handleResizeMove(event) {
       const $resizeProxy = this.$refs.resizeProxy
+      const $layout = this.$refs.topologyLayout
+      const layoutRect = $layout.getBoundingClientRect()
+
+      // 鼠标位置相对于 layout 左边
+      const mouseLeft = event.clientX - layoutRect.left
       // 向右拖动为正，增加宽度
-      const deltaLeft = event.clientX - this.resizeState.startMouseLeft
+      const deltaLeft = mouseLeft - this.resizeState.startMouseLeft
       const proxyLeft = this.resizeState.startLeft + deltaLeft
       // 限制在 min/max 范围内
       const clampedLeft = Math.min(this.maxWidth, Math.max(this.minWidth, proxyLeft))
@@ -298,14 +311,36 @@ export default {
   }
 }
 
+.expand-btn {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 60px;
+  line-height: 60px;
+  text-align: center;
+  background: $cmdbLayoutBorderColor;
+  border-radius: 0 8px 8px 0;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 20;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: $primaryColor;
+  }
+}
+
 .resize-proxy {
   visibility: hidden;
-  position: fixed;
+  position: absolute;
   top: 0;
   height: 100%;
   border-left: 1px dashed $primaryColor;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 99;
 }
 
 .resize-mask {
@@ -315,6 +350,6 @@ export default {
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 9998;
+  z-index: 98;
 }
 </style>
