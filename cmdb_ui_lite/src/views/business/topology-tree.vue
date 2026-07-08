@@ -5,35 +5,39 @@
       clearable
       right-icon="bk-icon icon-search"
       placeholder="请输入关键词"
-      v-model="filterKeyword"
+      v-model.trim="filterKeyword"
       @input="handleFilter">
     </bk-input>
-    <div class="topology-tree-wrapper">
-      <bk-tree
-        ref="tree"
-        :data="treeData"
-        :props="treeProps"
-        :show-checkbox="false"
-        :default-expand-all="true"
-        :highlight-current="true"
-        :filter-node-method="filterNode"
-        @node-click="handleNodeClick">
-        <template #default="{ node, data }">
-          <topology-tree-node
-            :node="node"
-            :data="data"
-            :node-count-type="nodeCountType">
-          </topology-tree-node>
-        </template>
-      </bk-tree>
-    </div>
+    <bk-big-tree
+      ref="tree"
+      class="topology-tree"
+      selectable
+      display-matched-node-descendants
+      :height="treeHeight"
+      :node-height="36"
+      :options="{
+        idKey: getNodeId,
+        nameKey: 'bk_inst_name',
+        childrenKey: 'child'
+      }"
+      :default-expand-all="true"
+      @select-change="handleSelectChange"
+      @expand-change="handleExpandChange">
+      <template #default="{ node, data }">
+        <topology-tree-node
+          :node="node"
+          :data="data"
+          :node-count-type="nodeCountType">
+        </topology-tree-node>
+      </template>
+    </bk-big-tree>
   </div>
 </template>
 
 <script>
 import TopologyTreeNode from './topology-tree-node.vue'
 
-// 模拟业务拓扑数据
+// 模拟业务拓扑数据（业务 -> 集群 -> 模块）
 const mockTopologyData = [
   {
     bk_obj_id: 'biz',
@@ -305,16 +309,8 @@ export default {
     return {
       filterKeyword: '',
       nodeCountType: 'host_count',
-      treeData: mockTopologyData,
-      treeProps: {
-        label: 'bk_inst_name',
-        children: 'child'
-      }
-    }
-  },
-  computed: {
-    selectedNode() {
-      return this.$refs.tree?.currentNode || null
+      treeHeight: 600,
+      topologyData: mockTopologyData
     }
   },
   watch: {
@@ -333,28 +329,59 @@ export default {
     }
   },
   mounted() {
-    // 默认选中第一个业务节点
-    this.$nextTick(() => {
-      if (this.treeData.length > 0) {
-        const firstNode = this.treeData[0]
-        this.handleNodeClick({ data: firstNode })
-      }
-    })
+    this.initTopology()
+    this.updateTreeHeight()
+    window.addEventListener('resize', this.updateTreeHeight)
+  },
+  beforeDestroy() {
+    window.removeEventListener('resize', this.updateTreeHeight)
   },
   methods: {
-    handleFilter(value) {
-      this.$refs.tree.filter(value)
+    // 初始化拓扑树
+    initTopology() {
+      this.$refs.tree.setData(this.topologyData)
+      this.$nextTick(() => {
+        this.setDefaultState()
+      })
     },
-    filterNode(value, data) {
-      if (!value) return true
-      return data.bk_inst_name.includes(value)
+    // 设置默认选中节点
+    setDefaultState() {
+      const [firstNode] = this.$refs.tree.nodes
+      if (firstNode) {
+        this.$refs.tree.setExpanded(firstNode.id)
+        this.$refs.tree.setSelected(firstNode.id, { emitEvent: true })
+      }
     },
-    handleNodeClick(node) {
-      // 触发节点选择事件，传递给父组件
+    // 生成节点ID
+    getNodeId(data) {
+      return `${data.bk_obj_id}-${data.bk_inst_id}`
+    },
+    // 处理搜索过滤
+    handleFilter() {
+      if (this.filterKeyword) {
+        this.$refs.tree.filter(this.filterKeyword)
+      } else {
+        this.$refs.tree.filter('')
+      }
+    },
+    // 处理节点选择变化
+    handleSelectChange(node) {
       this.$emit('node-select', node)
     },
+    // 处理节点展开变化
+    handleExpandChange(node) {
+      // 展开节点时可以做一些额外处理
+    },
+    // 更新树高度
+    updateTreeHeight() {
+      const container = this.$el.parentElement
+      if (container) {
+        this.treeHeight = container.clientHeight - 60
+      }
+    },
+    // 获取当前选中的节点
     getSelectedNode() {
-      return this.selectedNode
+      return this.$refs.tree.selectedNode
     }
   }
 }
@@ -371,14 +398,15 @@ export default {
 .tree-search {
   display: block;
   width: auto;
-  margin: 10px 20px;
+  margin: 0 20px;
+  flex-shrink: 0;
 }
 
-.topology-tree-wrapper {
+.topology-tree {
   flex: 1;
-  overflow: auto;
-  padding: 0 0 10px 0;
+  padding: 10px 0;
   margin-right: 2px;
+  overflow: auto;
 
   &::-webkit-scrollbar {
     width: 6px;

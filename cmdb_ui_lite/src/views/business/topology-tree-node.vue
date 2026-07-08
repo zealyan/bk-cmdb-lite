@@ -1,3 +1,30 @@
+<template>
+  <div :class="['topology-tree-node', { 'is-selected': node.selected }]">
+    <!-- 节点图标 -->
+    <div
+      :class="['node-icon', {
+        'is-selected': node.selected,
+        'is-template': isTemplate,
+        'is-internal': isInternal
+      }]">
+      <!-- 空闲机池/故障机池图标 -->
+      <i v-if="data.default !== 0 && data.default !== undefined" :class="internalNodeClass"></i>
+      <!-- 普通节点图标（显示首字） -->
+      <span v-else>{{ data.icon_text || data.bk_obj_name?.[0] || 'N' }}</span>
+    </div>
+
+    <!-- 节点名称 -->
+    <span class="node-name" :title="node.name">{{ node.name }}</span>
+
+    <!-- 节点额外信息（数量） -->
+    <div class="node-extra">
+      <span :class="['node-count', { 'is-selected': node.selected }]">
+        {{ nodeCount }}
+      </span>
+    </div>
+  </div>
+</template>
+
 <script>
 export default {
   name: 'TopologyTreeNode',
@@ -16,73 +43,34 @@ export default {
     }
   },
   computed: {
-    nodeIconClass() {
-      // 内部节点（空闲机池等）
-      if (this.data.default !== 0 && this.data.default !== undefined) {
-        const iconMap = {
-          1: 'icon-cc-host-free-pool',
-          2: 'icon-cc-host-breakdown',
-          default: 'icon-cc-host-free-pool'
-        }
-        return iconMap[this.data.default] || iconMap.default
+    // 内部节点（空闲机池、故障机池）的图标类名
+    internalNodeClass() {
+      const iconMap = {
+        1: 'icon-cc-host-free-pool',
+        2: 'icon-cc-host-breakdown',
+        default: 'icon-cc-host-free-pool'
       }
-      return ''
+      return iconMap[this.data.default] || iconMap.default
     },
+    // 是否是内部节点（空闲机池、故障机池）
     isInternal() {
       return this.data.default !== 0 && this.data.default !== undefined
     },
-    isSelected() {
-      return this.node.selected || false
+    // 是否是模板创建的节点
+    isTemplate() {
+      return this.data.service_template_id || this.data.set_template_id
     },
+    // 节点数量
     nodeCount() {
       const count = this.data[this.nodeCountType]
       if (typeof count === 'number') {
         return count
       }
       return 0
-    },
-    iconText() {
-      if (this.data.icon_text) {
-        return this.data.icon_text
-      }
-      // 根据对象类型显示图标文字
-      const objName = this.data.bk_obj_name || ''
-      return objName[0] || ''
-    },
-    nodeIconTips() {
-      // 根据节点类型显示提示
-      const objId = this.data.bk_obj_id
-      const tipsMap = {
-        biz: '业务',
-        set: '集群',
-        module: '模块'
-      }
-      return tipsMap[objId] || this.data.bk_obj_name || ''
     }
   }
 }
 </script>
-
-<template>
-  <div :class="['topology-tree-node', { 'is-selected': isSelected }]">
-    <div
-      :class="['node-icon', {
-        'is-selected': isSelected,
-        'is-internal': isInternal
-      }]">
-      <i v-if="isInternal" :class="nodeIconClass"></i>
-      <span v-else>{{ iconText }}</span>
-    </div>
-
-    <span class="node-name" :title="node.name">{{ node.name }}</span>
-
-    <div class="node-extra">
-      <span :class="['node-count', { 'is-selected': isSelected }]">
-        {{ nodeCount }}
-      </span>
-    </div>
-  </div>
-</template>
 
 <style lang="scss" scoped>
 .topology-tree-node {
@@ -127,10 +115,25 @@ export default {
     font-style: normal;
     color: #fff;
 
+    &.is-template {
+      background-color: #97aed6;
+    }
+
+    &.is-selected {
+      background-color: #3a84ff;
+      &.is-internal {
+        color: #3a84ff;
+      }
+    }
+
     &.is-internal {
       font-size: 14px;
       color: #63656e;
       background-color: transparent;
+    }
+
+    &:hover {
+      background-color: #3a84ff;
     }
   }
 
