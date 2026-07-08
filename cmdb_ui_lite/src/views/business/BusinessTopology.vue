@@ -269,30 +269,33 @@ export default {
   .resize-handler {
     position: absolute;
     top: 0;
-    left: 100%;
-    width: 5px;
+    left: calc(100% - 4px);
+    width: 8px;
     height: 100%;
     cursor: col-resize;
     background-color: transparent;
     z-index: 10;
+    transition: background-color 0.2s;
 
     &:hover {
-      background-image: linear-gradient(
-        to right,
-        transparent,
-        transparent 2px,
-        $primaryColor 2px,
-        $primaryColor 3px,
-        transparent 3px,
-        transparent
-      );
+      background-color: rgba(58, 132, 255, 0.15);
+
+      &::before {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background-color: $primaryColor;
+      }
     }
 
     .collapse-icon {
       position: absolute;
-      left: 50%;
+      left: 4px;
       top: 50%;
-      transform: translate(-50%, -50%);
+      transform: translateY(-50%);
       width: 16px;
       height: 60px;
       line-height: 60px;
