@@ -422,7 +422,7 @@ export default {
     background: transparent;
   }
 
-  /deep/ .bk-big-tree-node {
+  ::v-deep .bk-big-tree-node {
     &:not(.has-link-line) {
       height: 36px;
       line-height: 36px;
@@ -447,7 +447,7 @@ export default {
     }
   }
 
-  /deep/ .bk-scroll-home {
+  ::v-deep .bk-scroll-home {
     .bk-min-nav-slide.bk-nav-show {
       width: 6px;
       background-color: #dcdee5;
