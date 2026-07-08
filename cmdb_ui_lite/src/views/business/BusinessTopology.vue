@@ -199,18 +199,22 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+}
+
+.left-panel {
+  overflow: visible;
 }
 
 .left-panel {
   flex-shrink: 0;
   border-right: 1px solid $cmdbLayoutBorderColor;
   transition: width 0.2s ease;
+  overflow: visible;
 
   &.is-collapsed {
     width: 0 !important;
     border-right: none;
-    overflow: hidden;
+    overflow: visible;
   }
 }
 
