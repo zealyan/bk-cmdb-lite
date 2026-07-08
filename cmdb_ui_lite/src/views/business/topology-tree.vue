@@ -421,5 +421,38 @@ export default {
   &::-webkit-scrollbar-track {
     background: transparent;
   }
+
+  /deep/ .bk-big-tree-node {
+    &:not(.has-link-line) {
+      height: 36px;
+      line-height: 36px;
+
+      &.is-selected {
+        .node-folder-icon {
+          color: #3a84ff;
+        }
+      }
+
+      .node-options {
+        padding-left: 10px;
+      }
+    }
+
+    &.has-link-line.is-leaf {
+      padding-left: 6px;
+    }
+
+    &:hover {
+      background-color: #F0F1F5;
+    }
+  }
+
+  /deep/ .bk-scroll-home {
+    .bk-min-nav-slide.bk-nav-show {
+      width: 6px;
+      background-color: #dcdee5;
+      border-radius: 3px;
+    }
+  }
 }
 </style>
