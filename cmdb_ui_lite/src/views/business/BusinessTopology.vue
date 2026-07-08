@@ -11,17 +11,21 @@
           @node-select="handleNodeSelect">
         </topology-tree>
 
-        <!-- resize 分隔条和折叠图标（始终显示） -->
+        <!-- resize 分隔条（展开态显示） -->
         <div
           class="resize-handler"
           @mousedown.left="handleResizeStart"
           @dblclick="toggleLeftPanel">
-          <i
-            class="topology-collapse-icon bk-icon icon-angle-left"
-            @click.stop="toggleLeftPanel">
-          </i>
         </div>
       </div>
+
+      <!-- 折叠图标（始终显示，位于 layout 层级） -->
+      <i
+        class="topology-collapse-icon bk-icon icon-angle-left"
+        :class="{ 'is-collapsed': leftCollapsed }"
+        :style="{ left: (leftCollapsed ? 0 : leftWidth) + 'px' }"
+        @click="toggleLeftPanel">
+      </i>
 
       <!-- resize 代理虚线（相对于 topology-layout 定位） -->
       <i class="resize-proxy" ref="resizeProxy"></i>
@@ -283,36 +287,35 @@ export default {
         transparent
       );
     }
+  }
+}
 
-    .topology-collapse-icon {
-      position: absolute;
-      left: 0;
-      top: 50%;
-      width: 16px;
-      height: 100px;
-      line-height: 100px;
-      background: $cmdbLayoutBorderColor;
-      border-radius: 0px 12px 12px 0px;
-      transform: translateY(-50%);
-      text-align: center;
-      font-size: 20px;
-      color: #fff;
-      cursor: pointer;
-      text-indent: -2px;
-      transition: background-color 0.2s;
+.topology-collapse-icon {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 280px;
+  width: 16px;
+  height: 100px;
+  line-height: 100px;
+  background: $cmdbLayoutBorderColor;
+  border-radius: 0px 12px 12px 0px;
+  text-align: center;
+  font-size: 20px;
+  color: #fff;
+  cursor: pointer;
+  text-indent: -2px;
+  z-index: 20;
+  transition: left 0.2s ease, background-color 0.2s;
 
-      &:hover {
-        background: #699DF4;
-      }
-    }
+  &:hover {
+    background: #699DF4;
   }
 
   &.is-collapsed {
-    width: 0 !important;
-    border-right: none;
-    overflow: visible;
+    left: 0;
 
-    .topology-collapse-icon:before {
+    &:before {
       display: inline-block;
       transform: rotate(180deg);
     }
