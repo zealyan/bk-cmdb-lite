@@ -1,4 +1,6 @@
 import {
+  MENU_BUSINESS,
+  MENU_BUSINESS_TOPOLOGY,
   MENU_RESOURCE,
   MENU_MODEL,
   MENU_RESOURCE_MANAGEMENT,
@@ -6,6 +8,17 @@ import {
 } from './menu-symbol'
 
 const menus = [{
+  id: MENU_BUSINESS,
+  i18n: '业务',
+  menu: [{
+    id: MENU_BUSINESS_TOPOLOGY,
+    i18n: '业务拓扑',
+    icon: 'icon-cc-topology',
+    route: {
+      name: MENU_BUSINESS_TOPOLOGY
+    }
+  }]
+}, {
   id: MENU_RESOURCE,
   i18n: '资源',
   menu: [{

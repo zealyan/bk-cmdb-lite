@@ -2,6 +2,8 @@ import Vue from 'vue'
 import VueRouter from 'vue-router'
 import dynamicRouterView from '@/components/layout/dynamic-router-view'
 import {
+  MENU_BUSINESS,
+  MENU_BUSINESS_TOPOLOGY,
   MENU_RESOURCE,
   MENU_RESOURCE_MANAGEMENT,
   MENU_RESOURCE_INSTANCE,
@@ -15,7 +17,33 @@ Vue.use(VueRouter)
 const routes = [
   {
     path: '/',
-    redirect: { name: MENU_RESOURCE_MANAGEMENT }
+    redirect: { name: MENU_BUSINESS_TOPOLOGY }
+  },
+  {
+    name: MENU_BUSINESS,
+    component: dynamicRouterView,
+    path: '/business',
+    redirect: { name: MENU_BUSINESS_TOPOLOGY },
+    meta: {
+      menu: {
+        i18n: '业务'
+      }
+    },
+    children: [
+      {
+        name: MENU_BUSINESS_TOPOLOGY,
+        path: 'topology',
+        component: () => import('@/views/business/BusinessTopology.vue'),
+        meta: {
+          menu: {
+            i18n: '业务拓扑'
+          },
+          layout: {
+            breadcrumbs: true
+          }
+        }
+      }
+    ]
   },
   {
     name: MENU_RESOURCE,

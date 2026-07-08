@@ -39,7 +39,7 @@
 <script>
 import { mapGetters, mapActions } from 'vuex'
 import MENU_DICTIONARY from '@/dictionary/menu'
-import { MENU_RESOURCE, MENU_MODEL, MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
+import { MENU_BUSINESS, MENU_RESOURCE, MENU_MODEL, MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'DynamicNavigation',
@@ -57,7 +57,7 @@ export default {
     },
     owner() {
       const [topRoute] = this.$route.matched
-      return topRoute?.name || MENU_RESOURCE
+      return topRoute?.name || MENU_BUSINESS
     },
     collectionMenus() {
       return this.resourceCollection.map((id) => {
