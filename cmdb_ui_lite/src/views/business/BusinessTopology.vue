@@ -1,48 +1,45 @@
 <template>
   <div class="business-topology">
     <div class="topology-layout">
-      <div class="left-panel">
-        <div class="panel-header">
-          <span class="panel-title">拓扑树</span>
+      <div
+        class="left-panel"
+        :class="{ 'is-collapsed': leftCollapsed }"
+        :style="{ width: leftWidth + 'px' }">
+        <div class="search-wrapper">
+          <bk-input
+            class="tree-search"
+            clearable
+            right-icon="bk-icon icon-search"
+            placeholder="请输入关键词"
+            v-model="searchKeyword">
+          </bk-input>
         </div>
         <div class="panel-content">
-          <div class="placeholder-text">左侧菜单 - 拓扑树占位</div>
+          <div class="placeholder-text">拓扑树占位</div>
           <div class="placeholder-desc">待开发：业务拓扑树结构</div>
         </div>
       </div>
 
       <div
         class="resize-handler"
-        :class="{ 'is-collapsed': middleCollapsed }"
+        :class="{ 'is-collapsed': leftCollapsed }"
         @mousedown="handleResizeStart"
-        @dblclick="toggleMiddlePanel">
+        @dblclick="toggleLeftPanel">
         <i
           class="collapse-icon bk-icon"
-          :class="middleCollapsed ? 'icon-angle-right' : 'icon-angle-left'"
-          @click.stop="toggleMiddlePanel">
+          :class="leftCollapsed ? 'icon-angle-right' : 'icon-angle-left'"
+          @click.stop="toggleLeftPanel">
         </i>
-      </div>
-
-      <div
-        class="middle-panel"
-        :class="{ 'is-collapsed': middleCollapsed }"
-        :style="{ width: middleWidth + 'px' }">
-        <div class="panel-header">
-          <span class="panel-title">实例列表</span>
-        </div>
-        <div class="panel-content">
-          <div class="placeholder-text">中栏 - 实例列表占位</div>
-          <div class="placeholder-desc">待开发：主机/服务实例列表</div>
-        </div>
       </div>
 
       <div class="right-panel">
         <div class="panel-header">
-          <span class="panel-title">详情信息</span>
+          <span class="panel-title">实例列表</span>
         </div>
         <div class="panel-content">
-          <div class="placeholder-text">右侧栏 - 详情信息占位</div>
-          <div class="placeholder-desc">待开发：节点详情/属性信息</div>
+          <div class="placeholder-text">实例列表占位</div>
+          <div class="placeholder-desc">待开发：主机/服务实例列表</div>
+          <div class="placeholder-desc">详情信息由点击事件展示</div>
         </div>
       </div>
     </div>
@@ -54,24 +51,25 @@ export default {
   name: 'BusinessTopology',
   data() {
     return {
-      middleWidth: 400,
-      middleCollapsed: false,
+      leftWidth: 280,
+      leftCollapsed: false,
       isResizing: false,
       startX: 0,
       startWidth: 0,
       minWidth: 200,
-      maxWidth: 600
+      maxWidth: 480,
+      searchKeyword: ''
     }
   },
   methods: {
-    toggleMiddlePanel() {
-      this.middleCollapsed = !this.middleCollapsed
+    toggleLeftPanel() {
+      this.leftCollapsed = !this.leftCollapsed
     },
     handleResizeStart(event) {
-      if (this.middleCollapsed) return
+      if (this.leftCollapsed) return
       this.isResizing = true
       this.startX = event.clientX
-      this.startWidth = this.middleWidth
+      this.startWidth = this.leftWidth
       document.addEventListener('mousemove', this.handleResizeMove)
       document.addEventListener('mouseup', this.handleResizeEnd)
       document.body.style.cursor = 'col-resize'
@@ -87,7 +85,7 @@ export default {
       if (newWidth > this.maxWidth) {
         newWidth = this.maxWidth
       }
-      this.middleWidth = newWidth
+      this.leftWidth = newWidth
     },
     handleResizeEnd() {
       this.isResizing = false
@@ -120,7 +118,6 @@ export default {
 }
 
 .left-panel,
-.middle-panel,
 .right-panel {
   display: flex;
   flex-direction: column;
@@ -129,12 +126,6 @@ export default {
 }
 
 .left-panel {
-  width: 280px;
-  flex-shrink: 0;
-  border-right: 1px solid $cmdbLayoutBorderColor;
-}
-
-.middle-panel {
   flex-shrink: 0;
   border-right: 1px solid $cmdbLayoutBorderColor;
   transition: width 0.2s ease;
@@ -143,12 +134,27 @@ export default {
     width: 0 !important;
     border-right: none;
     overflow: hidden;
+
+    .search-wrapper,
+    .panel-content {
+      display: none;
+    }
   }
 }
 
 .right-panel {
   flex: 1;
   min-width: 0;
+}
+
+.search-wrapper {
+  padding: 10px 20px;
+  border-bottom: 1px solid $cmdbLayoutBorderColor;
+
+  .tree-search {
+    display: block;
+    width: auto;
+  }
 }
 
 .panel-header {
@@ -185,6 +191,7 @@ export default {
 .placeholder-desc {
   font-size: 12px;
   color: $textDisabledColor;
+  margin-bottom: 4px;
 }
 
 .resize-handler {
