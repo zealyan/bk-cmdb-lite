@@ -10,19 +10,25 @@
           :active="activeTab"
           @node-select="handleNodeSelect">
         </topology-tree>
+
+        <!-- resize 分隔条，位于左侧面板右侧边缘 -->
+        <div
+          v-if="!leftCollapsed"
+          class="resize-handler"
+          @mousedown.left="handleResizeStart"
+          @dblclick="toggleLeftPanel">
+          <i
+            class="collapse-icon bk-icon"
+            :class="leftCollapsed ? 'icon-angle-right' : 'icon-angle-left'"
+            @click.stop="toggleLeftPanel">
+          </i>
+        </div>
       </div>
 
-      <div
-        class="resize-handler"
-        :class="{ 'is-collapsed': leftCollapsed }"
-        @mousedown="handleResizeStart"
-        @dblclick="toggleLeftPanel">
-        <i
-          class="collapse-icon bk-icon"
-          :class="leftCollapsed ? 'icon-angle-right' : 'icon-angle-left'"
-          @click.stop="toggleLeftPanel">
-        </i>
-      </div>
+      <!-- resize 代理虚线 -->
+      <i class="resize-proxy" ref="resizeProxy"></i>
+      <!-- resize 遮罩 -->
+      <div class="resize-mask" ref="resizeMask"></div>
 
       <div class="right-panel">
         <bk-tab class="topology-tab" type="unborder-card" :active.sync="activeTab">
@@ -86,9 +92,7 @@ export default {
     return {
       leftWidth: 280,
       leftCollapsed: false,
-      isResizing: false,
-      startX: 0,
-      startWidth: 0,
+      resizeState: {},
       minWidth: 200,
       maxWidth: 480,
       activeTab: 'hostList',
@@ -101,32 +105,63 @@ export default {
     },
     handleResizeStart(event) {
       if (this.leftCollapsed) return
-      this.isResizing = true
-      this.startX = event.clientX
-      this.startWidth = this.leftWidth
+      const $handler = event.currentTarget
+      const handlerRect = $handler.getBoundingClientRect()
+      const $leftPanel = this.$el.querySelector('.left-panel')
+      const panelRect = $leftPanel.getBoundingClientRect()
+      const $resizeProxy = this.$refs.resizeProxy
+      const $resizeMask = this.$refs.resizeMask
+
+      // 显示代理线和遮罩
+      $resizeProxy.style.visibility = 'visible'
+      $resizeMask.style.display = 'block'
+
+      // 记录初始状态
+      this.resizeState = {
+        startMouseLeft: event.clientX,
+        startLeft: handlerRect.right - panelRect.left
+      }
+
+      // 设置代理线位置
+      $resizeProxy.style.top = '0'
+      $resizeProxy.style.left = `${this.resizeState.startLeft}px`
+      $resizeProxy.style.height = '100%'
+      $resizeMask.style.cursor = 'col-resize'
+
+      // 禁止文本选择和拖拽
+      document.onselectstart = () => false
+      document.ondragstart = () => false
+
+      // 绑定鼠标移动和松开事件
       document.addEventListener('mousemove', this.handleResizeMove)
       document.addEventListener('mouseup', this.handleResizeEnd)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
     },
     handleResizeMove(event) {
-      if (!this.isResizing) return
-      const deltaX = this.startX - event.clientX
-      let newWidth = this.startWidth + deltaX
-      if (newWidth < this.minWidth) {
-        newWidth = this.minWidth
-      }
-      if (newWidth > this.maxWidth) {
-        newWidth = this.maxWidth
-      }
-      this.leftWidth = newWidth
+      const $resizeProxy = this.$refs.resizeProxy
+      // 向右拖动为正，增加宽度
+      const deltaLeft = event.clientX - this.resizeState.startMouseLeft
+      const proxyLeft = this.resizeState.startLeft + deltaLeft
+      // 限制在 min/max 范围内
+      const clampedLeft = Math.min(this.maxWidth, Math.max(this.minWidth, proxyLeft))
+      $resizeProxy.style.left = `${clampedLeft}px`
     },
     handleResizeEnd() {
-      this.isResizing = false
+      const $resizeProxy = this.$refs.resizeProxy
+      const $resizeMask = this.$refs.resizeMask
+
+      // 获取最终位置并设置宽度
+      const finalLeft = parseInt($resizeProxy.style.left, 10)
+      this.leftWidth = finalLeft
+
+      // 隐藏代理线和遮罩
+      $resizeProxy.style.visibility = 'hidden'
+      $resizeMask.style.display = 'none'
+
+      // 移除事件监听
       document.removeEventListener('mousemove', this.handleResizeMove)
       document.removeEventListener('mouseup', this.handleResizeEnd)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+      document.onselectstart = null
+      document.ondragstart = null
     },
     handleNodeSelect(node) {
       this.selectedNode = node
@@ -215,47 +250,71 @@ export default {
   margin-bottom: 4px;
 }
 
-.resize-handler {
-  width: 6px;
-  flex-shrink: 0;
-  height: 100%;
-  cursor: col-resize;
+.left-panel {
   position: relative;
-  background: transparent;
-  transition: background-color 0.2s;
-  z-index: 10;
 
-  &:hover {
-    background: rgba(58, 132, 255, 0.1);
-  }
-
-  &.is-collapsed {
-    cursor: default;
-
-    &:hover {
-      background: transparent;
-    }
-  }
-
-  .collapse-icon {
+  .resize-handler {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 16px;
-    height: 60px;
-    line-height: 60px;
-    text-align: center;
-    background: $cmdbLayoutBorderColor;
-    border-radius: 0 8px 8px 0;
-    color: #fff;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background-color 0.2s;
+    top: 0;
+    left: 100%;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    background-color: transparent;
+    z-index: 10;
 
     &:hover {
-      background: $primaryColor;
+      background-image: linear-gradient(
+        to right,
+        transparent,
+        transparent 2px,
+        $primaryColor 2px,
+        $primaryColor 3px,
+        transparent 3px,
+        transparent
+      );
+    }
+
+    .collapse-icon {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 60px;
+      line-height: 60px;
+      text-align: center;
+      background: $cmdbLayoutBorderColor;
+      border-radius: 0 8px 8px 0;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+
+      &:hover {
+        background: $primaryColor;
+      }
     }
   }
+}
+
+.resize-proxy {
+  visibility: hidden;
+  position: fixed;
+  top: 0;
+  height: 100%;
+  border-left: 1px dashed $primaryColor;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.resize-mask {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 9998;
 }
 </style>
