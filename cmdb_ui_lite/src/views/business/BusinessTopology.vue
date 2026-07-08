@@ -11,25 +11,17 @@
           @node-select="handleNodeSelect">
         </topology-tree>
 
-        <!-- resize 分隔条，位于左侧面板右侧边缘（展开态显示） -->
+        <!-- resize 分隔条和折叠图标（始终显示） -->
         <div
-          v-show="!leftCollapsed"
           class="resize-handler"
           @mousedown.left="handleResizeStart"
           @dblclick="toggleLeftPanel">
           <i
-            class="collapse-icon bk-icon icon-angle-left"
+            class="topology-collapse-icon bk-icon icon-angle-left"
             @click.stop="toggleLeftPanel">
           </i>
         </div>
       </div>
-
-      <!-- 收起后显示的展开按钮（收起态显示） -->
-      <i
-        v-show="leftCollapsed"
-        class="expand-btn bk-icon icon-angle-right"
-        @click="toggleLeftPanel">
-      </i>
 
       <!-- resize 代理虚线（相对于 topology-layout 定位） -->
       <i class="resize-proxy" ref="resizeProxy"></i>
@@ -269,71 +261,62 @@ export default {
   .resize-handler {
     position: absolute;
     top: 0;
-    left: calc(100% - 4px);
-    width: 8px;
+    left: 100%;
+    width: 5px;
     height: 100%;
     cursor: col-resize;
     background-color: transparent;
     z-index: 10;
-    transition: background-color 0.2s;
 
     &:hover {
-      background-color: rgba(58, 132, 255, 0.15);
-
-      &::before {
-        content: '';
-        position: absolute;
-        right: 0;
-        top: 0;
-        bottom: 0;
-        width: 2px;
-        background-color: $primaryColor;
-      }
+      background-image: linear-gradient(
+        to right,
+        transparent,
+        transparent 2px,
+        $primaryColor 2px,
+        $primaryColor 3px,
+        transparent 3px,
+        transparent
+      );
     }
 
-    .collapse-icon {
+    .topology-collapse-icon {
       position: absolute;
-      left: 4px;
+      left: 0;
       top: 50%;
-      transform: translateY(-50%);
       width: 16px;
-      height: 60px;
-      line-height: 60px;
-      text-align: center;
+      height: 100px;
+      line-height: 100px;
       background: $cmdbLayoutBorderColor;
-      border-radius: 0 8px 8px 0;
+      border-radius: 0px 12px 12px 0px;
+      transform: translateY(-50%);
+      text-align: center;
+      font-size: 20px;
       color: #fff;
-      font-size: 14px;
       cursor: pointer;
+      text-indent: -2px;
       transition: background-color 0.2s;
 
       &:hover {
-        background: $primaryColor;
+        background: #699DF4;
       }
+    }
+  }
+
+  &.is-collapsed {
+    width: 0 !important;
+    border-right: none;
+    overflow: visible;
+
+    .topology-collapse-icon:before {
+      display: inline-block;
+      transform: rotate(180deg);
     }
   }
 }
 
 .expand-btn {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 60px;
-  line-height: 60px;
-  text-align: center;
-  background: $cmdbLayoutBorderColor;
-  border-radius: 0 8px 8px 0;
-  color: #fff;
-  font-size: 14px;
-  cursor: pointer;
-  z-index: 20;
-  transition: background-color 0.2s;
-
-  &:hover {
-    background: $primaryColor;
-  }
+  display: none;
 }
 
 .resize-proxy {
