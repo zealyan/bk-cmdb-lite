@@ -351,7 +351,9 @@ mainlineObjectChildMap[asst.AsstObjID] = asst.ObjectID
 
 ---
 
-## 7. "系统"概念澄清
+## 7. "系统"概念澄清与"新增主线模型"的 DB 落库流程
+
+### 7.1 "系统"概念澄清
 
 你列出的拓扑层级里有"**系统**"，但 **v3.10.41 默认主线里并不存在名为"系统"的内置模型**。在 cmdb 语境下，"系统"通常指以下两种之一，文档必须澄清：
 
@@ -361,7 +363,93 @@ mainlineObjectChildMap[asst.AsstObjID] = asst.ObjectID
 | **云区域/平台（`plat`）** | `cc_BasePlat`（`bk_cloud_id`） | 主机通过 `bk_cloud_id` 归属的"云平台"，在 `cc_ObjAsst` 的 `bk_mainline` 中以 `host→plat` 表示 |
 | **系统内置元数据** | `cc_System` | 仅存版本号，非拓扑节点 |
 
-> 如果业务上需要在 biz 与 set 之间插入自定义"系统/区域/园区"等层级，按第 5 节方法把该模型加入 `bk_mainline` 链即可，cmdb 原生支持这种扩展。
+> 如果业务上需要在 **biz 与 set 之间**插入自定义"应用系统/区域/园区"等层级，bk-cmdb **原生支持**：把该模型加入 `bk_mainline` 链即可，插入后主线模型链变为 `app → 应用系统 → set → module`。下面 7.2~7.4 节以"新增模型 `app_sys`（应用系统）作为集群的父级"为例，拆解这一操作的完整 DB 落库流程。
+
+### 7.2 触发入口与前置校验
+
+入口 API：`POST /api/v3/create/topomodelmainline`（旧版 pattern，见 `ac/parser/topolatest.go` `createMainlineObjectLatestPattern`），最终调用：
+
+```
+scene_server/topo_server/logics/model/mainline_association.go
+  └─ CreateMainlineAssociation(kit, data *metadata.MainlineAssociation)
+```
+
+`data` 关键字段：`ObjectID`（新模型 ID，如 `app_sys`）、`ObjectName`（应用系统）、`ObjectIcon`、`ClassificationID`、`AsstObjID`（**父模型 ID，这里传 `app`**）、`OwnerID`。
+
+`CreateMainlineAssociation` 先做的几件事（`mainline_association.go:26`）：
+
+1. **校验层级上限** `checkMaxBizTopoLevel`：读取 `cc_ObjAsst` 中 `bk_asst_id="bk_mainline"` 的全部记录，统计当前主线模型数；再读平台配置 `max_biz_topo_level`（默认 **7**，见 `metadata/configadmin.go`）。若 `当前层数 ≥ 7` 直接报错 `CCErrTopoBizTopoLevelOverLimit`。
+2. **定位父/子**：以 `AsstObjID=app` 在主线链里找到其父对象；再找到 `app` 当前的子对象（即 `set`）。新模型会插在 `app` 与 `set` 之间。
+
+### 7.3 DB 新增流程（按执行顺序）
+
+> 以下所有写操作都带 `bk_supplier_account`（ownerID）过滤，确保租户隔离。新模型是**通用模型**，其实例数据落在分片表 `cc_ObjectBase_{supplier}_pub_{objID}`，**不会**像内置 biz/set/module 那样落到固定表。
+
+| 顺序 | 动作 | 涉及的表 | 写入的内容 |
+|------|------|----------|------------|
+| 1 | **建实例分片表（先于模型创建）** | `cc_ObjectBase_{supplier}_pub_app_sys`、`cc_InstAsst_{supplier}_pub_app_sys` | 由 `createObjectTableByObjectID` → `CoreService.Model.CreateModelTables` → `createObjectShardingTables` 提前建表并补索引（见 7.5）。目的：规避 MongoDB 4.2/4.4 事务中不能建表/建索引的限制 |
+| 2 | **建模型** | `cc_ObjDes` | 插入 `app_sys` 模型记录（`bk_obj_id=app_sys`、`bk_obj_name=应用系统`、`bk_classification_id`、`bk_supplier_account`） |
+| 3 | **建默认属性分组** | `cc_PropertyGroup` | 插入 `Default` 分组（`IsDefault=true`、`GroupID` 自动生成） |
+| 4 | **建默认属性（含主线关键字段）** | `cc_ObjAttDes` | 插入两条预定义属性：<br>• `bk_inst_name`（必填，`FieldTypeSingleChar`，`IsPre=true`）—— 实例名<br>• **`bk_parent_id`**（必填，`FieldTypeInt`，`IsSystem=true`、`IsPre=true`）—— **主线父子链接字段**，这是"应用系统"能挂到 `bk_parent_id` 链上的根本 |
+| 5 | **建唯一约束** | `cc_ObjectUnique` | 以 `bk_inst_name` 属性生成模型级唯一键（`Ispre=false`） |
+| 6 | **写新模型 → app 的主线关联** | `cc_ObjAsst` | 插入 `{ bk_obj_id=app_sys, bk_asst_obj_id=app, bk_asst_id="bk_mainline", bk_supplier_account }`（由 `createMainlineObjectAssociation(app_sys, app)` 生成 `objAsstID="app_sys_bk_mainline_app"`） |
+| 7 | **重指 set 的父级** | `cc_ObjAsst` | `setMainlineParentObject(set, app_sys)`：先**删除** `set → app` 的旧主线关联，再**插入** `{ bk_obj_id=set, bk_asst_obj_id=app_sys, bk_asst_id="bk_mainline" }`。至此模型链变为 `app → app_sys → set → module` |
+| 8 | **回填已有实例的父子关系** | `cc_ObjectBase_0_pub_app_sys`、`cc_SetBase` | `SetMainlineInstAssociation(app, set, app_sys, ...)`：<br>• 为**每个已有业务(app实例)**创建一个 `app_sys` 实例，`bk_parent_id = 该业务的 bk_biz_id`、`bk_biz_id` 继承自业务；<br>• 把**所有 `set` 实例**原来的 `bk_parent_id`（指向 `bk_biz_id`）**改写为新 `app_sys` 实例的 `bk_inst_id`**。<br>这样已有的 set/module/host 数据被原样保留，只是向上多挂了一层"应用系统" |
+| 9 | **写审计日志** | `cc_AuditLog` | 记录模型与属性分组的创建操作 |
+
+> 关键点回顾：**主线实例关系不进 `cc_InstAsst`**，第 7 步改写的是模型级关联 `cc_ObjAsst`；第 8 步改写的是实例级 `bk_parent_id` 字段。这与第 1、4 章结论一致。
+
+### 7.4 落库后的数据形态（JSON 示例）
+
+模型链（`cc_ObjAsst`，`bk_asst_id="bk_mainline"`）：
+
+```json
+[
+  { "bk_obj_id": "app_sys", "bk_asst_obj_id": "app",  "bk_asst_id": "bk_mainline" },
+  { "bk_obj_id": "set",    "bk_asst_obj_id": "app_sys","bk_asst_id": "bk_mainline" },
+  { "bk_obj_id": "module", "bk_asst_obj_id": "set",  "bk_asst_id": "bk_mainline" },
+  { "bk_obj_id": "host",   "bk_asst_obj_id": "module","bk_asst_id": "bk_mainline" }
+]
+```
+
+实例链（新增 `app_sys` 后，`bk_parent_id` 串联）：
+
+```json
+// 业务（根）
+{ "bk_biz_id": 2, "bk_biz_name": "蓝鲸测试业务", "bk_supplier_account": "0" }
+// 应用系统（父 = 业务 bk_biz_id=2）
+{ "bk_inst_id": 20, "bk_inst_name": "核心交易系统", "bk_parent_id": 2, "bk_biz_id": 2, "bk_supplier_account": "0" }
+// 集群（父 = app_sys 实例 bk_inst_id=20）
+{ "bk_set_id": 10, "bk_set_name": "广州一区", "bk_parent_id": 20, "bk_biz_id": 2, "bk_supplier_account": "0" }
+// 模块（父 = 集群 bk_set_id=10）
+{ "bk_module_id": 100, "bk_module_name": "web", "bk_parent_id": 10, "bk_biz_id": 2, "bk_supplier_account": "0" }
+```
+
+### 7.5 建表与索引细节
+
+`createObjectShardingTables`（`coreservice/core/model/model_crud.go:188`）为通用模型建两张表：
+
+- **实例表** `cc_ObjectBase_{supplier}_pub_{objID}`：
+  - 基础索引：`dbindex.InstanceIndexes()`（`bk_obj_id`、`bk_supplier_account`、`bk_inst_id`、`bk_inst_name` 等）
+  - **主线额外唯一索引** `MainLineInstanceUniqueIndex()`：`{bk_parent_id:1, bk_inst_name:1}` 唯一，带 `PartialFilterExpression`（`bk_parent_id` 为 number），保证同一父节点下实例名不重复
+- **实例关联表** `cc_InstAsst_{supplier}_pub_{objID}`：
+  - 索引：`dbindex.InstanceAssociationIndexes()`
+
+> 内置模型（biz/set/module）走固定表 + `createtable.go` 里手工定义的索引；而**自定义主线模型走分片表 + 上述通用索引 + `MainLineInstanceUniqueIndex`**，两者唯一索引定义强耦合 `CreateObject`（见 `object.go:179` 注释），不能单独改动。
+
+### 7.6 关键代码定位
+
+| 内容 | 文件 |
+|------|------|
+| 新增主线模型入口 | `src/scene_server/topo_server/logics/model/mainline_association.go` `CreateMainlineAssociation` (L26) |
+| 层级上限校验 | 同上 `checkMaxBizTopoLevel` (L101) |
+| 写模型/属性/分组 | `src/scene_server/topo_server/logics/model/object.go` `CreateObject` (L116) / `createDefaultAttrs` (L585) |
+| 主线关键属性 `bk_parent_id` | 同上 `createDefaultAttrs`：当 `isMainline=true` 追加 `BKInstParentStr`(=bk_parent_id) 属性 (L605-622) |
+| 写 `cc_ObjAsst` 主线关联 | `src/scene_server/topo_server/logics/model/mainline_association.go` `createMainlineObjectAssociation` (L317) / `setMainlineParentObject` (L301) |
+| 实例 `bk_parent_id` 回填 | `src/scene_server/topo_server/logics/inst/mainline_association.go` `SetMainlineInstAssociation` (L146) |
+| 提前建分片表 | `src/scene_server/topo_server/service/object.go` `createObjectTableByObjectID` (L326) → `coreservice` `CreateModelTables` → `model_tables.go` → `model_crud.go` `createObjectShardingTables` (L188) |
+| 分片表命名 | `src/common/tablenames.go` `GetObjectInstTableName` (L182) → `cc_ObjectBase_{supplier}_pub_{objID}` |
+| 主线唯一索引 | `src/common/index/instance.go` `MainLineInstanceUniqueIndex` |
 
 ---
 
