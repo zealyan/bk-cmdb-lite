@@ -6,13 +6,13 @@
 
 # Test info
 
-- Name: measure-pagination.spec.js >> 测量分页组件与窗口底部的距离
-- Location: tests/measure-pagination.spec.js:3:1
+- Name: tests/topology-tree.spec.js >> 验证业务拓扑树页面
+- Location: tests/topology-tree.spec.js:3:1
 
 # Error details
 
 ```
-Error: browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/firefox-1511/firefox/firefox
+Error: browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome
 ╔════════════════════════════════════════════════════════════╗
 ║ Looks like Playwright was just installed or updated.       ║
 ║ Please run the following command to download new browsers: ║

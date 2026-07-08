@@ -5,19 +5,11 @@
         class="left-panel"
         :class="{ 'is-collapsed': leftCollapsed }"
         :style="{ width: leftWidth + 'px' }">
-        <div class="search-wrapper">
-          <bk-input
-            class="tree-search"
-            clearable
-            right-icon="bk-icon icon-search"
-            placeholder="请输入关键词"
-            v-model="searchKeyword">
-          </bk-input>
-        </div>
-        <div class="panel-content">
-          <div class="placeholder-text">拓扑树占位</div>
-          <div class="placeholder-desc">待开发：业务拓扑树结构</div>
-        </div>
+        <topology-tree
+          ref="topologyTree"
+          :active="activeTab"
+          @node-select="handleNodeSelect">
+        </topology-tree>
       </div>
 
       <div
@@ -33,22 +25,85 @@
       </div>
 
       <div class="right-panel">
-        <div class="panel-header">
-          <span class="panel-title">实例列表</span>
-        </div>
-        <div class="panel-content">
-          <div class="placeholder-text">实例列表占位</div>
-          <div class="placeholder-desc">待开发：主机/服务实例列表</div>
-          <div class="placeholder-desc">详情信息由点击事件展示</div>
-        </div>
+        <bk-tab class="topology-tab" type="unborder-card" :active.sync="activeTab">
+          <bk-tab-panel name="hostList" label="主机列表">
+            <div class="panel-content">
+              <div v-if="!selectedNode" class="empty-state">
+                <div class="placeholder-text">请选择拓扑节点</div>
+                <div class="placeholder-desc">点击左侧拓扑树节点查看主机列表</div>
+              </div>
+              <div v-else class="host-list-content">
+                <div class="placeholder-text">{{ selectedNode.bk_inst_name }} - 主机列表</div>
+                <div class="placeholder-desc">主机数量: {{ selectedNode.host_count || 0 }}</div>
+                <div class="placeholder-desc">待开发：主机列表数据表格</div>
+              </div>
+            </div>
+          </bk-tab-panel>
+
+          <bk-tab-panel name="serviceInstance" label="服务实例">
+            <div class="panel-content">
+              <div v-if="!selectedNode" class="empty-state">
+                <div class="placeholder-text">请选择拓扑节点</div>
+                <div class="placeholder-desc">点击左侧拓扑树节点查看服务实例</div>
+              </div>
+              <div v-else-if="selectedNode.bk_obj_id !== 'module'" class="empty-state">
+                <div class="placeholder-text">非业务模块</div>
+                <div class="placeholder-desc">请选择业务模块查看服务实例</div>
+              </div>
+              <div v-else class="service-instance-content">
+                <div class="placeholder-text">{{ selectedNode.bk_inst_name }} - 服务实例</div>
+                <div class="placeholder-desc">服务实例数量: {{ selectedNode.service_instance_count || 0 }}</div>
+                <div class="placeholder-desc">待开发：服务实例列表数据表格</div>
+              </div>
+            </div>
+          </bk-tab-panel>
+
+          <bk-tab-panel name="nodeInfo" label="节点信息">
+            <div class="panel-content">
+              <div v-if="!selectedNode" class="empty-state">
+                <div class="placeholder-text">请选择拓扑节点</div>
+                <div class="placeholder-desc">点击左侧拓扑树节点查看节点信息</div>
+              </div>
+              <div v-else class="node-info-content">
+                <div class="info-header">
+                  <span class="node-icon">{{ selectedNode.icon_text || selectedNode.bk_obj_name?.[0] || 'N' }}</span>
+                  <span class="node-name">{{ selectedNode.bk_inst_name }}</span>
+                </div>
+                <div class="info-body">
+                  <div class="info-item">
+                    <span class="info-label">节点类型:</span>
+                    <span class="info-value">{{ selectedNode.bk_obj_name }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">节点ID:</span>
+                    <span class="info-value">{{ selectedNode.bk_inst_id }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">主机数量:</span>
+                    <span class="info-value">{{ selectedNode.host_count || 0 }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">服务实例数量:</span>
+                    <span class="info-value">{{ selectedNode.service_instance_count || 0 }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </bk-tab-panel>
+        </bk-tab>
       </div>
     </div>
   </div>
 </template>
 
 <script>
+import TopologyTree from './topology-tree.vue'
+
 export default {
   name: 'BusinessTopology',
+  components: {
+    TopologyTree
+  },
   data() {
     return {
       leftWidth: 280,
@@ -58,7 +113,8 @@ export default {
       startWidth: 0,
       minWidth: 200,
       maxWidth: 480,
-      searchKeyword: ''
+      activeTab: 'hostList',
+      selectedNode: null
     }
   },
   methods: {
@@ -93,6 +149,9 @@ export default {
       document.removeEventListener('mouseup', this.handleResizeEnd)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+    },
+    handleNodeSelect(node) {
+      this.selectedNode = node.data || node
     }
   },
   beforeDestroy() {
@@ -134,52 +193,40 @@ export default {
     width: 0 !important;
     border-right: none;
     overflow: hidden;
-
-    .search-wrapper,
-    .panel-content {
-      display: none;
-    }
   }
 }
 
 .right-panel {
   flex: 1;
   min-width: 0;
-}
 
-.search-wrapper {
-  padding: 10px 20px;
-  border-bottom: 1px solid $cmdbLayoutBorderColor;
+  .topology-tab {
+    height: 100%;
 
-  .tree-search {
-    display: block;
-    width: auto;
-  }
-}
+    ::v-deep .bk-tab-header {
+      padding: 0;
+      margin: 0 20px;
+    }
 
-.panel-header {
-  height: 48px;
-  line-height: 48px;
-  padding: 0 16px;
-  border-bottom: 1px solid $cmdbLayoutBorderColor;
-  background: #fafbfc;
-  flex-shrink: 0;
-
-  .panel-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: $cmdbTextColor;
+    ::v-deep .bk-tab-section {
+      height: calc(100% - 50px);
+      overflow: auto;
+    }
   }
 }
 
 .panel-content {
-  flex: 1;
-  overflow: auto;
   padding: 20px;
+  min-height: 200px;
+}
+
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  height: 100%;
+  min-height: 300px;
 }
 
 .placeholder-text {
@@ -192,6 +239,57 @@ export default {
   font-size: 12px;
   color: $textDisabledColor;
   margin-bottom: 4px;
+}
+
+.node-info-content {
+  padding: 20px;
+
+  .info-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid $cmdbLayoutBorderColor;
+
+    .node-icon {
+      display: inline-flex;
+      width: 32px;
+      height: 32px;
+      line-height: 32px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background-color: #c4c6cc;
+      font-size: 14px;
+      color: #fff;
+      margin-right: 12px;
+    }
+
+    .node-name {
+      font-size: 18px;
+      font-weight: 500;
+      color: $cmdbTextColor;
+    }
+  }
+
+  .info-body {
+    .info-item {
+      display: flex;
+      margin-bottom: 12px;
+
+      .info-label {
+        width: 120px;
+        color: $grayColor;
+        font-size: 14px;
+      }
+
+      .info-value {
+        flex: 1;
+        color: $cmdbTextColor;
+        font-size: 14px;
+      }
+    }
+  }
 }
 
 .resize-handler {
