@@ -160,7 +160,6 @@ export default {
         bk_inst_name: data.bk_inst_name,
         default: data.default || 0,
         host_count: data.count || 0,
-        status: 'finished',
         child: (data.child || []).map(set => ({
           ...set,
           ...MODEL_INFO.set,
@@ -170,7 +169,6 @@ export default {
           default: set.default || 0,
           bk_biz_id: bizId,
           host_count: set.count || 0,
-          status: 'finished',
           child: (set.child || []).map(mod => ({
             ...mod,
             ...MODEL_INFO.module,
@@ -181,7 +179,6 @@ export default {
             bk_set_id: set.bk_inst_id,
             bk_biz_id: bizId,
             host_count: mod.count || 0,
-            status: 'finished',
             child: []
           }))
         }))
@@ -229,23 +226,16 @@ export default {
     },
 
     handleDefaultExpand(node) {
-      const nodes = this.collectDescendants(node)
-      this.setNodeCount(nodes)
-    },
-
-    collectDescendants(rootNode) {
-      const result = []
-      const stack = [rootNode]
-      while (stack.length) {
-        const current = stack.pop()
-        if (current && current.data) {
-          result.push(current)
+      const nodes = []
+      let parentNode = node
+      while (parentNode) {
+        nodes.push(...parentNode.children)
+        if (!parentNode.parent) {
+          nodes.push(parentNode)
         }
-        if (current && current.children && current.children.length) {
-          current.children.forEach(child => stack.push(child))
-        }
+        parentNode = parentNode.parent
       }
-      return result
+      this.setNodeCount(nodes)
     },
 
     async setNodeCount(targetNodes, force = false) {
