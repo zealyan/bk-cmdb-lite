@@ -90,11 +90,10 @@ export default {
       RouterQuery.set('keyword', value)
     }
   },
-  async created() {
-    await this.initTopology()
-    this.createWatcher()
+  created() {
   },
-  mounted() {
+  async mounted() {
+    await this.initTopology()
     this.updateTreeHeight()
     window.addEventListener('resize', this.updateTreeHeight)
   },
@@ -109,14 +108,13 @@ export default {
         const topology = await this.getInstanceTopology()
 
         this.treeData = topology
-
-        if (this.treeData.length > 0) {
-          this.$nextTick(() => {
-            this.setDefaultState()
-          })
-        }
-
-        this.setNodeCount(this.$refs.tree?.nodes || [])
+        this.$refs.tree.setData(this.treeData)
+        
+        this.$nextTick(() => {
+          this.setDefaultState()
+          this.createWatcher()
+          this.setNodeCount(this.$refs.tree?.nodes || [])
+        })
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -145,6 +143,7 @@ export default {
         bk_inst_name: data.bk_inst_name,
         default: data.default || 0,
         host_count: data.count || 0,
+        expanded: true,
         child: (data.child || []).map(set => ({
           ...set,
           ...MODEL_INFO.set,
@@ -179,10 +178,22 @@ export default {
     },
 
     createWatcher() {
-      this.nodeUnwatch = RouterQuery.watch('node', this.setDefaultState, { immediate: false })
+      this.nodeUnwatch = RouterQuery.watch('node', this.handleNodeChange)
       this.filterUnwatch = RouterQuery.watch('keyword', (value) => {
         this.filterKeyword = value
       })
+    },
+
+    handleNodeChange(newNodeId) {
+      if (!newNodeId) return
+      const node = this.$refs.tree?.getNodeById(newNodeId)
+      if (node) {
+        this.expandToNode(node)
+        if (!node.selected) {
+          this.$refs.tree.setSelected(node.id, { emitEvent: true })
+        }
+        this.handleDefaultExpand(node)
+      }
     },
 
     destroyWatcher() {
@@ -195,30 +206,31 @@ export default {
       if (queryNodeId) {
         const node = this.$refs.tree?.getNodeById(queryNodeId)
         if (node) {
-          this.$refs.tree.setExpanded(node.id)
+          this.expandToNode(node)
           this.$refs.tree.setSelected(node.id, { emitEvent: true })
           this.handleDefaultExpand(node)
-          this.expandBizChildren()
           return
         }
       }
 
-      const [firstNode] = this.$refs.tree?.nodes || []
+      const firstNode = this.$refs.tree?.nodes?.[0]
       if (firstNode) {
         this.$refs.tree.setExpanded(firstNode.id)
         this.$refs.tree.setSelected(firstNode.id, { emitEvent: true })
         this.handleDefaultExpand(firstNode)
-        this.expandBizChildren()
       }
     },
 
-    expandBizChildren() {
-      const [bizNode] = this.$refs.tree?.nodes || []
-      if (bizNode && bizNode.children && bizNode.children.length > 0) {
-        bizNode.children.forEach(child => {
-          this.$refs.tree.setExpanded(child.id)
-        })
+    expandToNode(node) {
+      const path = []
+      let current = node
+      while (current) {
+        path.unshift(current)
+        current = current.parent
       }
+      path.forEach(n => {
+        this.$refs.tree.setExpanded(n.id)
+      })
     },
 
     handleDefaultExpand(node) {
