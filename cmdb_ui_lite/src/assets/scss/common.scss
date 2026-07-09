@@ -488,3 +488,13 @@ input.cmdb-form-input {
 .bk-table-empty-block {
     animation: table-empty-delay-show .8s steps(1, end);
 }
+
+.bk-big-tree {
+    .bk-big-tree-node {
+        &:not(.has-link-line) {
+            .node-options {
+                padding-left: 10px;
+            }
+        }
+    }
+}
