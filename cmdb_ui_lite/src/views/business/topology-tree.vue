@@ -109,12 +109,9 @@ export default {
 
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
-        
-        this.$nextTick(() => {
-          this.setDefaultState()
-          this.createWatcher()
-          this.setNodeCount(this.$refs.tree?.nodes || [])
-        })
+
+        this.createWatcher()
+        this.setNodeCount(this.$refs.tree?.nodes || [])
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -143,7 +140,6 @@ export default {
         bk_inst_name: data.bk_inst_name,
         default: data.default || 0,
         host_count: data.count || 0,
-        expanded: true,
         child: (data.child || []).map(set => ({
           ...set,
           ...MODEL_INFO.set,
@@ -178,22 +174,10 @@ export default {
     },
 
     createWatcher() {
-      this.nodeUnwatch = RouterQuery.watch('node', this.handleNodeChange)
+      this.nodeUnwatch = RouterQuery.watch('node', this.setDefaultState, { immediate: true })
       this.filterUnwatch = RouterQuery.watch('keyword', (value) => {
         this.filterKeyword = value
       })
-    },
-
-    handleNodeChange(newNodeId) {
-      if (!newNodeId) return
-      const node = this.$refs.tree?.getNodeById(newNodeId)
-      if (node) {
-        this.expandToNode(node)
-        if (!node.selected) {
-          this.$refs.tree.setSelected(node.id, { emitEvent: true })
-        }
-        this.handleDefaultExpand(node)
-      }
     },
 
     destroyWatcher() {
@@ -202,35 +186,26 @@ export default {
     },
 
     setDefaultState() {
+      const defaultNode = this.getDefaultNode()
+      if (defaultNode) {
+        const { tree } = this.$refs
+        tree.setExpanded(defaultNode.id)
+        tree.setSelected(defaultNode.id, { emitEvent: true })
+        this.handleDefaultExpand(defaultNode)
+      }
+    },
+
+    getDefaultNode() {
       const queryNodeId = RouterQuery.get('node', '')
       if (queryNodeId) {
         const node = this.$refs.tree?.getNodeById(queryNodeId)
         if (node) {
-          this.expandToNode(node)
-          this.$refs.tree.setSelected(node.id, { emitEvent: true })
-          this.handleDefaultExpand(node)
-          return
+          return node
         }
       }
 
-      const firstNode = this.$refs.tree?.nodes?.[0]
-      if (firstNode) {
-        this.$refs.tree.setExpanded(firstNode.id)
-        this.$refs.tree.setSelected(firstNode.id, { emitEvent: true })
-        this.handleDefaultExpand(firstNode)
-      }
-    },
-
-    expandToNode(node) {
-      const path = []
-      let current = node
-      while (current) {
-        path.unshift(current)
-        current = current.parent
-      }
-      path.forEach(n => {
-        this.$refs.tree.setExpanded(n.id)
-      })
+      const [firstNode] = this.$refs.tree?.nodes || []
+      return firstNode || null
     },
 
     handleDefaultExpand(node) {
