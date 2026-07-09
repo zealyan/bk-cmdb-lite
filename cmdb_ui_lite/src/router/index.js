@@ -33,7 +33,7 @@ const routes = [
       {
         name: MENU_BUSINESS_TOPOLOGY,
         path: ':bizId/index',
-        component: () => import('@/views/business/business-topology/index.vue'),
+        component: () => import('@/views/business-topology/index.vue'),
         meta: {
           menu: {
             i18n: '业务拓扑'
