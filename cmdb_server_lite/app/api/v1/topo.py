@@ -222,7 +222,7 @@ def get_set_module_list(bk_set_id):
 @topo_bp.route('/count', methods=['GET'])
 def get_node_host_count():
     """
-    异步获取节点的主机数量统计
+    异步获取节点的主机数量统计（单个节点）
 
     QueryParams:
         bk_obj_id: 节点类型（biz/set/module）
@@ -268,6 +268,80 @@ def get_node_host_count():
         raise
     except Exception as e:
         raise APIException(f'获取统计失败: {str(e)}', 500)
+
+
+@topo_bp.route('/statistics', methods=['POST'])
+def get_topo_statistics():
+    """
+    批量获取拓扑节点统计数据（原项目 getTopoStatistics）
+
+    RequestBody:
+        {
+            "bk_biz_id": 2,
+            "condition": [
+                {"bk_obj_id": "biz", "bk_inst_id": 2},
+                {"bk_obj_id": "set", "bk_inst_id": 10, "bk_biz_id": 2},
+                {"bk_obj_id": "module", "bk_inst_id": 100}
+            ]
+        }
+
+    Returns:
+        { result: true, data: [{bk_obj_id, bk_inst_id, host_count, service_instance_count}], code: 0 }
+    """
+    data = request.get_json()
+    if not data or not data.get('condition'):
+        raise APIException('缺少 condition 参数', 400)
+
+    bk_biz_id = data.get('bk_biz_id')
+    condition = data.get('condition')
+    supplier_account = data.get('bk_supplier_account', '0')
+
+    if not isinstance(condition, list):
+        raise APIException('condition 必须是数组', 400)
+
+    try:
+        results = []
+        for item in condition:
+            obj_id = item.get('bk_obj_id')
+            inst_id = item.get('bk_inst_id')
+            biz_id = item.get('bk_biz_id') or bk_biz_id
+
+            if not obj_id or inst_id is None:
+                continue
+
+            try:
+                inst_id = int(inst_id)
+                if biz_id:
+                    biz_id = int(biz_id)
+            except ValueError:
+                continue
+
+            host_count = 0
+            service_instance_count = 0
+
+            if obj_id == 'biz':
+                host_count = topo_service.get_biz_host_count(inst_id, supplier_account)
+            elif obj_id == 'set':
+                if biz_id:
+                    host_count = topo_service.get_set_host_count(inst_id, biz_id, supplier_account)
+            elif obj_id == 'module':
+                host_count = topo_service.get_module_host_count(inst_id, supplier_account)
+
+            results.append({
+                'bk_obj_id': obj_id,
+                'bk_inst_id': inst_id,
+                'host_count': host_count,
+                'service_instance_count': service_instance_count
+            })
+
+        return jsonify({
+            'result': True,
+            'data': results,
+            'code': 0,
+            'message': ''
+        })
+    except Exception as e:
+        raise APIException(f'获取统计数据失败: {str(e)}', 500)
 
 
 @topo_bp.route('/biz/<int:bk_biz_id>/host', methods=['GET'])

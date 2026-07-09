@@ -14,6 +14,37 @@ export const topoAPI = {
   },
 
   /**
+   * 获取实例拓扑树（完整树，含统计）
+   * @param {number} bizId 业务ID
+   * @param {Object} params 参数（with_statistics 等）
+   * @returns {Promise<Object>} 拓扑树数据
+   */
+  async getInstanceTopo(bizId, params = {}) {
+    const response = await axios.get(`${API_BASE}/topo/instance/mainline`, {
+      params: {
+        bk_biz_id: bizId,
+        with_statistics: params.with_statistics || true,
+        ...params
+      }
+    })
+    return response.data
+  },
+
+  /**
+   * 获取拓扑节点统计数据（批量）
+   * @param {number} bizId 业务ID
+   * @param {Object} params 参数
+   * @returns {Promise<Array>} 统计结果列表
+   */
+  async getTopoStatistics(bizId, params = {}) {
+    const response = await axios.post(`${API_BASE}/topo/statistics`, {
+      bk_biz_id: bizId,
+      ...params
+    })
+    return response.data
+  },
+
+  /**
    * 获取业务下的集群列表（懒加载下一级）
    * @param {number} bizId 业务ID
    * @returns {Promise<Array>} 集群列表
