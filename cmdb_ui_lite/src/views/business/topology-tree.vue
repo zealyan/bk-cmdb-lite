@@ -111,7 +111,6 @@ export default {
         this.$refs.tree.setData(this.treeData)
 
         this.createWatcher()
-        this.setNodeCount(this.$refs.tree?.nodes || [])
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -189,7 +188,8 @@ export default {
       const defaultNode = this.getDefaultNode()
       if (defaultNode) {
         const { tree } = this.$refs
-        tree.setExpanded(defaultNode.id)
+        const nodePath = this.getNodePath(defaultNode)
+        nodePath.forEach(n => tree.setExpanded(n.id))
         tree.setSelected(defaultNode.id, { emitEvent: true })
         this.handleDefaultExpand(defaultNode)
       }
@@ -208,17 +208,34 @@ export default {
       return firstNode || null
     },
 
-    handleDefaultExpand(node) {
-      const nodes = []
-      let parentNode = node
-      while (parentNode) {
-        nodes.push(...parentNode.children)
-        if (!parentNode.parent) {
-          nodes.push(parentNode)
-        }
-        parentNode = parentNode.parent
+    getNodePath(node) {
+      const path = []
+      let current = node
+      while (current) {
+        path.unshift(current)
+        current = current.parent
       }
+      return path
+    },
+
+    handleDefaultExpand(node) {
+      const nodes = this.collectDescendants(node)
       this.setNodeCount(nodes)
+    },
+
+    collectDescendants(rootNode) {
+      const result = []
+      const stack = [rootNode]
+      while (stack.length) {
+        const current = stack.pop()
+        if (current && current.data) {
+          result.push(current)
+        }
+        if (current && current.children && current.children.length) {
+          current.children.forEach(child => stack.push(child))
+        }
+      }
+      return result
     },
 
     async setNodeCount(nodes) {
