@@ -140,6 +140,136 @@ def get_biz_list():
         raise APIException(f'获取业务列表失败: {str(e)}', 500)
 
 
+@topo_bp.route('/biz/<int:bk_biz_id>/set', methods=['GET'])
+def get_biz_set_list(bk_biz_id):
+    """
+    获取业务下的集群列表（懒加载下一级，带统计）
+
+    PathParams:
+        bk_biz_id: 业务ID
+
+    QueryParams:
+        bk_supplier_account: 供应商账号，默认 '0'
+        with_statistics: 是否返回统计，默认 true
+
+    Returns:
+        { result: true, data: [...], code: 0 }
+    """
+    supplier_account = request.args.get('bk_supplier_account', '0')
+    with_statistics = request.args.get('with_statistics', 'true').lower() == 'true'
+
+    try:
+        if with_statistics:
+            data = topo_service.get_set_list_with_statistics(bk_biz_id, supplier_account)
+        else:
+            data = topo_service._load_instances('set', bk_biz_id, supplier_account)
+        return jsonify({
+            'result': True,
+            'data': data,
+            'code': 0,
+            'message': '',
+            'count': len(data)
+        })
+    except Exception as e:
+        raise APIException(f'获取集群列表失败: {str(e)}', 500)
+
+
+@topo_bp.route('/set/<int:bk_set_id>/module', methods=['GET'])
+def get_set_module_list(bk_set_id):
+    """
+    获取集群下的模块列表（懒加载下一级，带统计）
+
+    PathParams:
+        bk_set_id: 集群ID
+
+    QueryParams:
+        bk_biz_id: 业务ID（必填）
+        bk_supplier_account: 供应商账号，默认 '0'
+        with_statistics: 是否返回统计，默认 true
+
+    Returns:
+        { result: true, data: [...], code: 0 }
+    """
+    bk_biz_id = request.args.get('bk_biz_id')
+    if not bk_biz_id:
+        raise APIException('缺少业务ID参数 bk_biz_id', 400)
+
+    try:
+        bk_biz_id = int(bk_biz_id)
+    except ValueError:
+        raise APIException('bk_biz_id 必须是整数', 400)
+
+    supplier_account = request.args.get('bk_supplier_account', '0')
+    with_statistics = request.args.get('with_statistics', 'true').lower() == 'true'
+
+    try:
+        if with_statistics:
+            data = topo_service.get_module_list_with_statistics(bk_set_id, bk_biz_id, supplier_account)
+        else:
+            data = topo_service._load_instances('module', bk_biz_id, supplier_account)
+            data = [d for d in data if d.get('bk_set_id') == bk_set_id]
+        return jsonify({
+            'result': True,
+            'data': data,
+            'code': 0,
+            'message': '',
+            'count': len(data)
+        })
+    except Exception as e:
+        raise APIException(f'获取模块列表失败: {str(e)}', 500)
+
+
+@topo_bp.route('/count', methods=['GET'])
+def get_node_host_count():
+    """
+    异步获取节点的主机数量统计
+
+    QueryParams:
+        bk_obj_id: 节点类型（biz/set/module）
+        bk_inst_id: 节点ID
+        bk_biz_id: 业务ID（set时必填）
+        bk_supplier_account: 供应商账号，默认 '0'
+
+    Returns:
+        { result: true, data: { count: 5 }, code: 0 }
+    """
+    bk_obj_id = request.args.get('bk_obj_id')
+    bk_inst_id = request.args.get('bk_inst_id')
+    bk_biz_id = request.args.get('bk_biz_id')
+    supplier_account = request.args.get('bk_supplier_account', '0')
+
+    if not bk_obj_id or not bk_inst_id:
+        raise APIException('缺少 bk_obj_id 或 bk_inst_id', 400)
+
+    try:
+        bk_inst_id = int(bk_inst_id)
+    except ValueError:
+        raise APIException('bk_inst_id 必须是整数', 400)
+
+    try:
+        if bk_obj_id == 'biz':
+            count = topo_service.get_biz_host_count(bk_inst_id, supplier_account)
+        elif bk_obj_id == 'set':
+            if not bk_biz_id:
+                raise APIException('set 节点需要 bk_biz_id', 400)
+            count = topo_service.get_set_host_count(bk_inst_id, int(bk_biz_id), supplier_account)
+        elif bk_obj_id == 'module':
+            count = topo_service.get_module_host_count(bk_inst_id, supplier_account)
+        else:
+            raise APIException(f'不支持的对象类型: {bk_obj_id}', 400)
+
+        return jsonify({
+            'result': True,
+            'data': {'count': count},
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'获取统计失败: {str(e)}', 500)
+
+
 @topo_bp.route('/biz/<int:bk_biz_id>/host', methods=['GET'])
 def get_biz_hosts(bk_biz_id):
     """

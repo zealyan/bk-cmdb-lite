@@ -14,24 +14,44 @@ export const topoAPI = {
   },
 
   /**
-   * 获取业务下的集群列表
+   * 获取业务下的集群列表（懒加载下一级）
    * @param {number} bizId 业务ID
    * @returns {Promise<Array>} 集群列表
    */
-  async getSetList(bizId) {
-    const response = await axios.get(`${API_BASE}/topo/biz/${bizId}/set`)
+  async getBizSetList(bizId) {
+    const response = await axios.get(`${API_BASE}/topo/biz/${bizId}/set`, {
+      params: { with_statistics: true }
+    })
     return response.data
   },
 
   /**
-   * 获取集群下的模块列表
+   * 获取集群下的模块列表（懒加载下一级）
    * @param {number} setId 集群ID
    * @param {number} bizId 业务ID
    * @returns {Promise<Array>} 模块列表
    */
-  async getModuleList(setId, bizId) {
+  async getSetModuleList(setId, bizId) {
     const response = await axios.get(`${API_BASE}/topo/set/${setId}/module`, {
-      params: { bk_biz_id: bizId }
+      params: { bk_biz_id: bizId, with_statistics: true }
+    })
+    return response.data
+  },
+
+  /**
+   * 获取节点的主机数量统计
+   * @param {string} objId 模型ID（biz/set/module）
+   * @param {number} instId 实例ID
+   * @param {Object} extra 额外参数（bk_biz_id 等）
+   * @returns {Promise<{data: {count: number}}>}
+   */
+  async getNodeCount(objId, instId, extra = {}) {
+    const response = await axios.get(`${API_BASE}/topo/count`, {
+      params: {
+        bk_obj_id: objId,
+        bk_inst_id: instId,
+        ...extra
+      }
     })
     return response.data
   },

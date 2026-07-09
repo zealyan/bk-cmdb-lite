@@ -1,5 +1,5 @@
 <template>
-  <div class="business-topology">
+  <div class="business-topology" v-bkloading="{ isLoading: pageLoading, opacity: 1 }">
     <div class="topology-layout" ref="topologyLayout">
       <div
         class="left-panel"
@@ -59,7 +59,7 @@
             </div>
             <div v-else class="service-instance-content">
               <div class="placeholder-text">{{ selectedNode.data.bk_inst_name }} - 服务实例</div>
-              <div class="placeholder-desc">服务实例数量: {{ selectedNode.data.service_instance_count || 0 }}</div>
+              <div class="placeholder-desc">服务实例数量: {{ selectedNode.data.host_count || 0 }}</div>
               <div class="placeholder-desc">待开发：服务实例列表数据表格</div>
             </div>
           </bk-tab-panel>
@@ -98,8 +98,18 @@ export default {
       minWidth: 200,
       maxWidth: 480,
       activeTab: 'hostList',
-      selectedNode: null
+      selectedNode: null,
+      pageLoading: true  // 页面初始 loading 状态
     }
+  },
+  async created() {
+    // 模拟组件首次加载时的 loading
+    // 实际加载由子组件 topology-tree 完成
+    this.$nextTick(() => {
+      setTimeout(() => {
+        this.pageLoading = false
+      }, 300)
+    })
   },
   methods: {
     toggleLeftPanel() {

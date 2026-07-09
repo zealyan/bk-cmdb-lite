@@ -1,5 +1,5 @@
 <template>
-  <div class="host-list-panel">
+  <div class="host-list-panel" v-bkloading="{ isLoading: loading, opacity: 1 }">
     <div class="panel-header">
       <span class="node-title">
         <span class="node-icon">{{ nodeIconText }}</span>
@@ -9,7 +9,7 @@
     </div>
     <div class="panel-body">
       <bk-table
-        :data="mockHostList"
+        :data="hostList"
         :pagination="pagination"
         @page-change="handlePageChange"
         @page-limit-change="handlePageLimitChange">
@@ -17,11 +17,10 @@
         <bk-table-column prop="bk_host_name" label="主机名称" min-width="150"></bk-table-column>
         <bk-table-column prop="bk_host_innerip" label="内网IP" width="150"></bk-table-column>
         <bk-table-column prop="bk_host_outerip" label="外网IP" width="150"></bk-table-column>
-        <bk-table-column prop="bk_os_name" label="操作系统" width="120"></bk-table-column>
         <bk-table-column prop="bk_cloud_id" label="云区域" width="100"></bk-table-column>
-        <bk-table-column prop="status" label="状态" width="100">
+        <bk-table-column label="状态" width="100">
           <template #default="{ row }">
-            <span :class="['status-tag', row.status]">{{ statusText(row.status) }}</span>
+            <span :class="['status-tag', getStatus(row)]">{{ statusText(getStatus(row)) }}</span>
           </template>
         </bk-table-column>
       </bk-table>
@@ -30,25 +29,7 @@
 </template>
 
 <script>
-// 模拟主机数据
-const generateMockHosts = (count, nodeId) => {
-  const hosts = []
-  const statusList = ['running', 'stopped', 'maintenance']
-  const osList = ['CentOS 7.9', 'Ubuntu 20.04', 'Debian 11', 'Windows Server 2019', 'Rocky Linux 8']
-  
-  for (let i = 1; i <= count; i++) {
-    hosts.push({
-      bk_host_id: nodeId * 1000 + i,
-      bk_host_name: `host-${nodeId}-${i}`,
-      bk_host_innerip: `192.168.${Math.floor(nodeId / 10)}.${i}`,
-      bk_host_outerip: nodeId % 2 === 0 ? `10.0.${Math.floor(nodeId / 10)}.${i}` : '',
-      bk_os_name: osList[Math.floor(Math.random() * osList.length)],
-      bk_cloud_id: 0,
-      status: statusList[Math.floor(Math.random() * statusList.length)]
-    })
-  }
-  return hosts
-}
+import { topoAPI } from '@/api/topo'
 
 export default {
   name: 'HostListPanel',
@@ -69,7 +50,8 @@ export default {
         count: 0,
         limit: 10
       },
-      mockHostList: []
+      hostList: [],
+      loading: false
     }
   },
   computed: {
@@ -80,38 +62,60 @@ export default {
       // 从节点向上遍历获取路径
       let path = []
       let current = this.node
-      while (current) {
+      while (current && current.data) {
         path.unshift(current.data.bk_inst_name)
         current = current.parent
       }
       return path.join(' / ')
-    },
-    hostCount() {
-      return this.node.data.host_count || 0
     }
   },
   watch: {
     node: {
-      immediate: true,
+      deep: true,
       handler(node) {
-        if (node) {
+        if (node && node.data) {
+          this.pagination.current = 1
           this.loadHostList()
         }
+      }
+    },
+    active(active) {
+      if (active && this.node) {
+        this.loadHostList()
       }
     }
   },
   methods: {
-    loadHostList() {
-      // 模拟加载主机列表
-      const nodeId = this.node.data.bk_inst_id
-      const hostCount = Math.min(this.hostCount, 50) // 模拟最多50条数据
-      const allHosts = generateMockHosts(hostCount, nodeId)
-      
-      this.pagination.count = hostCount
-      this.mockHostList = allHosts.slice(
-        (this.pagination.current - 1) * this.pagination.limit,
-        this.pagination.current * this.pagination.limit
-      )
+    async loadHostList() {
+      this.loading = true
+      try {
+        const data = this.node.data
+        const objId = data.bk_obj_id
+        const params = {
+          page: this.pagination.current,
+          page_size: this.pagination.limit
+        }
+        let result
+        if (objId === 'biz') {
+          result = await topoAPI.getBizHostList(data.bk_inst_id, params)
+        } else if (objId === 'set') {
+          result = await topoAPI.getSetHostList(data.bk_inst_id, data.bk_biz_id, params)
+        } else if (objId === 'module') {
+          result = await topoAPI.getModuleHostList(data.bk_inst_id, params)
+        } else {
+          this.hostList = []
+          this.pagination.count = 0
+          return
+        }
+        this.hostList = result.data.info || []
+        this.pagination.count = result.data.count || 0
+      } catch (e) {
+        console.error('加载主机列表失败:', e)
+        this.hostList = []
+        this.pagination.count = 0
+      } finally {
+        this.loading = false
+      }
     },
     handlePageChange(page) {
       this.pagination.current = page
@@ -122,11 +126,14 @@ export default {
       this.pagination.current = 1
       this.loadHostList()
     },
+    getStatus(row) {
+      // 根据外网IP判断简单状态
+      return row.bk_host_outerip ? 'running' : 'stopped'
+    },
     statusText(status) {
       const map = {
         running: '运行中',
-        stopped: '已停止',
-        maintenance: '维护中'
+        stopped: '未配置'
       }
       return map[status] || status
     }
@@ -200,11 +207,6 @@ export default {
   &.stopped {
     background-color: #feecec;
     color: #ea3636;
-  }
-
-  &.maintenance {
-    background-color: #fff3e1;
-    color: #ff9c02;
   }
 }
 </style>

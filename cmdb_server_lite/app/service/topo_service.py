@@ -359,6 +359,190 @@ def get_biz_list(supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any
     return query_all(sql, {'supplier': supplier_account})
 
 
+def get_biz_list_with_statistics(supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """
+    获取业务列表（带统计信息）
+
+    异步绑定统计：先返回业务列表，统计信息通过后续API补全
+    """
+    biz_list = get_biz_list(supplier_account)
+    return biz_list
+
+
+def get_set_list_with_statistics(bk_biz_id: int,
+                                 supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """
+    获取业务下的集群列表（带统计信息）
+
+    Args:
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        集群列表，包含 host_count
+    """
+    set_instances = _load_instances(MAINLINE_MODEL_SET, bk_biz_id, supplier_account)
+
+    set_ids = [s[MODEL_ID_FIELD[MAINLINE_MODEL_SET]] for s in set_instances]
+    if not set_ids:
+        return set_instances
+
+    placeholders = ', '.join([f":set_{i}" for i in range(len(set_ids))])
+    params = {'bk_biz_id': bk_biz_id, 'supplier': supplier_account}
+    for i, sid in enumerate(set_ids):
+        params[f'set_{i}'] = sid
+
+    count_sql = f"""
+        SELECT bk_set_id, COUNT(DISTINCT bk_host_id) as host_count
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = :bk_biz_id
+          AND bk_supplier_account = :supplier
+          AND bk_set_id IN ({placeholders})
+        GROUP BY bk_set_id
+    """
+    rows = query_all(count_sql, params)
+    set_host_count = {row['bk_set_id']: row['host_count'] for row in rows}
+
+    for s in set_instances:
+        sid = s[MODEL_ID_FIELD[MAINLINE_MODEL_SET]]
+        s['host_count'] = set_host_count.get(sid, 0)
+
+    return set_instances
+
+
+def get_module_list_with_statistics(bk_set_id: int, bk_biz_id: int,
+                                    supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """
+    获取集群下的模块列表（带统计信息）
+
+    Args:
+        bk_set_id: 集群ID
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        模块列表，包含 host_count
+    """
+    sql = f"""
+        SELECT {MODEL_ID_FIELD[MAINLINE_MODEL_MODULE]},
+               {MODEL_NAME_FIELD[MAINLINE_MODEL_MODULE]},
+               bk_set_id, bk_biz_id, "default",
+               bk_supplier_account,
+               *
+        FROM {MODEL_INSTANCE_TABLE[MAINLINE_MODEL_MODULE]}
+        WHERE bk_supplier_account = :supplier
+          AND bk_biz_id = :bk_biz_id
+          AND bk_set_id = :bk_set_id
+        ORDER BY "default", {MODEL_ID_FIELD[MAINLINE_MODEL_MODULE]}
+    """
+    module_instances = query_all(sql, {
+        'supplier': supplier_account,
+        'bk_biz_id': bk_biz_id,
+        'bk_set_id': bk_set_id
+    })
+
+    if not module_instances:
+        return module_instances
+
+    module_ids = [m[MODEL_ID_FIELD[MAINLINE_MODEL_MODULE]] for m in module_instances]
+    placeholders = ', '.join([f":mod_{i}" for i in range(len(module_ids))])
+    params = {'supplier': supplier_account, 'bk_biz_id': bk_biz_id}
+    for i, mid in enumerate(module_ids):
+        params[f'mod_{i}'] = mid
+
+    count_sql = f"""
+        SELECT bk_module_id, COUNT(DISTINCT bk_host_id) as host_count
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = :bk_biz_id
+          AND bk_supplier_account = :supplier
+          AND bk_module_id IN ({placeholders})
+        GROUP BY bk_module_id
+    """
+    rows = query_all(count_sql, params)
+    module_host_count = {row['bk_module_id']: row['host_count'] for row in rows}
+
+    for m in module_instances:
+        mid = m[MODEL_ID_FIELD[MAINLINE_MODEL_MODULE]]
+        m['host_count'] = module_host_count.get(mid, 0)
+
+    return module_instances
+
+
+def get_biz_host_count(bk_biz_id: int,
+                       supplier_account: str = DEFAULT_SUPPLIER) -> int:
+    """
+    获取业务下主机总数（异步统计接口）
+
+    Args:
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        主机总数
+    """
+    sql = """
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = :bk_biz_id
+          AND bk_supplier_account = :supplier
+    """
+    row = query_one(sql, {'bk_biz_id': bk_biz_id, 'supplier': supplier_account})
+    return row['cnt'] if row else 0
+
+
+def get_set_host_count(bk_set_id: int, bk_biz_id: int,
+                       supplier_account: str = DEFAULT_SUPPLIER) -> int:
+    """
+    获取集群下主机总数（异步统计接口）
+
+    Args:
+        bk_set_id: 集群ID
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        主机总数
+    """
+    sql = """
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = :bk_set_id
+          AND bk_biz_id = :bk_biz_id
+          AND bk_supplier_account = :supplier
+    """
+    row = query_one(sql, {
+        'bk_set_id': bk_set_id,
+        'bk_biz_id': bk_biz_id,
+        'supplier': supplier_account
+    })
+    return row['cnt'] if row else 0
+
+
+def get_module_host_count(bk_module_id: int,
+                          supplier_account: str = DEFAULT_SUPPLIER) -> int:
+    """
+    获取模块下主机总数（异步统计接口）
+
+    Args:
+        bk_module_id: 模块ID
+        supplier_account: 供应商账号
+
+    Returns:
+        主机总数
+    """
+    sql = """
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_module_id = :bk_module_id
+          AND bk_supplier_account = :supplier
+    """
+    row = query_one(sql, {
+        'bk_module_id': bk_module_id,
+        'supplier': supplier_account
+    })
+    return row['cnt'] if row else 0
+
+
 def get_biz_host_list(bk_biz_id: int, page: int = 1, page_size: int = 20,
                       sort: str = 'bk_host_id',
                       supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
