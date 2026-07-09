@@ -88,11 +88,12 @@ class TopoInstanceNode:
     对应原项目 metadata.TopoInstanceNode
     """
     def __init__(self, object_id: str, instance_id: int, instance_name: str,
-                 detail: Dict[str, Any] = None):
+                 detail: Dict[str, Any] = None, default: int = 0):
         self.object_id = object_id
         self.instance_id = instance_id
         self.instance_name = instance_name
         self.detail = detail or {}
+        self.default = default  # default 字段：0=普通, 1=空闲机, 2=故障机, 3=待回收
         self.children: List['TopoInstanceNode'] = []
         self.count = 0  # 子节点数量统计（with_statistics时使用）
 
@@ -101,6 +102,7 @@ class TopoInstanceNode:
             'bk_obj_id': self.object_id,
             'bk_inst_id': self.instance_id,
             'bk_inst_name': self.instance_name,
+            'default': self.default,  # 返回 default 字段
         }
         if with_statistics:
             result['count'] = self.count
@@ -197,21 +199,32 @@ def _load_instances(model_id: str, bk_biz_id: int,
     name_field = MODEL_NAME_FIELD[model_id]
 
     if model_id == MAINLINE_MODEL_BIZ:
+        # 业务表：排除资源池（default=1）
         sql = f"""
-            SELECT {id_field}, {name_field}, *
+            SELECT {id_field}, {name_field}, "default", *
             FROM {table}
             WHERE bk_supplier_account = :supplier
               AND "default" = 0
             ORDER BY {id_field}
         """
-    else:
-        parent_field = MODEL_PARENT_FIELD.get(model_id, 'bk_parent_id')
+    elif model_id == MAINLINE_MODEL_SET:
+        # 集群表：按 default 降序排序（空闲机池 default=1 排最前面）
         sql = f"""
-            SELECT {id_field}, {name_field}, {parent_field}, bk_biz_id, *
+            SELECT {id_field}, {name_field}, "default", bk_parent_id, bk_biz_id, *
             FROM {table}
             WHERE bk_supplier_account = :supplier
               AND bk_biz_id = :bk_biz_id
-            ORDER BY {id_field}
+            ORDER BY "default" DESC, {id_field}
+        """
+    else:
+        # 模块表：按 default 降序排序（空闲机 default=1 排最前面）
+        parent_field = MODEL_PARENT_FIELD.get(model_id, 'bk_parent_id')
+        sql = f"""
+            SELECT {id_field}, {name_field}, "default", {parent_field}, bk_set_id, bk_biz_id, *
+            FROM {table}
+            WHERE bk_supplier_account = :supplier
+              AND bk_biz_id = :bk_biz_id
+            ORDER BY "default" DESC, {id_field}
         """
 
     return query_all(sql, {'supplier': supplier_account, 'bk_biz_id': bk_biz_id})
@@ -287,11 +300,13 @@ def get_mainline_instance_topo(bk_biz_id: int, with_detail: bool = False,
         return None
 
     biz_name = biz_instance.get(MODEL_NAME_FIELD[MAINLINE_MODEL_BIZ], f'biz_{bk_biz_id}')
+    biz_default = biz_instance.get('default', 0)
     root = TopoInstanceNode(
         object_id=MAINLINE_MODEL_BIZ,
         instance_id=bk_biz_id,
         instance_name=biz_name,
-        detail=biz_instance if with_detail else {}
+        detail=biz_instance if with_detail else {},
+        default=biz_default
     )
 
     set_instances = _load_instances(MAINLINE_MODEL_SET, bk_biz_id, supplier_account)
@@ -305,11 +320,13 @@ def get_mainline_instance_topo(bk_biz_id: int, with_detail: bool = False,
     for inst in set_instances:
         set_id = inst[MODEL_ID_FIELD[MAINLINE_MODEL_SET]]
         set_name = inst.get(MODEL_NAME_FIELD[MAINLINE_MODEL_SET], f'set_{set_id}')
+        set_default = inst.get('default', 0)
         set_node = TopoInstanceNode(
             object_id=MAINLINE_MODEL_SET,
             instance_id=set_id,
             instance_name=set_name,
-            detail=inst if with_detail else {}
+            detail=inst if with_detail else {},
+            default=set_default
         )
         set_node_map[set_id] = set_node
         root.children.append(set_node)
@@ -317,13 +334,15 @@ def get_mainline_instance_topo(bk_biz_id: int, with_detail: bool = False,
     for inst in module_instances:
         module_id = inst[MODEL_ID_FIELD[MAINLINE_MODEL_MODULE]]
         module_name = inst.get(MODEL_NAME_FIELD[MAINLINE_MODEL_MODULE], f'module_{module_id}')
+        module_default = inst.get('default', 0)
         parent_id = inst.get('bk_set_id') or inst.get(MODEL_PARENT_FIELD.get(MAINLINE_MODEL_MODULE, 'bk_parent_id'))
 
         module_node = TopoInstanceNode(
             object_id=MAINLINE_MODEL_MODULE,
             instance_id=module_id,
             instance_name=module_name,
-            detail=inst if with_detail else {}
+            detail=inst if with_detail else {},
+            default=module_default
         )
 
         if with_statistics:

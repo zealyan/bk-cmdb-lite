@@ -143,6 +143,7 @@ export default {
         bk_obj_id: 'biz',
         bk_inst_id: data.bk_inst_id,
         bk_inst_name: data.bk_inst_name,
+        default: data.default || 0,
         host_count: data.count || 0,
         child: (data.child || []).map(set => ({
           ...set,
@@ -150,6 +151,7 @@ export default {
           bk_obj_id: 'set',
           bk_inst_id: set.bk_inst_id,
           bk_inst_name: set.bk_inst_name,
+          default: set.default || 0,
           bk_biz_id: bizId,
           host_count: set.count || 0,
           child: (set.child || []).map(mod => ({
@@ -158,6 +160,7 @@ export default {
             bk_obj_id: 'module',
             bk_inst_id: mod.bk_inst_id,
             bk_inst_name: mod.bk_inst_name,
+            default: mod.default || 0,
             bk_set_id: set.bk_inst_id,
             bk_biz_id: bizId,
             host_count: mod.count || 0,

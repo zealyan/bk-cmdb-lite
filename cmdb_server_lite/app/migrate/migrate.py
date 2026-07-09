@@ -365,10 +365,11 @@ class DatabaseMigrator:
                     bk_set_name VARCHAR NOT NULL,
                     bk_parent_id INTEGER NOT NULL,
                     bk_biz_id INTEGER NOT NULL,
-                    bk_supplier_account VARCHAR DEFAULT '0',
-                    bk_service_status VARCHAR DEFAULT '1',
-                    bk_set_env VARCHAR DEFAULT '3',
+                    "default" INTEGER DEFAULT 0,
                     bk_set_desc VARCHAR,
+                    bk_set_env VARCHAR DEFAULT '3',
+                    bk_service_status VARCHAR DEFAULT '1',
+                    bk_supplier_account VARCHAR DEFAULT '0',
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     creator VARCHAR DEFAULT 'admin',
@@ -1369,43 +1370,77 @@ class DatabaseMigrator:
         logger.info(f"创建了 {1 + len(demo_biz_list)} 个业务实例")
         
         # 2. 创建集群（空闲机池集群 + 示例集群）
-        # 集群的 bk_parent_id 指向业务的 bk_biz_id
+        # 原项目规则：
+        # - 每个业务都有一个空闲机池集群（default=1）
+        # - 集群的 bk_parent_id 指向业务的 bk_biz_id
+        # - 空闲机池的 default=1（表示内置集群）
         set_list = [
             # 空闲机池集群（属于资源池业务 bk_biz_id=1）
-            {"bk_set_id": 1, "bk_set_name": "空闲机池", "bk_parent_id": 1, "bk_biz_id": 1, "bk_supplier_account": "0"},
-            # 蓝鲸平台业务下的集群
-            {"bk_set_id": 10, "bk_set_name": "广州一区", "bk_parent_id": 2, "bk_biz_id": 2, "bk_supplier_account": "0"},
-            {"bk_set_id": 11, "bk_set_name": "广州二区", "bk_parent_id": 2, "bk_biz_id": 2, "bk_supplier_account": "0"},
-            # 正式环境业务下的集群
-            {"bk_set_id": 20, "bk_set_name": "生产集群", "bk_parent_id": 3, "bk_biz_id": 3, "bk_supplier_account": "0"},
-            # 测试环境业务下的集群
-            {"bk_set_id": 30, "bk_set_name": "测试集群", "bk_parent_id": 4, "bk_biz_id": 4, "bk_supplier_account": "0"},
+            {"bk_set_id": 1, "bk_set_name": "空闲机池", "bk_parent_id": 1, "bk_biz_id": 1, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于蓝鲸平台业务 bk_biz_id=2）
+            {"bk_set_id": 2, "bk_set_name": "空闲机池", "bk_parent_id": 2, "bk_biz_id": 2, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于正式环境业务 bk_biz_id=3）
+            {"bk_set_id": 3, "bk_set_name": "空闲机池", "bk_parent_id": 3, "bk_biz_id": 3, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于测试环境业务 bk_biz_id=4）
+            {"bk_set_id": 4, "bk_set_name": "空闲机池", "bk_parent_id": 4, "bk_biz_id": 4, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于预发布环境业务 bk_biz_id=5）
+            {"bk_set_id": 5, "bk_set_name": "空闲机池", "bk_parent_id": 5, "bk_biz_id": 5, "default": 1, "bk_supplier_account": "0"},
+            # 蓝鲸平台业务下的普通集群
+            {"bk_set_id": 10, "bk_set_name": "广州一区", "bk_parent_id": 2, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            {"bk_set_id": 11, "bk_set_name": "广州二区", "bk_parent_id": 2, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            # 正式环境业务下的普通集群
+            {"bk_set_id": 20, "bk_set_name": "生产集群", "bk_parent_id": 3, "bk_biz_id": 3, "default": 0, "bk_supplier_account": "0"},
+            # 测试环境业务下的普通集群
+            {"bk_set_id": 30, "bk_set_name": "测试集群", "bk_parent_id": 4, "bk_biz_id": 4, "default": 0, "bk_supplier_account": "0"},
         ]
         
         for s in set_list:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_SetBase
-                (_id, bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, bk_supplier_account)
-                VALUES (:_id, :bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :bk_supplier_account)
+                (_id, bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default", bk_supplier_account)
+                VALUES (:_id, :bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default, :bk_supplier_account)
             """, s | {"_id": f"set_{s['bk_set_id']}"})
         
-        logger.info(f"创建了 {len(set_list)} 个集群实例")
+        logger.info(f"创建了 {len(set_list)} 个集群实例（含空闲机池）")
         
         # 3. 创建模块
-        # 模块的 bk_parent_id 指向集群的 bk_set_id
+        # 原项目规则：
+        # - 模块的 bk_parent_id 指向集群的 bk_set_id
+        # - default 字段值：
+        #   - 0: 普通模块
+        #   - 1: 空闲机模块
+        #   - 2: 故障机模块
+        #   - 3: 待回收模块
+        # - 每个空闲机池集群（default=1）都包含空闲机、故障机、待回收三个模块
         module_list = [
-            # 空闲机池模块
+            # 资源池空闲机池集群的模块
             {"bk_module_id": 1, "bk_module_name": "空闲机", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 1, "bk_supplier_account": "0"},
             {"bk_module_id": 2, "bk_module_name": "故障机", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 2, "bk_supplier_account": "0"},
             {"bk_module_id": 3, "bk_module_name": "待回收", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 3, "bk_supplier_account": "0"},
-            # 广州一区下的模块
+            # 蓝鲸平台空闲机池集群的模块
+            {"bk_module_id": 4, "bk_module_name": "空闲机", "bk_parent_id": 2, "bk_set_id": 2, "bk_biz_id": 2, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 5, "bk_module_name": "故障机", "bk_parent_id": 2, "bk_set_id": 2, "bk_biz_id": 2, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 6, "bk_module_name": "待回收", "bk_parent_id": 2, "bk_set_id": 2, "bk_biz_id": 2, "default": 3, "bk_supplier_account": "0"},
+            # 正式环境空闲机池集群的模块
+            {"bk_module_id": 7, "bk_module_name": "空闲机", "bk_parent_id": 3, "bk_set_id": 3, "bk_biz_id": 3, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 8, "bk_module_name": "故障机", "bk_parent_id": 3, "bk_set_id": 3, "bk_biz_id": 3, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 9, "bk_module_name": "待回收", "bk_parent_id": 3, "bk_set_id": 3, "bk_biz_id": 3, "default": 3, "bk_supplier_account": "0"},
+            # 测试环境空闲机池集群的模块
+            {"bk_module_id": 10, "bk_module_name": "空闲机", "bk_parent_id": 4, "bk_set_id": 4, "bk_biz_id": 4, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 11, "bk_module_name": "故障机", "bk_parent_id": 4, "bk_set_id": 4, "bk_biz_id": 4, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 12, "bk_module_name": "待回收", "bk_parent_id": 4, "bk_set_id": 4, "bk_biz_id": 4, "default": 3, "bk_supplier_account": "0"},
+            # 预发布环境空闲机池集群的模块
+            {"bk_module_id": 13, "bk_module_name": "空闲机", "bk_parent_id": 5, "bk_set_id": 5, "bk_biz_id": 5, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 14, "bk_module_name": "故障机", "bk_parent_id": 5, "bk_set_id": 5, "bk_biz_id": 5, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 15, "bk_module_name": "待回收", "bk_parent_id": 5, "bk_set_id": 5, "bk_biz_id": 5, "default": 3, "bk_supplier_account": "0"},
+            # 广州一区下的普通模块
             {"bk_module_id": 100, "bk_module_name": "web", "bk_parent_id": 10, "bk_set_id": 10, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
             {"bk_module_id": 101, "bk_module_name": "api", "bk_parent_id": 10, "bk_set_id": 10, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
-            # 广州二区下的模块
+            # 广州二区下的普通模块
             {"bk_module_id": 110, "bk_module_name": "db", "bk_parent_id": 11, "bk_set_id": 11, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
-            # 生产集群下的模块
+            # 生产集群下的普通模块
             {"bk_module_id": 200, "bk_module_name": "app", "bk_parent_id": 20, "bk_set_id": 20, "bk_biz_id": 3, "default": 0, "bk_supplier_account": "0"},
-            # 测试集群下的模块
+            # 测试集群下的普通模块
             {"bk_module_id": 300, "bk_module_name": "test", "bk_parent_id": 30, "bk_set_id": 30, "bk_biz_id": 4, "default": 0, "bk_supplier_account": "0"},
         ]
         
