@@ -198,6 +198,7 @@ export default {
           this.$refs.tree.setExpanded(node.id)
           this.$refs.tree.setSelected(node.id, { emitEvent: true })
           this.handleDefaultExpand(node)
+          this.expandBizChildren()
           return
         }
       }
@@ -207,6 +208,16 @@ export default {
         this.$refs.tree.setExpanded(firstNode.id)
         this.$refs.tree.setSelected(firstNode.id, { emitEvent: true })
         this.handleDefaultExpand(firstNode)
+        this.expandBizChildren()
+      }
+    },
+
+    expandBizChildren() {
+      const [bizNode] = this.$refs.tree?.nodes || []
+      if (bizNode && bizNode.children && bizNode.children.length > 0) {
+        bizNode.children.forEach(child => {
+          this.$refs.tree.setExpanded(child.id)
+        })
       }
     },
 

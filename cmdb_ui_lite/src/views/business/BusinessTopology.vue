@@ -82,6 +82,7 @@
 import TopologyTree from './topology-tree.vue'
 import HostListPanel from './host-list-panel.vue'
 import NodeInfoPanel from './node-info-panel.vue'
+import RouterQuery from '@/utils/router-query'
 
 export default {
   name: 'BusinessTopology',
@@ -97,19 +98,35 @@ export default {
       resizeState: {},
       minWidth: 200,
       maxWidth: 480,
-      activeTab: 'hostList',
+      activeTab: RouterQuery.get('tab', 'hostList'),
       selectedNode: null,
-      pageLoading: true  // 页面初始 loading 状态
+      pageLoading: true
+    }
+  },
+  watch: {
+    activeTab(value) {
+      RouterQuery.set({
+        tab: value,
+        node: RouterQuery.get('node'),
+        _t: Date.now()
+      })
     }
   },
   async created() {
-    // 模拟组件首次加载时的 loading
-    // 实际加载由子组件 topology-tree 完成
+    this.unwatch = RouterQuery.watch('tab', (value = 'hostList') => {
+      this.activeTab = value
+    })
+
     this.$nextTick(() => {
       setTimeout(() => {
         this.pageLoading = false
       }, 300)
     })
+  },
+  beforeDestroy() {
+    document.removeEventListener('mousemove', this.handleResizeMove)
+    document.removeEventListener('mouseup', this.handleResizeEnd)
+    this.unwatch && this.unwatch()
   },
   methods: {
     toggleLeftPanel() {
