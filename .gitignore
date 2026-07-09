@@ -1,6 +1,12 @@
 cmdb_ui_lite/node_modules
 cmdb_ui_lite/dist
 
+cmdb_server_lite/__pycache__
+cmdb_server_lite/**/__pycache__
+cmdb_server_lite/app/logs
+*.pyc
+*.pyo
+
 
 bk-cmdb/src/bin/*
 bk-cmdb/src/*/*/cmdb_*
