@@ -110,6 +110,9 @@ export default {
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
 
+        await this.$nextTick()
+        await this.$nextTick()
+
         this.createWatcher()
       } catch (e) {
         console.error('加载拓扑树失败:', e)
@@ -185,7 +188,19 @@ export default {
     },
 
     setDefaultState() {
-      const defaultNode = this.getDefaultNode()
+      let queryNodeId = RouterQuery.get('node', '')
+      
+      const [firstNode] = this.$refs.tree?.nodes || []
+      if (!queryNodeId && firstNode) {
+        queryNodeId = firstNode.id
+        RouterQuery.set({
+          node: queryNodeId,
+          page: 1,
+          _t: Date.now()
+        })
+      }
+
+      const defaultNode = queryNodeId ? this.$refs.tree?.getNodeById(queryNodeId) : firstNode
       if (defaultNode) {
         const { tree } = this.$refs
         const nodePath = this.getNodePath(defaultNode)
@@ -193,19 +208,6 @@ export default {
         tree.setSelected(defaultNode.id, { emitEvent: true })
         this.handleDefaultExpand(defaultNode)
       }
-    },
-
-    getDefaultNode() {
-      const queryNodeId = RouterQuery.get('node', '')
-      if (queryNodeId) {
-        const node = this.$refs.tree?.getNodeById(queryNodeId)
-        if (node) {
-          return node
-        }
-      }
-
-      const [firstNode] = this.$refs.tree?.nodes || []
-      return firstNode || null
     },
 
     getNodePath(node) {
