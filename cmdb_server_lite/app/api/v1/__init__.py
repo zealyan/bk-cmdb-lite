@@ -7,6 +7,7 @@ from .association import association_bp
 from .relation import relation_bp
 from .user import user_bp
 from .unique import unique_bp
+from .topo import topo_bp
 
 def register_v1_routes(app):
     """注册 v1 版本的所有路由"""
@@ -15,6 +16,7 @@ def register_v1_routes(app):
     app.register_blueprint(model_bp, url_prefix='/api/v1/models')
     app.register_blueprint(instance_bp, url_prefix='/api/v1/instances')
     app.register_blueprint(relation_bp, url_prefix='/api/v1/relations')
+    app.register_blueprint(topo_bp, url_prefix='/api/v1/topo')
     
     # 旧版 API 路径保持向后兼容
     app.register_blueprint(association_bp)
