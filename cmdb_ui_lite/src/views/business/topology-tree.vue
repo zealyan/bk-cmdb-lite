@@ -245,12 +245,20 @@ export default {
       return result
     },
 
-    async setNodeCount(nodes) {
+    async setNodeCount(targetNodes, force = false) {
+      // 过滤已完成的节点（与原项目保持一致）
+      // force参数强制刷新所有节点，否则跳过pending和finished状态的节点
+      const nodes = force
+        ? targetNodes
+        : targetNodes.filter(({ data }) => !['pending', 'finished'].includes(data.status))
+
       if (!nodes || !Array.isArray(nodes) || !nodes.length) return
 
+      // 过滤出正常节点（biz、set、module）
       const normalNodes = nodes.filter(n => n.data && ['biz', 'set', 'module'].includes(n.data.bk_obj_id))
       if (!normalNodes.length) return
 
+      // 设置所有节点状态为pending（开始加载）
       normalNodes.forEach(({ data }) => this.$set(data, 'status', 'pending'))
 
       try {
@@ -263,6 +271,7 @@ export default {
         const response = await topoAPI.getTopoStatistics(this.bizId, { condition })
         const results = response.data || []
 
+        // 设置成功状态和统计数据
         normalNodes.forEach(({ data }) => {
           const count = results.find(r =>
             r.bk_obj_id === data.bk_obj_id && r.bk_inst_id === data.bk_inst_id
@@ -273,6 +282,7 @@ export default {
         })
       } catch (error) {
         console.error('获取统计数据失败:', error)
+        // 设置错误状态
         normalNodes.forEach((node) => {
           this.$set(node.data, 'status', 'error')
         })

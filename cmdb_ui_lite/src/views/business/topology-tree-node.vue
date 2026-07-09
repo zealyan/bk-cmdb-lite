@@ -16,18 +16,24 @@
     <!-- 节点名称 -->
     <span class="node-name" :title="node.name">{{ node.name }}</span>
 
-    <!-- 节点额外信息（数量） -->
+    <!-- 节点额外信息（数量） - 使用loading组件包裹统计数据 -->
     <div class="node-extra">
-      <span :class="['node-count', { 'is-selected': node.selected }]">
-        {{ nodeCount }}
-      </span>
+      <cmdb-loading :class="['node-count', { 'is-selected': node.selected }]"
+        :loading="['pending', undefined].includes(data.status)">
+        {{ getNodeCount(data) }}
+      </cmdb-loading>
     </div>
   </div>
 </template>
 
 <script>
+import CmdbLoading from '@/components/loading/loading.vue'
+
 export default {
   name: 'TopologyTreeNode',
+  components: {
+    CmdbLoading
+  },
   props: {
     node: {
       type: Object,
@@ -59,10 +65,12 @@ export default {
     // 是否是模板创建的节点
     isTemplate() {
       return this.data.service_template_id || this.data.set_template_id
-    },
-    // 节点数量
-    nodeCount() {
-      const count = this.data[this.nodeCountType]
+    }
+  },
+  methods: {
+    // 获取节点数量（与原项目保持一致）
+    getNodeCount(data) {
+      const count = data[this.nodeCountType]
       if (typeof count === 'number') {
         return count
       }
@@ -162,6 +170,13 @@ export default {
       color: #979ba5;
       font-size: 12px;
       text-align: center;
+      &.is-selected {
+        background-color: #a2c5fd;
+        color: #fff;
+      }
+      &.loading {
+        background-color: transparent;
+      }
     }
   }
 }
