@@ -18,6 +18,8 @@
         childrenKey: 'child'
       }"
       :data="treeData"
+      :default-expanded-nodes="defaultExpandedNodes"
+      :default-selected-node="defaultSelectedNode"
       @select-change="handleSelectChange"
       @expand-change="handleExpandChange">
       <template #default="{ node, data }">
@@ -69,7 +71,9 @@ export default {
       loading: false,
       loadedNodes: new Set(),
       initialized: false,
-      bizId: null
+      bizId: null,
+      defaultExpandedNodes: [],
+      defaultSelectedNode: null
     }
   },
   watch: {
@@ -107,10 +111,24 @@ export default {
       try {
         const topology = await this.getInstanceTopology()
 
+        const queryNodeId = RouterQuery.get('node', '')
+        const bizId = this.getCurrentBizId()
+        const defaultNodeId = queryNodeId || `biz-${bizId}`
+
+        this.defaultSelectedNode = defaultNodeId
+        this.defaultExpandedNodes = [defaultNodeId]
+
+        if (!queryNodeId) {
+          RouterQuery.set({
+            node: defaultNodeId,
+            page: 1,
+            _t: Date.now()
+          })
+        }
+
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
 
-        await this.$nextTick()
         await this.$nextTick()
 
         this.createWatcher()
@@ -188,24 +206,11 @@ export default {
     },
 
     setDefaultState() {
-      let queryNodeId = RouterQuery.get('node', '')
-      
+      const queryNodeId = RouterQuery.get('node', '')
       const [firstNode] = this.$refs.tree?.nodes || []
-      if (!queryNodeId && firstNode) {
-        queryNodeId = firstNode.id
-        RouterQuery.set({
-          node: queryNodeId,
-          page: 1,
-          _t: Date.now()
-        })
-      }
-
       const defaultNode = queryNodeId ? this.$refs.tree?.getNodeById(queryNodeId) : firstNode
+      
       if (defaultNode) {
-        const { tree } = this.$refs
-        const nodePath = this.getNodePath(defaultNode)
-        nodePath.forEach(n => tree.setExpanded(n.id))
-        tree.setSelected(defaultNode.id, { emitEvent: true })
         this.handleDefaultExpand(defaultNode)
       }
     },
