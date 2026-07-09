@@ -311,7 +311,7 @@ export default {
       const oldId = RouterQuery.get('node')
       const newId = node.id
 
-      // 同一节点重复点击，不更新URL
+      // 同一节点重复点击，不更新URL，但允许展开/收起
       if (oldId === newId) {
         return
       }

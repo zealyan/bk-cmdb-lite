@@ -51,7 +51,8 @@ export default {
         limit: 10
       },
       hostList: [],
-      loading: false
+      loading: false,
+      lastNodeId: null
     }
   },
   computed: {
@@ -71,16 +72,21 @@ export default {
   },
   watch: {
     node: {
-      deep: true,
+      deep: false,
       handler(node) {
         if (node && node.data) {
+          const nodeId = node.id
+          if (nodeId === this.lastNodeId) {
+            return
+          }
+          this.lastNodeId = nodeId
           this.pagination.current = 1
           this.loadHostList()
         }
       }
     },
     active(active) {
-      if (active && this.node) {
+      if (active && this.node && !this.hostList.length) {
         this.loadHostList()
       }
     }
