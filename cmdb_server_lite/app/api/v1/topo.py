@@ -511,3 +511,79 @@ def get_topo_tree():
         })
     except Exception as e:
         raise APIException(f'获取拓扑树失败: {str(e)}', 500)
+
+
+@topo_bp.route('/hosts/search', methods=['POST'])
+def search_hosts():
+    """
+    主机搜索（与原项目 HostCommonSearch 一致的 POST 接口）
+
+    对应原项目: POST /findmany/hosts/search/with_biz
+
+    RequestBody (HostCommonSearch):
+        {
+            "bk_biz_id": 2,
+            "ip": {
+                "data": ["192.168.1.1"],
+                "exact": 1,
+                "flag": "bk_host_innerip|bk_host_outerip"
+            },
+            "condition": [
+                {
+                    "bk_obj_id": "host",
+                    "fields": [],
+                    "condition": [
+                        {"field": "bk_host_name", "operator": "$regex", "value": "web"}
+                    ]
+                },
+                {
+                    "bk_obj_id": "set",
+                    "fields": [],
+                    "condition": [
+                        {"field": "bk_set_id", "operator": "$eq", "value": 10}
+                    ]
+                },
+                {
+                    "bk_obj_id": "module",
+                    "fields": [],
+                    "condition": [
+                        {"field": "bk_module_id", "operator": "$in", "value": [100, 101]}
+                    ]
+                }
+            ],
+            "page": {
+                "start": 0,
+                "limit": 20,
+                "sort": "bk_host_id"
+            }
+        }
+
+    Returns:
+        {
+            "result": true,
+            "data": { "info": [...], "count": 100 },
+            "code": 0,
+            "message": ""
+        }
+    """
+    data = request.get_json()
+    if not data:
+        raise APIException('请求体不能为空', 400)
+
+    supplier_account = data.get('bk_supplier_account', '0')
+
+    try:
+        result = topo_service.search_hosts(
+            params=data,
+            supplier_account=supplier_account
+        )
+        return jsonify({
+            'result': True,
+            'data': result,
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'主机搜索失败: {str(e)}', 500)

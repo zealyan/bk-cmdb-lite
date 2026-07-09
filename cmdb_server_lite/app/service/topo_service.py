@@ -741,3 +741,424 @@ def get_module_host_list(bk_module_id: int, page: int = 1, page_size: int = 20,
     })
 
     return {'info': rows, 'count': total}
+
+
+def search_hosts(params: Dict[str, Any],
+                 supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
+    """
+    主机搜索（与原项目 HostCommonSearch 一致）
+
+    请求载荷结构：
+    {
+        "bk_biz_id": 2,
+        "ip": {
+            "data": ["192.168.1.1"],
+            "exact": 1,
+            "flag": "bk_host_innerip|bk_host_outerip"
+        },
+        "condition": [
+            {
+                "bk_obj_id": "host",
+                "fields": [],
+                "condition": [
+                    {"field": "bk_host_name", "operator": "$regex", "value": "web"}
+                ]
+            },
+            {
+                "bk_obj_id": "set",
+                "fields": [],
+                "condition": [
+                    {"field": "bk_set_id", "operator": "$eq", "value": 10}
+                ]
+            },
+            {
+                "bk_obj_id": "module",
+                "fields": [],
+                "condition": [
+                    {"field": "bk_module_id", "operator": "$in", "value": [100, 101]}
+                ]
+            }
+        ],
+        "page": {
+            "start": 0,
+            "limit": 20,
+            "sort": "bk_host_id"
+        }
+    }
+
+    对应原项目 logics/hostsearch.go 的 SearchHost 逻辑：
+    1. ParseCondition: 按 bk_obj_id 归类条件到 host/set/module
+    2. 拓扑条件层层递进: biz → set → module → hostIDs (通过 cc_ModuleHostConfig)
+    3. 主机属性条件: 转换 ConditionItem 为 SQL WHERE
+    4. IP 条件: 精确匹配用 IN，模糊匹配用 LIKE
+    5. 组合查询: 拓扑 hostIDs AND 主机属性条件 AND IP 条件
+
+    Args:
+        params: HostCommonSearch 请求载荷
+        supplier_account: 供应商账号
+
+    Returns:
+        { info: [...], count: total }
+    """
+    bk_biz_id = params.get('bk_biz_id')
+    ip_info = params.get('ip', {})
+    conditions = params.get('condition', [])
+    page_info = params.get('page', {})
+
+    # 解析分页参数
+    start = int(page_info.get('start', 0))
+    limit = int(page_info.get('limit', 20))
+    sort = page_info.get('sort', 'bk_host_id')
+
+    # 限制 limit 范围
+    if limit <= 0:
+        limit = 20
+    if limit > 1000:
+        limit = 1000
+    if start < 0:
+        start = 0
+    offset = start
+
+    # 解析排序: "field" 或 "field:1"(asc) 或 "field:-1"(desc) 或 "-field"(desc)
+    sort_field = 'bk_host_id'
+    sort_order = 'ASC'
+    if sort:
+        if sort.startswith('-'):
+            sort_field = sort[1:]
+            sort_order = 'DESC'
+        elif ':' in sort:
+            parts = sort.split(':')
+            sort_field = parts[0]
+            sort_order = 'DESC' if parts[1] == '-1' else 'ASC'
+        else:
+            sort_field = sort
+
+    # ========== 步骤1: 按 bk_obj_id 归类条件 ==========
+    host_cond_items = []    # host 对象的条件项
+    set_cond_items = []     # set 对象的条件项
+    module_cond_items = []  # module 对象的条件项
+
+    for cond in conditions:
+        obj_id = cond.get('bk_obj_id', '')
+        cond_items = cond.get('condition', [])
+
+        if obj_id == 'host':
+            host_cond_items.extend(cond_items)
+        elif obj_id == 'set':
+            set_cond_items.extend(cond_items)
+        elif obj_id == 'module':
+            module_cond_items.extend(cond_items)
+
+    # ========== 步骤2: 拓扑条件层层递进，获取 hostIDs ==========
+    topo_host_ids = None
+    topo_where = []
+    topo_params = {'supplier': supplier_account}
+
+    if bk_biz_id:
+        topo_where.append('bk_biz_id = :bk_biz_id')
+        topo_params['bk_biz_id'] = bk_biz_id
+
+    # set 条件过滤：先查 cc_SetBase 获取符合的 bk_set_id
+    if set_cond_items:
+        set_ids = _filter_topo_ids('set', set_cond_items, bk_biz_id, supplier_account)
+        if set_ids is not None:
+            if not set_ids:
+                return {'info': [], 'count': 0}
+            placeholders = ', '.join([f":sid_{i}" for i in range(len(set_ids))])
+            topo_where.append(f'bk_set_id IN ({placeholders})')
+            for i, sid in enumerate(set_ids):
+                topo_params[f'sid_{i}'] = sid
+
+    # module 条件过滤：先查 cc_ModuleBase 获取符合的 bk_module_id
+    if module_cond_items:
+        module_ids = _filter_topo_ids('module', module_cond_items, bk_biz_id, supplier_account)
+        if module_ids is not None:
+            if not module_ids:
+                return {'info': [], 'count': 0}
+            placeholders = ', '.join([f":mid_{i}" for i in range(len(module_ids))])
+            topo_where.append(f'bk_module_id IN ({placeholders})')
+            for i, mid in enumerate(module_ids):
+                topo_params[f'mid_{i}'] = mid
+
+    # 查询 cc_ModuleHostConfig 获取符合拓扑条件的 hostIDs
+    if topo_where:
+        topo_sql = f"""
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE {' AND '.join(topo_where)}
+        """
+        topo_rows = query_all(topo_sql, topo_params)
+        topo_host_ids = [row['bk_host_id'] for row in topo_rows]
+        if not topo_host_ids:
+            return {'info': [], 'count': 0}
+
+    # ========== 步骤3: 构建主机属性条件 ==========
+    host_where = []
+    host_params = {}
+    param_idx = 0
+
+    for item in host_cond_items:
+        field = item.get('field')
+        operator = item.get('operator', '$eq')
+        value = item.get('value')
+
+        if not field:
+            continue
+
+        sql_cond, sql_params = _build_condition_sql(field, operator, value, param_idx)
+        if sql_cond:
+            host_where.append(sql_cond)
+            host_params.update(sql_params)
+            param_idx += len(sql_params)
+
+    # ========== 步骤4: 构建 IP 条件 ==========
+    ip_data = ip_info.get('data', [])
+    ip_exact = ip_info.get('exact', 0)
+    ip_flag = ip_info.get('flag', 'bk_host_innerip|bk_host_outerip')
+
+    if ip_data:
+        ip_cond, ip_params = _build_ip_condition(ip_data, ip_exact, ip_flag, param_idx)
+        if ip_cond:
+            host_where.append(ip_cond)
+            host_params.update(ip_params)
+
+    # ========== 步骤5: 组合查询 ==========
+    where_clauses = ['h.bk_supplier_account = :supplier']
+    query_params = {'supplier': supplier_account}
+
+    # 拓扑条件：hostIDs 过滤
+    if topo_host_ids is not None:
+        if not topo_host_ids:
+            return {'info': [], 'count': 0}
+        placeholders = ', '.join([f":hid_{i}" for i in range(len(topo_host_ids))])
+        where_clauses.append(f'h.bk_host_id IN ({placeholders})')
+        for i, hid in enumerate(topo_host_ids):
+            query_params[f'hid_{i}'] = hid
+
+    # 主机属性条件 + IP 条件
+    for cond in host_where:
+        where_clauses.append(cond)
+
+    # 合并 host_params
+    for k, v in host_params.items():
+        if k != 'supplier':
+            query_params[k] = v
+
+    where_sql = ' AND '.join(where_clauses)
+
+    # 排序字段安全处理（白名单）
+    allowed_sort_fields = {'bk_host_id', 'bk_host_name', 'bk_host_innerip',
+                           'bk_host_outerip', 'bk_cloud_id', 'create_time', 'last_time'}
+    if sort_field not in allowed_sort_fields:
+        sort_field = 'bk_host_id'
+
+    # 查询总数
+    count_sql = f"""
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE {where_sql}
+    """
+    count_row = query_one(count_sql, query_params)
+    total = count_row['cnt'] if count_row else 0
+
+    # 查询列表
+    list_sql = f"""
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE {where_sql}
+        ORDER BY h.{sort_field} {sort_order}
+        LIMIT :limit_val OFFSET :offset_val
+    """
+    query_params['limit_val'] = limit
+    query_params['offset_val'] = offset
+
+    rows = query_all(list_sql, query_params)
+
+    return {'info': rows, 'count': total}
+
+
+def _filter_topo_ids(model_id: str, cond_items: list, bk_biz_id: int,
+                     supplier_account: str = DEFAULT_SUPPLIER):
+    """
+    根据拓扑条件查询符合的实例ID列表
+
+    Args:
+        model_id: 模型ID（set/module）
+        cond_items: 条件项列表 [{field, operator, value}]
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        list: 符合条件的实例ID列表，None 表示无条件
+    """
+    if not cond_items:
+        return None
+
+    table = MODEL_INSTANCE_TABLE.get(model_id)
+    id_field = MODEL_ID_FIELD.get(model_id)
+    if not table or not id_field:
+        return None
+
+    where_clauses = ['bk_supplier_account = :supplier']
+    params = {'supplier': supplier_account}
+
+    if bk_biz_id:
+        where_clauses.append('bk_biz_id = :bk_biz_id')
+        params['bk_biz_id'] = bk_biz_id
+
+    param_idx = 0
+    for item in cond_items:
+        field = item.get('field')
+        operator = item.get('operator', '$eq')
+        value = item.get('value')
+
+        if not field:
+            continue
+
+        sql_cond, sql_params = _build_condition_sql(field, operator, value, param_idx)
+        if sql_cond:
+            where_clauses.append(sql_cond)
+            params.update(sql_params)
+            param_idx += len(sql_params)
+
+    where_sql = ' AND '.join(where_clauses)
+    sql = f"""
+        SELECT {id_field}
+        FROM {table}
+        WHERE {where_sql}
+    """
+    rows = query_all(sql, params)
+    return [row[id_field] for row in rows]
+
+
+def _build_condition_sql(field: str, operator: str, value: Any,
+                         param_idx: int) -> tuple:
+    """
+    将 ConditionItem 转换为 SQL WHERE 子句
+
+    对应原项目 paraparse/host.go 的 ParseHostParams
+
+    Args:
+        field: 字段名
+        operator: 操作符（$eq/$ne/$in/$nin/$regex/contains）
+        value: 比较值
+        param_idx: 参数索引（避免重名）
+
+    Returns:
+        (sql_clause, params_dict)
+    """
+    import re
+    # 安全字段名（只允许字母数字下划线）
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', field):
+        return ('', {})
+
+    p_name = f'p_{param_idx}'
+
+    if operator == '$eq':
+        return (f'{field} = :{p_name}', {p_name: value})
+
+    if operator == '$ne':
+        return (f'{field} != :{p_name}', {p_name: value})
+
+    if operator == '$in':
+        if not isinstance(value, list) or not value:
+            return ('1=0', {})
+        placeholders = ', '.join([f':{p_name}_{i}' for i in range(len(value))])
+        params = {f'{p_name}_{i}': v for i, v in enumerate(value)}
+        return (f'{field} IN ({placeholders})', params)
+
+    if operator == '$nin':
+        if not isinstance(value, list) or not value:
+            return ('', {})
+        placeholders = ', '.join([f':{p_name}_{i}' for i in range(len(value))])
+        params = {f'{p_name}_{i}': v for i, v in enumerate(value)}
+        return (f'{field} NOT IN ({placeholders})', params)
+
+    if operator in ('$regex', 'contains'):
+        like_value = f'%{value}%'
+        return (f'{field} LIKE :{p_name}', {p_name: like_value})
+
+    # 默认 $eq
+    return (f'{field} = :{p_name}', {p_name: value})
+
+
+def _build_ip_condition(ip_data: list, ip_exact: int, ip_flag: str,
+                        param_idx: int) -> tuple:
+    """
+    构建 IP 搜索条件
+
+    对应原项目 paraparse/host.go 的 ParseHostIPParams
+
+    Args:
+        ip_data: IP 列表（支持 "cloudID:ip" 格式）
+        ip_exact: 1=精确匹配，其他=模糊匹配
+        ip_flag: 搜索字段标识（bk_host_innerip / bk_host_outerip / 两者组合）
+        param_idx: 参数索引
+
+    Returns:
+        (sql_clause, params_dict)
+    """
+    if not ip_data:
+        return ('', {})
+
+    # 解析 flag，确定搜索哪些字段
+    flags = ip_flag.split('|') if ip_flag else ['bk_host_innerip']
+    search_fields = []
+    for f in flags:
+        f = f.strip()
+        if f in ('bk_host_innerip', 'bk_host_outerip'):
+            search_fields.append(f)
+
+    if not search_fields:
+        search_fields = ['bk_host_innerip']
+
+    # 解析 IP 数据，分离 cloudID:ip 格式
+    plain_ips = []
+    cloud_ip_pairs = []
+    for item in ip_data:
+        if ':' in str(item):
+            parts = str(item).split(':', 1)
+            try:
+                cloud_id = int(parts[0])
+                cloud_ip_pairs.append((cloud_id, parts[1]))
+            except ValueError:
+                plain_ips.append(str(item))
+        else:
+            plain_ips.append(str(item))
+
+    conditions = []
+    params = {}
+    idx = param_idx
+
+    if ip_exact == 1:
+        # 精确匹配：使用 IN
+        for field in search_fields:
+            if plain_ips:
+                placeholders = ', '.join([f':ip_{idx}_{i}' for i in range(len(plain_ips))])
+                for i, ip in enumerate(plain_ips):
+                    params[f'ip_{idx}_{i}'] = ip
+                conditions.append(f'{field} IN ({placeholders})')
+                idx += len(plain_ips)
+
+            if cloud_ip_pairs:
+                cloud_placeholders = ', '.join([f':cip_{idx}_{i}' for i in range(len(cloud_ip_pairs))])
+                for i, (cid, ip) in enumerate(cloud_ip_pairs):
+                    params[f'cip_{idx}_{i}'] = ip
+                cloud_ids = ', '.join([str(c) for c, _ in cloud_ip_pairs])
+                conditions.append(f'(bk_cloud_id IN ({cloud_ids}) AND {field} IN ({cloud_placeholders}))')
+                idx += len(cloud_ip_pairs)
+    else:
+        # 模糊匹配：使用 LIKE，多个 IP 用 OR 连接
+        for field in search_fields:
+            for ip in plain_ips:
+                p_name = f'ip_{idx}'
+                params[p_name] = f'%{ip}%'
+                conditions.append(f'{field} LIKE :{p_name}')
+                idx += 1
+
+    if not conditions:
+        return ('', {})
+
+    if len(conditions) > 1:
+        return ('(' + ' OR '.join(conditions) + ')', params)
+    return (conditions[0], params)

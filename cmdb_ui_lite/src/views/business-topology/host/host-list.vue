@@ -1,43 +1,121 @@
 <template>
-  <div class="host-list-panel" v-bkloading="{ isLoading: loading, opacity: 1 }">
-    <div class="panel-header">
-      <span class="node-title">
-        <span class="node-icon">{{ nodeIconText }}</span>
-        <span class="node-name">{{ node.data.bk_inst_name }}</span>
+  <div class="list-layout">
+    <!-- 工具栏：新增、编辑、转移、搜索等 -->
+    <host-list-options
+      ref="hostListOptions"
+      :selection="table.selection"
+      :count="table.pagination.count"
+      :selected-node="node"
+      @transfer="handleTransfer"
+      @refresh="handleRefresh"
+      @search="handleSearch"
+      @add-host="handleAddHost"
+      @edit="handleMultipleEdit"
+      @export="handleExport"
+      @batch-export="handleBatchExport"
+      @set-filters="handleSetFilters">
+    </host-list-options>
+
+    <!-- 筛选标签展示区 -->
+    <div class="filter-tag-wrapper" v-if="filterTags.length">
+      <span class="filter-tag" v-for="(tag, index) in filterTags" :key="index">
+        <label class="tag-name">{{ tag.name }}</label>
+        <span class="tag-value">{{ tag.value }}</span>
+        <i class="tag-delete bk-icon icon-close" @click="handleRemoveFilter(index)"></i>
       </span>
-      <span class="node-path">{{ nodePath }}</span>
     </div>
-    <div class="panel-body">
-      <bk-table
-        :data="hostList"
-        :pagination="pagination"
-        @page-change="handlePageChange"
-        @page-limit-change="handlePageLimitChange">
-        <bk-table-column prop="bk_host_id" label="主机ID" width="100"></bk-table-column>
-        <bk-table-column prop="bk_host_name" label="主机名称" min-width="150"></bk-table-column>
-        <bk-table-column prop="bk_host_innerip" label="内网IP" width="150"></bk-table-column>
-        <bk-table-column prop="bk_host_outerip" label="外网IP" width="150"></bk-table-column>
-        <bk-table-column prop="bk_cloud_id" label="云区域" width="100"></bk-table-column>
-        <bk-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <span :class="['status-tag', getStatus(row)]">{{ statusText(getStatus(row)) }}</span>
-          </template>
-        </bk-table-column>
-      </bk-table>
-    </div>
+
+    <!-- 主机数据表格 -->
+    <bk-table
+      class="host-table"
+      ref="tableRef"
+      v-bkloading="{ isLoading: loading, opacity: 1 }"
+      :data="table.data"
+      :pagination="table.pagination"
+      :max-height="tableMaxHeight"
+      :shift-multi-checked="true"
+      @page-change="handlePageChange"
+      @page-limit-change="handleLimitChange"
+      @sort-change="handleSortChange"
+      @selection-change="handleSelectionChange"
+      @header-click="handleHeaderClick">
+
+      <!-- 选择列 -->
+      <bk-table-column type="selection" width="50" align="center" fixed></bk-table-column>
+
+      <!-- 动态列：根据 tableHeader 渲染 -->
+      <bk-table-column
+        v-for="column in tableHeader"
+        :key="column.bk_property_id"
+        :prop="column.bk_property_id"
+        :label="column.bk_property_name"
+        :min-width="getColumnMinWidth(column)"
+        :sortable="getColumnSortable(column)"
+        :fixed="column.bk_property_id === 'bk_host_id'"
+        :show-overflow-tooltip="true">
+        <template slot-scope="{ row }">
+          <span
+            :class="{ 'host-id-link': column.bk_property_id === 'bk_host_id' }"
+            @click.stop="handleValueClick(row, column)">
+            {{ getPropertyValue(row, column) }}
+          </span>
+        </template>
+      </bk-table-column>
+
+      <!-- 表格设置列（列配置） - 与原项目一致：使用 type="setting" + @header-click 处理 -->
+      <bk-table-column type="setting"></bk-table-column>
+
+      <!-- 空数据占位 -->
+      <div slot="empty" class="table-empty">
+        <bk-exception type="empty" scene="part">
+          <div>{{ searchKeyword ? '未找到匹配的主机' : '暂无主机数据' }}</div>
+        </bk-exception>
+      </div>
+    </bk-table>
   </div>
 </template>
 
 <script>
+import HostListOptions from './host-list-options.vue'
+import ColumnsConfig from '@/components/columns-config/columns-config.js'
 import { topoAPI } from '@/api/topo'
+import { modelAPI } from '@/api/client'
+import { userCustom } from '@/api/client'
+
+// 默认表头列定义（简化版，与原项目 host 属性对应）
+const DEFAULT_TABLE_HEADER = [
+  { bk_property_id: 'bk_host_id', bk_property_name: '主机ID', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_name', bk_property_name: '主机名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_outerip', bk_property_name: '外网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_cloud_id', bk_property_name: '云区域', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_name', bk_property_name: '操作系统名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_version', bk_property_name: '操作系统版本', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_cpu', bk_property_name: 'CPU核数', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_mem', bk_property_name: '内存容量', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_disk', bk_property_name: '磁盘容量', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_mac', bk_property_name: 'MAC地址', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_sn', bk_property_name: '设备序列号', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_asset_id', bk_property_name: '资产编号', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'operator', bk_property_name: '运维人员', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_comment', bk_property_name: '备注', bk_property_type: 'text', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'create_time', bk_property_name: '创建时间', bk_property_type: 'datetime', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'last_time', bk_property_name: '最后修改时间', bk_property_type: 'datetime', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false }
+]
 
 export default {
   name: 'HostList',
+  components: {
+    HostListOptions
+  },
   props: {
+    // 当前选中的拓扑节点
     node: {
       type: Object,
       required: true
     },
+    // tab 是否激活
     active: {
       type: Boolean,
       default: false
@@ -45,29 +123,40 @@ export default {
   },
   data() {
     return {
-      pagination: {
-        current: 1,
-        count: 0,
-        limit: 10
-      },
-      hostList: [],
       loading: false,
+      allProperties: [],
+      table: {
+        data: [],
+        selection: [],
+        sort: 'bk_host_id',
+        pagination: {
+          count: 0,
+          current: 1,
+          limit: 10,
+          'limit-list': [10, 50, 100, 500]
+        }
+      },
+      tableHeader: DEFAULT_TABLE_HEADER,
+      customColumns: [],
+      columnsConfig: {
+        show: false,
+        selected: [],
+        disabledColumns: ['bk_host_id', 'bk_host_name']
+      },
+      searchKeyword: '',
+      filterTags: [],
+      tableMaxHeight: 600,
       lastNodeId: null
     }
   },
   computed: {
-    nodeIconText() {
-      return this.node.data.icon_text || this.node.data.bk_obj_name?.[0] || 'N'
+    // 节点数据
+    nodeData() {
+      return this.node?.data || {}
     },
-    nodePath() {
-      // 从节点向上遍历获取路径
-      let path = []
-      let current = this.node
-      while (current && current.data) {
-        path.unshift(current.data.bk_inst_name)
-        current = current.parent
-      }
-      return path.join(' / ')
+    // 节点类型
+    objId() {
+      return this.nodeData.bk_obj_id
     }
   },
   watch: {
@@ -77,151 +166,509 @@ export default {
       handler(node) {
         if (node && node.data) {
           const nodeId = node.id
-          if (nodeId === this.lastNodeId) {
-            return
-          }
+          // 同一节点不重复加载
+          if (nodeId === this.lastNodeId) return
           this.lastNodeId = nodeId
-          this.pagination.current = 1
+          this.table.pagination.current = 1
+          this.loadHostAttributes()
           this.loadHostList()
         }
       }
     },
     active(active) {
-      if (active && this.node && !this.hostList.length) {
+      // tab 激活时，如果无数据则加载
+      if (active && this.node && !this.table.data.length) {
         this.loadHostList()
       }
     }
   },
+  mounted() {
+    this.updateTableMaxHeight()
+    window.addEventListener('resize', this.updateTableMaxHeight)
+  },
+  beforeDestroy() {
+    window.removeEventListener('resize', this.updateTableMaxHeight)
+  },
   methods: {
+    /**
+     * 加载主机模型属性列表
+     */
+    async loadHostAttributes() {
+      try {
+        const result = await modelAPI.getModelAttributes('host')
+        const attrs = result.data?.attributes || result.attributes || result.data || result || []
+        // 过滤掉 bk_isapi 为 true 的属性
+        const filteredAttrs = Array.isArray(attrs) ? attrs.filter(p => !p.bk_isapi) : []
+        if (filteredAttrs.length) {
+          this.allProperties = filteredAttrs
+        } else {
+          // 内置模型 host 无属性配置时，使用默认属性列表
+          this.allProperties = DEFAULT_TABLE_HEADER
+        }
+      } catch (e) {
+        console.error('加载主机属性失败:', e)
+        this.allProperties = DEFAULT_TABLE_HEADER
+      }
+      // 加载自定义列配置
+      this.loadCustomColumns()
+    },
+
+    /**
+     * 加载用户自定义列配置
+     */
+    async loadCustomColumns() {
+      try {
+        const result = await userCustom.getModelCustomColumns('host')
+        const saved = result?.data?.columns || result?.columns || []
+        if (saved && saved.length) {
+          this.customColumns = saved
+        }
+      } catch (e) {
+        console.error('加载自定义列配置失败:', e)
+      }
+      // 设置表头
+      this.setTableHeader()
+    },
+
+    /**
+     * 设置表格表头
+     */
+    setTableHeader() {
+      if (!this.allProperties.length) return
+
+      const disabledIds = this.columnsConfig.disabledColumns || []
+      let headerProps = []
+
+      if (this.customColumns && this.customColumns.length) {
+        // 使用自定义列配置
+        headerProps = this.customColumns
+          .map(id => this.allProperties.find(p => p.bk_property_id === id))
+          .filter(Boolean)
+      } else {
+        // 默认列：固定列 + 默认显示的列
+        const defaultIds = ['bk_host_id', 'bk_host_name', 'bk_host_innerip', 'bk_host_outerip', 'bk_cloud_id']
+        headerProps = defaultIds
+          .map(id => this.allProperties.find(p => p.bk_property_id === id))
+          .filter(Boolean)
+      }
+
+      // 确保固定列在最前面
+      const fixedProps = disabledIds
+        .map(id => this.allProperties.find(p => p.bk_property_id === id))
+        .filter(Boolean)
+      const otherProps = headerProps.filter(p => !disabledIds.includes(p.bk_property_id))
+
+      this.tableHeader = [...fixedProps, ...otherProps]
+      // 同步 columnsConfig.selected
+      this.columnsConfig.selected = this.tableHeader.map(p => p.bk_property_id)
+    },
+
+    /**
+     * 应用列配置
+     */
+    async handleApplyColumns(properties) {
+      this.customColumns = properties.map(p => p.bk_property_id)
+      this.columnsConfig.show = false
+      this.setTableHeader()
+
+      // 保存到存储
+      try {
+        await userCustom.saveModelCustomColumns('host', this.customColumns)
+      } catch (e) {
+        console.error('保存列配置失败:', e)
+      }
+      this.$bkMessage({ message: '配置已应用', theme: 'success' })
+    },
+
+    /**
+     * 取消列配置
+     */
+    handleCancelColumns() {
+      this.columnsConfig.show = false
+    },
+
+    /**
+     * 还原默认列配置
+     */
+    async handleResetColumns() {
+      this.customColumns = []
+      this.columnsConfig.show = false
+      this.setTableHeader()
+
+      // 清空存储
+      try {
+        await userCustom.saveModelCustomColumns('host', [])
+      } catch (e) {
+        console.error('重置列配置失败:', e)
+      }
+      this.$bkMessage({ message: '已还原默认配置', theme: 'success' })
+    },
+
+    /**
+     * 侧边抽屉隐藏回调
+     */
+    handleSidesliderHidden() {
+      this.columnsConfig.show = false
+    },
+
+    /**
+     * 加载主机列表数据
+     * 使用统一的 searchHosts 接口，支持节点联动、搜索、筛选
+     */
     async loadHostList() {
       this.loading = true
       try {
-        const data = this.node.data
-        const objId = data.bk_obj_id
-        console.log('loadHostList called, objId:', objId, 'bk_inst_id:', data.bk_inst_id, 'bk_biz_id:', data.bk_biz_id)
-        
-        const params = {
-          page: this.pagination.current,
-          page_size: this.pagination.limit
-        }
-        let result
-        if (objId === 'biz') {
-          result = await topoAPI.getBizHostList(data.bk_inst_id, params)
-        } else if (objId === 'set') {
-          result = await topoAPI.getSetHostList(data.bk_inst_id, data.bk_biz_id, params)
-        } else if (objId === 'module') {
-          result = await topoAPI.getModuleHostList(data.bk_inst_id, params)
-        } else {
-          this.hostList = []
-          this.pagination.count = 0
+        const data = this.nodeData
+        const objId = this.objId
+
+        // 获取业务ID：业务节点用 bk_inst_id，其他节点用 bk_biz_id
+        const bkBizId = objId === 'biz' ? data.bk_inst_id : (data.bk_biz_id || 0)
+
+        if (!bkBizId) {
+          this.table.data = []
+          this.table.pagination.count = 0
           return
         }
-        
-        console.log('API result:', result)
-        console.log('result.data:', result.data)
-        
-        this.hostList = result.data?.info || []
-        this.pagination.count = result.data?.count || 0
-        
-        console.log('hostList length:', this.hostList.length, 'count:', this.pagination.count)
+
+        // 构建 HostCommonSearch 请求载荷
+        const payload = {
+          bk_biz_id: bkBizId,
+          page: {
+            start: (this.table.pagination.current - 1) * this.table.pagination.limit,
+            limit: this.table.pagination.limit,
+            sort: this.table.sort
+          },
+          condition: []
+        }
+
+        // 根据节点类型添加拓扑条件
+        if (objId === 'biz') {
+          // 业务节点：条件为空，仅通过 bk_biz_id 过滤
+        } else if (objId === 'set') {
+          // 集群节点：添加 set 条件
+          payload.condition.push({
+            bk_obj_id: 'set',
+            fields: [],
+            condition: [
+              { field: 'bk_set_id', operator: '$eq', value: data.bk_inst_id }
+            ]
+          })
+        } else if (objId === 'module') {
+          // 模块节点：添加 module 条件
+          payload.condition.push({
+            bk_obj_id: 'module',
+            fields: [],
+            condition: [
+              { field: 'bk_module_id', operator: '$eq', value: data.bk_inst_id }
+            ]
+          })
+        } else {
+          this.table.data = []
+          this.table.pagination.count = 0
+          return
+        }
+
+        // 添加搜索关键词条件（主机名称模糊搜索）
+        if (this.searchKeyword) {
+          payload.condition.push({
+            bk_obj_id: 'host',
+            fields: [],
+            condition: [
+              { field: 'bk_host_name', operator: 'contains', value: this.searchKeyword }
+            ]
+          })
+        }
+
+        // 调用新的 searchHosts 接口
+        const result = await topoAPI.searchHosts(payload)
+
+        // 兼容后端返回的数据结构
+        const resData = result.data || result
+        this.table.data = resData.info || []
+        this.table.pagination.count = resData.count || 0
       } catch (e) {
         console.error('加载主机列表失败:', e)
-        this.hostList = []
-        this.pagination.count = 0
+        this.table.data = []
+        this.table.pagination.count = 0
       } finally {
         this.loading = false
       }
     },
-    handlePageChange(page) {
-      this.pagination.current = page
-      this.loadHostList()
-    },
-    handlePageLimitChange(limit) {
-      this.pagination.limit = limit
-      this.pagination.current = 1
-      this.loadHostList()
-    },
-    getStatus(row) {
-      // 根据外网IP判断简单状态
-      return row.bk_host_outerip ? 'running' : 'stopped'
-    },
-    statusText(status) {
-      const map = {
-        running: '运行中',
-        stopped: '未配置'
+
+    /**
+     * 获取属性显示值
+     * @param {Object} row 行数据
+     * @param {Object} column 列定义
+     * @returns {string} 显示值
+     */
+    getPropertyValue(row, column) {
+      const propId = column.bk_property_id
+      const objId = column.bk_obj_id
+      // host 类型直接取属性，其他类型从子对象取
+      const modelData = objId === 'host' ? row : (row[objId] || row)
+      let value = modelData[propId]
+
+      // 云区域ID特殊处理
+      if (propId === 'bk_cloud_id' && value !== undefined && value !== null) {
+        return value === 0 ? '默认云区域' : `云区域${value}`
       }
-      return map[status] || status
+
+      // 空值处理
+      if (value === undefined || value === null || value === '') {
+        return '--'
+      }
+      return value
+    },
+
+    /**
+     * 获取列最小宽度
+     */
+    getColumnMinWidth(column) {
+      const widthMap = {
+        bk_host_id: 80,
+        bk_host_name: 150,
+        bk_host_innerip: 130,
+        bk_host_outerip: 130,
+        bk_cloud_id: 100
+      }
+      return widthMap[column.bk_property_id] || 120
+    },
+
+    /**
+     * 获取列排序属性
+     */
+    getColumnSortable(column) {
+      return ['int', 'long', 'float', 'date', 'time'].includes(column.bk_property_type) ? 'custom' : false
+    },
+
+    /**
+     * 分页变更
+     */
+    handlePageChange(current = 1) {
+      this.table.pagination.current = current
+      this.loadHostList()
+    },
+
+    /**
+     * 每页条数变更
+     */
+    handleLimitChange(limit) {
+      this.table.pagination.limit = limit
+      this.table.pagination.current = 1
+      this.loadHostList()
+    },
+
+    /**
+     * 排序变更
+     */
+    handleSortChange(sort) {
+      this.table.sort = sort.prop ? `${sort.order === 'descending' ? '-' : ''}${sort.prop}` : 'bk_host_id'
+      this.loadHostList()
+    },
+
+    /**
+     * 选择行变更
+     */
+    handleSelectionChange(selection) {
+      this.table.selection = selection
+    },
+
+    /**
+     * 表头点击（列设置）- 与原项目一致：通过 type="setting" 触发列配置
+     */
+    handleHeaderClick(column) {
+      if (column.type !== 'setting') {
+        return
+      }
+      // 使用 ColumnsConfig.open() 方式打开，与原项目一致
+      ColumnsConfig.open({
+        props: {
+          properties: this.allProperties,
+          selected: this.columnsConfig.selected,
+          disabledColumns: this.columnsConfig.disabledColumns,
+          max: 20
+        },
+        handler: {
+          apply: async (properties) => {
+            await this.handleApplyColumns(properties)
+          },
+          reset: async () => {
+            await this.handleResetColumns()
+          }
+        }
+      })
+    },
+
+    /**
+     * 值点击（主机ID跳转详情）
+     */
+    handleValueClick(row, column) {
+      if (column.bk_obj_id !== 'host' || column.bk_property_id !== 'bk_host_id') return
+      // 预留：跳转主机详情
+      console.log('跳转主机详情:', row.host?.bk_host_id || row.bk_host_id)
+    },
+
+    /**
+     * 搜索
+     */
+    handleSearch(keyword) {
+      this.searchKeyword = keyword
+      this.table.pagination.current = 1
+      // 预留：带搜索条件查询
+      this.loadHostList()
+    },
+
+    /**
+     * 转移主机
+     */
+    handleTransfer(type) {
+      // 预留：转移主机弹窗
+      console.log('转移主机:', type, this.table.selection)
+    },
+
+    /**
+     * 新增主机
+     */
+    handleAddHost() {
+      // 预留：新增主机弹窗
+      console.log('新增主机到模块:', this.nodeData.bk_inst_id)
+    },
+
+    /**
+     * 批量编辑
+     */
+    handleMultipleEdit() {
+      // 预留：批量编辑弹窗
+      console.log('批量编辑:', this.table.selection)
+    },
+
+    /**
+     * 导出选中
+     */
+    handleExport() {
+      // 预留：导出选中主机
+      console.log('导出选中:', this.table.selection)
+    },
+
+    /**
+     * 导出全部
+     */
+    handleBatchExport() {
+      // 预留：导出全部主机
+      console.log('导出全部:', this.table.pagination.count)
+    },
+
+    /**
+     * 高级筛选
+     */
+    handleSetFilters() {
+      // 预留：高级筛选弹窗
+      console.log('高级筛选')
+    },
+
+    /**
+     * 刷新
+     */
+    handleRefresh() {
+      this.loadHostList()
+    },
+
+    /**
+     * 移除筛选标签
+     */
+    handleRemoveFilter(index) {
+      this.filterTags.splice(index, 1)
+    },
+
+    /**
+     * 更新表格最大高度（自适应）
+     * 与原项目一致：使用视口高度 - 顶部区域 - 分页区域
+     */
+    updateTableMaxHeight() {
+      // 原项目: $APP.height - filtersTagHeight - 250
+      // 250 包含：工具栏高度 + 分页高度 + 其他间距
+      const filtersTagHeight = this.filterTags.length ? 40 : 0
+      this.tableMaxHeight = window.innerHeight - filtersTagHeight - 250
     }
   }
 }
 </script>
 
 <style lang="scss" scoped>
-.host-list-panel {
+.list-layout {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 20px;
+  overflow: hidden;
 }
 
-.panel-header {
+.filter-tag-wrapper {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px 0;
+}
+
+.filter-tag {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid $cmdbLayoutBorderColor;
-
-  .node-title {
-    display: flex;
-    align-items: center;
-
-    .node-icon {
-      display: inline-flex;
-      width: 24px;
-      height: 24px;
-      line-height: 24px;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      background-color: #c4c6cc;
-      font-size: 12px;
-      color: #fff;
-      margin-right: 8px;
-    }
-
-    .node-name {
-      font-size: 16px;
-      font-weight: 500;
-      color: $cmdbTextColor;
-    }
-  }
-
-  .node-path {
-    font-size: 12px;
-    color: $grayColor;
-  }
-}
-
-.panel-body {
-  flex: 1;
-  overflow: auto;
-}
-
-.status-tag {
-  display: inline-block;
-  padding: 2px 8px;
+  padding: 0 0 0 5px;
   border-radius: 2px;
   font-size: 12px;
+  background: #f0f1f5;
+  line-height: 22px;
+  cursor: pointer;
 
-  &.running {
-    background-color: #e5f6ea;
-    color: #14a568;
+  .tag-name {
+    padding-right: 5px;
+    color: #63656E;
   }
 
-  &.stopped {
-    background-color: #feecec;
-    color: #ea3636;
+  .tag-value {
+    color: #313238;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tag-delete {
+    font-size: 18px;
+    color: #9b9ea8;
+    cursor: pointer;
+    margin: 0 5px;
+
+    &:hover {
+      color: #313238;
+    }
+  }
+}
+
+.host-table {
+  margin-top: 10px;
+  padding: 0 20px;
+}
+
+.host-id-link {
+  color: $primaryColor;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.table-empty {
+  padding: 40px 0;
+}
+
+.table-setting-btn {
+  cursor: pointer;
+  color: #63656e;
+  font-size: 16px;
+
+  &:hover {
+    color: #3a84ff;
   }
 }
 </style>

@@ -7,6 +7,7 @@ import bkMagic from 'bk-magic-vue'
 import 'bk-magic-vue/dist/bk-magic-vue.min.css'
 import '@/assets/icon/bk-icon-cmdb/style.css'
 import '@/assets/scss/common.scss'
+import '@/assets/scss/magicbox.scss'
 
 import { initRouterQuery } from '@/utils/router-query'
 import SearchComponents from '@/components/search'

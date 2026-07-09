@@ -1606,7 +1606,7 @@ class DatabaseMigrator:
         
         logger.info(f"创建了 {len(module_list)} 个模块实例")
         
-        # 4. 创建主机
+        # 4. 创建主机（共21条，用于开发测试分页）
         host_list = [
             {"bk_host_id": 1, "bk_host_name": "web-server-01", "bk_host_innerip": "192.168.1.1", "bk_host_outerip": "10.0.1.1", "bk_cloud_id": 0, "bk_supplier_account": "0",
              "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-001", "bk_sn": "SN-2024-001",
@@ -1656,6 +1656,85 @@ class DatabaseMigrator:
              "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
              "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1240", "bk_mem": 8192, "bk_disk": 200,
              "bk_mac": "00:11:22:33:44:12", "bk_outer_mac": "00:11:22:33:44:13", "import_from": "1"},
+            # 新增主机 9-21 用于分页测试
+            {"bk_host_id": 9, "bk_host_name": "web-server-03", "bk_host_innerip": "192.168.1.9", "bk_host_outerip": "10.0.1.9", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-009", "bk_sn": "SN-2024-009",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:14", "bk_outer_mac": "00:11:22:33:44:15", "import_from": "2"},
+            {"bk_host_id": 10, "bk_host_name": "web-server-04", "bk_host_innerip": "192.168.1.10", "bk_host_outerip": "10.0.1.10", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-010", "bk_sn": "SN-2024-010",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:16", "bk_outer_mac": "00:11:22:33:44:17", "import_from": "2"},
+            {"bk_host_id": 11, "bk_host_name": "api-server-02", "bk_host_innerip": "192.168.1.11", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "api_admin", "bk_bak_operator": "api_backup", "bk_asset_id": "ASSET-011", "bk_sn": "SN-2024-011",
+             "bk_comment": "API服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "20.04", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2670", "bk_mem": 16384, "bk_disk": 300,
+             "bk_mac": "00:11:22:33:44:18", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 12, "bk_host_name": "api-server-03", "bk_host_innerip": "192.168.1.12", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "api_admin", "bk_bak_operator": "api_backup", "bk_asset_id": "ASSET-012", "bk_sn": "SN-2024-012",
+             "bk_comment": "API服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "20.04", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2670", "bk_mem": 16384, "bk_disk": 300,
+             "bk_mac": "00:11:22:33:44:19", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 13, "bk_host_name": "db-server-02", "bk_host_innerip": "192.168.1.13", "bk_host_outerip": "10.0.1.13", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "dba_admin", "bk_bak_operator": "dba_backup", "bk_asset_id": "ASSET-013", "bk_sn": "SN-2024-013",
+             "bk_comment": "数据库服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "2",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "22.04", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 6248", "bk_mem": 32768, "bk_disk": 1000,
+             "bk_mac": "00:11:22:33:44:20", "bk_outer_mac": "00:11:22:33:44:21", "import_from": "3"},
+            {"bk_host_id": 14, "bk_host_name": "db-server-03", "bk_host_innerip": "192.168.1.14", "bk_host_outerip": "10.0.1.14", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "dba_admin", "bk_bak_operator": "dba_backup", "bk_asset_id": "ASSET-014", "bk_sn": "SN-2024-014",
+             "bk_comment": "数据库服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "2",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "22.04", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 6248", "bk_mem": 32768, "bk_disk": 1000,
+             "bk_mac": "00:11:22:33:44:22", "bk_outer_mac": "00:11:22:33:44:23", "import_from": "3"},
+            {"bk_host_id": 15, "bk_host_name": "cache-server-01", "bk_host_innerip": "192.168.1.15", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "cache_admin", "bk_bak_operator": "cache_backup", "bk_asset_id": "ASSET-015", "bk_sn": "SN-2024-015",
+             "bk_comment": "缓存服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "320000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 32768, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:24", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 16, "bk_host_name": "cache-server-02", "bk_host_innerip": "192.168.1.16", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "cache_admin", "bk_bak_operator": "cache_backup", "bk_asset_id": "ASSET-016", "bk_sn": "SN-2024-016",
+             "bk_comment": "缓存服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "320000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 32768, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:25", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 17, "bk_host_name": "mq-server-01", "bk_host_innerip": "192.168.1.17", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "mq_admin", "bk_bak_operator": "mq_backup", "bk_asset_id": "ASSET-017", "bk_sn": "SN-2024-017",
+             "bk_comment": "消息队列服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:26", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 18, "bk_host_name": "mq-server-02", "bk_host_innerip": "192.168.1.18", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "mq_admin", "bk_bak_operator": "mq_backup", "bk_asset_id": "ASSET-018", "bk_sn": "SN-2024-018",
+             "bk_comment": "消息队列服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:27", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 19, "bk_host_name": "log-server-01", "bk_host_innerip": "192.168.1.19", "bk_host_outerip": "10.0.1.19", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "log_admin", "bk_bak_operator": "log_backup", "bk_asset_id": "ASSET-019", "bk_sn": "SN-2024-019",
+             "bk_comment": "日志服务器", "bk_service_term": 5, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "110000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 5218", "bk_mem": 65536, "bk_disk": 2000,
+             "bk_mac": "00:11:22:33:44:28", "bk_outer_mac": "00:11:22:33:44:29", "import_from": "2"},
+            {"bk_host_id": 20, "bk_host_name": "monitor-server-01", "bk_host_innerip": "192.168.1.20", "bk_host_outerip": "10.0.1.20", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "monitor_admin", "bk_bak_operator": "monitor_backup", "bk_asset_id": "ASSET-020", "bk_sn": "SN-2024-020",
+             "bk_comment": "监控服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "110000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:30", "bk_outer_mac": "00:11:22:33:44:31", "import_from": "2"},
+            {"bk_host_id": 21, "bk_host_name": "backup-server-01", "bk_host_innerip": "192.168.1.21", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "backup_admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-021", "bk_sn": "SN-2024-021",
+             "bk_comment": "备份服务器", "bk_service_term": 5, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 4000,
+             "bk_mac": "00:11:22:33:44:32", "bk_outer_mac": "", "import_from": "2"},
         ]
         
         for h in host_list:
@@ -1746,6 +1825,28 @@ class DatabaseMigrator:
             {"bk_biz_id": 4, "bk_host_id": 7, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
             # 主机8 挂载到空闲机池 (bk_biz_id=1)
             {"bk_biz_id": 1, "bk_host_id": 8, "bk_module_id": 1, "bk_set_id": 1, "bk_supplier_account": "0"},
+            # 新增主机挂载关系（主机9-21）
+            # 主机9-10 挂载到 web 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 9, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 10, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机11-12 挂载到 api 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 11, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 12, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机13-14 挂载到 db 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 13, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 14, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
+            # 主机15-16 挂载到生产集群的 app 模块 (bk_biz_id=3)
+            {"bk_biz_id": 3, "bk_host_id": 15, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_host_id": 16, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            # 主机17-18 挂载到生产集群的 app 模块 (bk_biz_id=3)
+            {"bk_biz_id": 3, "bk_host_id": 17, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_host_id": 18, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            # 主机19 挂载到测试集群的 test 模块 (bk_biz_id=4)
+            {"bk_biz_id": 4, "bk_host_id": 19, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
+            # 主机20 挂载到测试集群的 test 模块 (bk_biz_id=4)
+            {"bk_biz_id": 4, "bk_host_id": 20, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
+            # 主机21 挂载到蓝鲸平台的空闲机池 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 21, "bk_module_id": 4, "bk_set_id": 2, "bk_supplier_account": "0"},
         ]
         
         for mhc in module_host_config:

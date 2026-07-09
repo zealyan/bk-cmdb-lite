@@ -194,9 +194,6 @@ export default {
       })
     },
     handleNodeSelect(node) {
-      console.log('handleNodeSelect called, node:', node)
-      console.log('handleNodeSelect - node.id:', node.id)
-      console.log('handleNodeSelect - node.data:', node.data)
       this.selectedNode = node
     }
   }

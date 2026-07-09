@@ -1,0 +1,221 @@
+<template>
+  <div class="options-layout">
+    <!-- 左侧操作按钮区 -->
+    <div class="options options-left">
+      <bk-button class="option mr10" theme="primary"
+        :disabled="!isNormalModuleNode"
+        @click="handleAddHost">
+        新增
+      </bk-button>
+
+      <bk-button class="option"
+        :disabled="!hasSelection"
+        @click="handleMultipleEdit">
+        编辑
+      </bk-button>
+
+      <bk-dropdown-menu
+        class="option ml10" trigger="click"
+        font-size="medium"
+        :disabled="!hasSelection"
+        @show="isTransferMenuOpen = true"
+        @hide="isTransferMenuOpen = false">
+        <bk-button slot="dropdown-trigger"
+          :disabled="!hasSelection">
+          <span>转移至</span>
+          <i :class="['dropdown-icon bk-icon icon-angle-down',{ 'open': isTransferMenuOpen }]"></i>
+        </bk-button>
+        <ul class="bk-dropdown-list" slot="dropdown-content">
+          <li class="bk-dropdown-item" @click="handleTransfer('idle')">空闲模块</li>
+          <li class="bk-dropdown-item" @click="handleTransfer('business')">业务模块</li>
+          <li :class="['bk-dropdown-item', { disabled: !isIdleSetModules }]"
+            @click="handleTransfer('resource')">
+            主机池
+          </li>
+          <li :class="['bk-dropdown-item', { disabled: !isIdleSetModules }]"
+            @click="handleTransfer('acrossBusiness')">
+            其他业务
+          </li>
+        </ul>
+      </bk-dropdown-menu>
+
+      <bk-dropdown-menu class="option ml10" trigger="click"
+        font-size="medium"
+        :disabled="!hasSelection"
+        @show="isMoreMenuOpen = true"
+        @hide="isMoreMenuOpen = false">
+        <bk-button slot="dropdown-trigger">
+          <span>更多</span>
+          <i :class="['dropdown-icon bk-icon icon-angle-down',{ 'open': isMoreMenuOpen }]"></i>
+        </bk-button>
+        <ul class="bk-dropdown-list" slot="dropdown-content">
+          <li :class="['bk-dropdown-item', { disabled: !hasSelection }]" @click="handleExport">
+            导出选中
+          </li>
+          <li :class="['bk-dropdown-item', { disabled: !count }]" @click="handleBatchExport">
+            导出全部
+          </li>
+        </ul>
+      </bk-dropdown-menu>
+
+      <bk-button class="option ml10" icon="bk-icon icon-refresh"
+        @click="handleRefresh">
+      </bk-button>
+    </div>
+
+    <!-- 右侧搜索区 -->
+    <div class="options options-right">
+      <bk-input class="option-fast-search"
+        v-model.trim="searchKeyword"
+        placeholder="IP/主机名称"
+        right-icon="bk-icon icon-search"
+        @enter="handleSearch"
+        @clear="handleClearSearch">
+      </bk-input>
+      <bk-button class="option-filter ml10"
+        icon="bk-icon icon-funnel"
+        @click="handleSetFilters">
+        高级筛选
+      </bk-button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'HostListOptions',
+  props: {
+    // 选中的主机数量
+    selection: {
+      type: Array,
+      default: () => []
+    },
+    // 主机总数
+    count: {
+      type: Number,
+      default: 0
+    },
+    // 当前选中的拓扑节点
+    selectedNode: {
+      type: Object,
+      default: null
+    }
+  },
+  data() {
+    return {
+      isTransferMenuOpen: false,
+      isMoreMenuOpen: false,
+      searchKeyword: ''
+    }
+  },
+  computed: {
+    hasSelection() {
+      return !!this.selection.length
+    },
+    isNormalNode() {
+      return this.selectedNode && this.selectedNode.data.default === 0
+    },
+    isNormalModuleNode() {
+      return this.isNormalNode && this.selectedNode.data.bk_obj_id === 'module'
+    },
+    isIdleSetModules() {
+      return this.selection.every(data =>
+        data.module && data.module.every(module => module.default >= 1)
+      )
+    }
+  },
+  methods: {
+    handleAddHost() {
+      this.$emit('add-host')
+    },
+    handleMultipleEdit() {
+      this.$emit('edit')
+    },
+    handleTransfer(type) {
+      if (!this.hasSelection) return
+      this.$emit('transfer', type)
+    },
+    handleExport() {
+      if (!this.hasSelection) return
+      this.$emit('export')
+    },
+    handleBatchExport() {
+      if (!this.count) return
+      this.$emit('batch-export')
+    },
+    handleRefresh() {
+      this.$emit('refresh')
+    },
+    handleSearch() {
+      this.$emit('search', this.searchKeyword)
+    },
+    handleClearSearch() {
+      this.searchKeyword = ''
+      this.$emit('search', '')
+    },
+    handleSetFilters() {
+      this.$emit('set-filters')
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.options-layout {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  margin-top: 12px;
+}
+
+.options {
+  display: flex;
+  align-items: center;
+
+  &.options-right {
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .option {
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .option-fast-search {
+    width: 300px;
+  }
+
+  .dropdown-icon {
+    &.open {
+      transform: rotate(180deg);
+    }
+  }
+}
+
+.bk-dropdown-list {
+  font-size: 14px;
+  color: $textColor;
+
+  .bk-dropdown-item {
+    position: relative;
+    display: block;
+    padding: 0 20px;
+    margin: 0;
+    line-height: 32px;
+    cursor: pointer;
+    @include ellipsis;
+
+    &:not(.disabled):hover {
+      background-color: #EAF3FF;
+      color: $primaryColor;
+    }
+
+    &.disabled {
+      color: $textDisabledColor;
+      cursor: not-allowed;
+    }
+  }
+}
+</style>

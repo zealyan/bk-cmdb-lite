@@ -147,6 +147,23 @@ export const topoAPI = {
   async getBizTopoTree() {
     const response = await axios.get(`${API_BASE}/topo/tree`)
     return response.data
+  },
+
+  /**
+   * 主机搜索（与原项目 HostCommonSearch 一致的 POST 接口）
+   *
+   * 对应原项目: POST /findmany/hosts/search/with_biz
+   *
+   * @param {Object} payload HostCommonSearch 请求载荷
+   * @param {number} payload.bk_biz_id 业务ID
+   * @param {Object} [payload.ip] IP搜索条件 { data: [], exact: 1, flag: 'bk_host_innerip|bk_host_outerip' }
+   * @param {Array} [payload.condition] 多对象条件数组 [{ bk_obj_id, fields, condition: [{ field, operator, value }] }]
+   * @param {Object} [payload.page] 分页 { start: 0, limit: 20, sort: 'bk_host_id' }
+   * @returns {Promise<Object>} { result, data: { info: [], count: number }, code, message }
+   */
+  async searchHosts(payload = {}) {
+    const response = await axios.post(`${API_BASE}/topo/hosts/search`, payload)
+    return response.data
   }
 }
 
