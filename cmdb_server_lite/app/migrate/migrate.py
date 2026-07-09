@@ -228,6 +228,16 @@ PROPERTY_GROUP_UPDATE_MAP = {
     "bk_server_name": "base",
     "bk_listener_name": "base",
     "description": "base",
+    "operator": "base",
+    "bk_bak_operator": "base",
+    "bk_asset_id": "base",
+    "bk_sn": "base",
+    "bk_comment": "base",
+    "bk_service_term": "base",
+    "bk_sla": "base",
+    "bk_state_name": "base",
+    "bk_province_name": "base",
+    "bk_isp_name": "base",
 }
 
 
@@ -340,6 +350,111 @@ class DatabaseMigrator:
             updated_count = len(PROPERTY_GROUP_UPDATE_MAP)
             logger.info(f"更新了 {updated_count} 个属性的分组")
     
+    def create_hostbase_indexes(self):
+        """创建 cc_HostBase 表索引（参考原项目 hostbase.go）
+        
+        注意：原项目使用 MongoDB 的 partialFilterExpression 创建部分唯一索引，
+        只有满足特定条件（如 bk_host_innerip 不为空）的记录才需要满足唯一性。
+        SQLite 不支持部分索引，因此将可能导致冲突的唯一索引改为普通索引。
+        """
+        indexes = [
+            {
+                "name": "bkcc_idx_bkHostInnerIP_bkCloudID",
+                "columns": ["bk_host_innerip", "bk_cloud_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bkHostInnerIPv6_bkCloudID",
+                "columns": ["bk_host_inneripv6", "bk_cloud_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bkAgentID",
+                "columns": ["bk_agent_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_cloud_inst_id",
+                "columns": ["bk_cloud_inst_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_supplier_account",
+                "columns": ["bk_supplier_account"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_cloud_id",
+                "columns": ["bk_cloud_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_os_type",
+                "columns": ["bk_os_type"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_asset_id",
+                "columns": ["bk_asset_id"],
+                "unique": False
+            }
+        ]
+        
+        for idx in indexes:
+            unique_str = "UNIQUE" if idx["unique"] else ""
+            columns_str = ", ".join(f'"{col}"' for col in idx["columns"])
+            sql = f"CREATE {unique_str} INDEX IF NOT EXISTS {idx['name']} ON cc_HostBase ({columns_str})"
+            try:
+                self.execute_sql(sql)
+                logger.info(f"创建索引: {idx['name']}")
+            except Exception as e:
+                logger.warning(f"创建索引 {idx['name']} 失败: {e}")
+    
+    def create_module_host_config_indexes(self):
+        """创建 cc_ModuleHostConfig 表索引（参考原项目 modulehostconfig.go）"""
+        indexes = [
+            {
+                "name": "bkcc_idx_bkBizID_bkHostID",
+                "columns": ["bk_biz_id", "bk_host_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_module_id",
+                "columns": ["bk_module_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_set_id",
+                "columns": ["bk_set_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_module_id_bk_biz_id",
+                "columns": ["bk_module_id", "bk_biz_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_set_id_bk_biz_id",
+                "columns": ["bk_set_id", "bk_biz_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_unique_moduleID_hostID",
+                "columns": ["bk_module_id", "bk_host_id"],
+                "unique": True
+            }
+        ]
+        
+        for idx in indexes:
+            unique_str = "UNIQUE" if idx["unique"] else ""
+            columns_str = ", ".join(f'"{col}"' for col in idx["columns"])
+            sql = f"CREATE {unique_str} INDEX IF NOT EXISTS {idx['name']} ON cc_ModuleHostConfig ({columns_str})"
+            try:
+                self.execute_sql(sql)
+                logger.info(f"创建索引: {idx['name']}")
+            except Exception as e:
+                logger.warning(f"创建索引 {idx['name']} 失败: {e}")
+    
     def init_core_tables(self):
         """初始化核心表结构"""
         core_tables_sql = {
@@ -399,8 +514,34 @@ class DatabaseMigrator:
                     bk_host_name VARCHAR,
                     bk_host_innerip VARCHAR,
                     bk_host_outerip VARCHAR,
+                    bk_host_inneripv6 VARCHAR,
+                    bk_host_outeripv6 VARCHAR,
                     bk_cloud_id INTEGER DEFAULT 0,
+                    bk_cloud_inst_id VARCHAR,
+                    bk_agent_id VARCHAR,
                     bk_supplier_account VARCHAR DEFAULT '0',
+                    operator VARCHAR,
+                    bk_bak_operator VARCHAR,
+                    bk_asset_id VARCHAR,
+                    bk_sn VARCHAR,
+                    bk_comment TEXT,
+                    bk_service_term INTEGER,
+                    bk_sla VARCHAR,
+                    bk_state_name VARCHAR,
+                    bk_province_name VARCHAR,
+                    bk_isp_name VARCHAR,
+                    bk_os_type VARCHAR,
+                    bk_os_name VARCHAR,
+                    bk_os_version VARCHAR,
+                    bk_os_bit VARCHAR,
+                    bk_cpu INTEGER,
+                    bk_cpu_mhz INTEGER,
+                    bk_cpu_module VARCHAR,
+                    bk_mem INTEGER,
+                    bk_disk INTEGER,
+                    bk_mac VARCHAR,
+                    bk_outer_mac VARCHAR,
+                    import_from VARCHAR,
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     creator VARCHAR DEFAULT 'admin',
@@ -858,7 +999,10 @@ class DatabaseMigrator:
             'enumquote': 'TEXT',
             'textarea': 'TEXT',
             'array': 'TEXT',
-            'object': 'TEXT'
+            'object': 'TEXT',
+            'singleasst': 'INTEGER',
+            'user': 'TEXT',
+            'timezone': 'TEXT'
         }
         return type_mapping.get(prop_type, 'TEXT')
     
@@ -871,6 +1015,11 @@ class DatabaseMigrator:
         
         for model in data["models"]:
             model_id = model.get("bk_obj_id")
+            
+            if model_id == "bk_host":
+                logger.info(f"跳过 bk_host 模型实例迁移（由 migrate_mainline_topo 统一管理）")
+                continue
+                
             table_name = f"cc_ObjectBase_0_pub_{model_id}"
             inst_file_path = ui_project / "models" / "instances" / f"{model_id}.json"
             
@@ -1193,6 +1342,10 @@ class DatabaseMigrator:
         # 步骤1: 初始化核心表
         self.init_core_tables()
 
+        # 步骤1.1: 创建 cc_HostBase 和 cc_ModuleHostConfig 表索引
+        self.create_hostbase_indexes()
+        self.create_module_host_config_indexes()
+
         # 步骤2: 迁移分类
         self.migrate_classifications()
 
@@ -1455,24 +1608,126 @@ class DatabaseMigrator:
         
         # 4. 创建主机
         host_list = [
-            {"bk_host_id": 1, "bk_host_name": "host-01", "bk_host_innerip": "192.168.1.1", "bk_host_outerip": "10.0.1.1", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 2, "bk_host_name": "host-02", "bk_host_innerip": "192.168.1.2", "bk_host_outerip": "10.0.1.2", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 3, "bk_host_name": "host-03", "bk_host_innerip": "192.168.1.3", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 4, "bk_host_name": "host-04", "bk_host_innerip": "192.168.1.4", "bk_host_outerip": "10.0.1.4", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 5, "bk_host_name": "host-05", "bk_host_innerip": "192.168.1.5", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 6, "bk_host_name": "host-06", "bk_host_innerip": "192.168.1.6", "bk_host_outerip": "10.0.1.6", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 7, "bk_host_name": "host-07", "bk_host_innerip": "192.168.1.7", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0"},
-            {"bk_host_id": 8, "bk_host_name": "host-08", "bk_host_innerip": "192.168.1.8", "bk_host_outerip": "10.0.1.8", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 1, "bk_host_name": "web-server-01", "bk_host_innerip": "192.168.1.1", "bk_host_outerip": "10.0.1.1", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-001", "bk_sn": "SN-2024-001",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:01", "bk_outer_mac": "00:11:22:33:44:02", "import_from": "2"},
+            {"bk_host_id": 2, "bk_host_name": "web-server-02", "bk_host_innerip": "192.168.1.2", "bk_host_outerip": "10.0.1.2", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-002", "bk_sn": "SN-2024-002",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:03", "bk_outer_mac": "00:11:22:33:44:04", "import_from": "2"},
+            {"bk_host_id": 3, "bk_host_name": "api-server-01", "bk_host_innerip": "192.168.1.3", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "api_admin", "bk_bak_operator": "api_backup", "bk_asset_id": "ASSET-003", "bk_sn": "SN-2024-003",
+             "bk_comment": "API服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "20.04", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2670", "bk_mem": 16384, "bk_disk": 300,
+             "bk_mac": "00:11:22:33:44:05", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 4, "bk_host_name": "db-server-01", "bk_host_innerip": "192.168.1.4", "bk_host_outerip": "10.0.1.4", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "dba_admin", "bk_bak_operator": "dba_backup", "bk_asset_id": "ASSET-004", "bk_sn": "SN-2024-004",
+             "bk_comment": "数据库服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "2",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "22.04", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 6248", "bk_mem": 32768, "bk_disk": 1000,
+             "bk_mac": "00:11:22:33:44:06", "bk_outer_mac": "00:11:22:33:44:07", "import_from": "3"},
+            {"bk_host_id": 5, "bk_host_name": "app-server-01", "bk_host_innerip": "192.168.1.5", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "app_admin", "bk_bak_operator": "app_backup", "bk_asset_id": "ASSET-005", "bk_sn": "SN-2024-005",
+             "bk_comment": "应用服务器", "bk_service_term": 3, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "8.0", "bk_os_bit": "64位",
+             "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1270", "bk_mem": 8192, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:08", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 6, "bk_host_name": "app-server-02", "bk_host_innerip": "192.168.1.6", "bk_host_outerip": "10.0.1.6", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "app_admin", "bk_bak_operator": "app_backup", "bk_asset_id": "ASSET-006", "bk_sn": "SN-2024-006",
+             "bk_comment": "应用服务器", "bk_service_term": 3, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "8.0", "bk_os_bit": "64位",
+             "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1270", "bk_mem": 8192, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:09", "bk_outer_mac": "00:11:22:33:44:10", "import_from": "2"},
+            {"bk_host_id": 7, "bk_host_name": "job-server-01", "bk_host_innerip": "192.168.1.7", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "job_admin", "bk_bak_operator": "job_backup", "bk_asset_id": "ASSET-007", "bk_sn": "SN-2024-007",
+             "bk_comment": "作业服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "320000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 5218", "bk_mem": 32768, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:11", "bk_outer_mac": "", "import_from": "3"},
+            {"bk_host_id": 8, "bk_host_name": "idle-host-01", "bk_host_innerip": "192.168.1.8", "bk_host_outerip": "10.0.1.8", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-008", "bk_sn": "SN-2024-008",
+             "bk_comment": "空闲主机", "bk_service_term": 3, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "110000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1240", "bk_mem": 8192, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:12", "bk_outer_mac": "00:11:22:33:44:13", "import_from": "1"},
         ]
         
         for h in host_list:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_HostBase
-                (_id, bk_host_id, bk_host_name, bk_host_innerip, bk_host_outerip, bk_cloud_id, bk_supplier_account)
-                VALUES (:_id, :bk_host_id, :bk_host_name, :bk_host_innerip, :bk_host_outerip, :bk_cloud_id, :bk_supplier_account)
-            """, h | {"_id": f"host_{h['bk_host_id']}"})
+                (_id, bk_host_id, bk_host_name, bk_host_innerip, bk_host_outerip, bk_host_inneripv6, bk_host_outeripv6,
+                 bk_cloud_id, bk_cloud_inst_id, bk_agent_id, bk_supplier_account,
+                 operator, bk_bak_operator, bk_asset_id, bk_sn, bk_comment, bk_service_term, bk_sla,
+                 bk_state_name, bk_province_name, bk_isp_name, bk_os_type, bk_os_name, bk_os_version, bk_os_bit,
+                 bk_cpu, bk_cpu_mhz, bk_cpu_module, bk_mem, bk_disk, bk_mac, bk_outer_mac, import_from)
+                VALUES (:_id, :bk_host_id, :bk_host_name, :bk_host_innerip, :bk_host_outerip, :bk_host_inneripv6, :bk_host_outeripv6,
+                        :bk_cloud_id, :bk_cloud_inst_id, :bk_agent_id, :bk_supplier_account,
+                        :operator, :bk_bak_operator, :bk_asset_id, :bk_sn, :bk_comment, :bk_service_term, :bk_sla,
+                        :bk_state_name, :bk_province_name, :bk_isp_name, :bk_os_type, :bk_os_name, :bk_os_version, :bk_os_bit,
+                        :bk_cpu, :bk_cpu_mhz, :bk_cpu_module, :bk_mem, :bk_disk, :bk_mac, :bk_outer_mac, :import_from)
+            """, h | {"_id": f"host_{h['bk_host_id']}", "bk_host_inneripv6": "", "bk_host_outeripv6": "", "bk_cloud_inst_id": "", "bk_agent_id": ""})
+            
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjectBase_0_pub_bk_host
+                (_id, id, bk_inst_id, bk_inst_name, bk_obj_id, bk_supplier_account,
+                 bk_host_id, bk_host_name, bk_host_innerip, bk_host_outerip, bk_host_inneripv6, bk_host_outeripv6,
+                 bk_cloud_id, bk_cloud_inst_id, bk_agent_id,
+                 operator, bk_bak_operator, bk_asset_id, bk_sn, bk_comment, bk_service_term, bk_sla,
+                 bk_state_name, bk_province_name, bk_isp_name, bk_os_type, bk_os_name, bk_os_version, bk_os_bit,
+                 bk_cpu, bk_cpu_mhz, bk_cpu_module, bk_mem, bk_disk, bk_mac, bk_outer_mac, import_from)
+                VALUES (:_id, :id, :bk_inst_id, :bk_inst_name, :bk_obj_id, :bk_supplier_account,
+                        :bk_host_id, :bk_host_name, :bk_host_innerip, :bk_host_outerip, :bk_host_inneripv6, :bk_host_outeripv6,
+                        :bk_cloud_id, :bk_cloud_inst_id, :bk_agent_id,
+                        :operator, :bk_bak_operator, :bk_asset_id, :bk_sn, :bk_comment, :bk_service_term, :bk_sla,
+                        :bk_state_name, :bk_province_name, :bk_isp_name, :bk_os_type, :bk_os_name, :bk_os_version, :bk_os_bit,
+                        :bk_cpu, :bk_cpu_mhz, :bk_cpu_module, :bk_mem, :bk_disk, :bk_mac, :bk_outer_mac, :import_from)
+            """, {
+                "_id": f"bk_host.{h['bk_host_id']}",
+                "id": h["bk_host_id"],
+                "bk_inst_id": h["bk_host_id"],
+                "bk_inst_name": h["bk_host_name"],
+                "bk_obj_id": "bk_host",
+                "bk_supplier_account": h["bk_supplier_account"],
+                "bk_host_id": h["bk_host_id"],
+                "bk_host_name": h["bk_host_name"],
+                "bk_host_innerip": h["bk_host_innerip"],
+                "bk_host_outerip": h["bk_host_outerip"],
+                "bk_host_inneripv6": "",
+                "bk_host_outeripv6": "",
+                "bk_cloud_id": h["bk_cloud_id"],
+                "bk_cloud_inst_id": "",
+                "bk_agent_id": "",
+                "operator": h["operator"],
+                "bk_bak_operator": h["bk_bak_operator"],
+                "bk_asset_id": h["bk_asset_id"],
+                "bk_sn": h["bk_sn"],
+                "bk_comment": h["bk_comment"],
+                "bk_service_term": h["bk_service_term"],
+                "bk_sla": h["bk_sla"],
+                "bk_state_name": h["bk_state_name"],
+                "bk_province_name": h["bk_province_name"],
+                "bk_isp_name": h["bk_isp_name"],
+                "bk_os_type": h["bk_os_type"],
+                "bk_os_name": h["bk_os_name"],
+                "bk_os_version": h["bk_os_version"],
+                "bk_os_bit": h["bk_os_bit"],
+                "bk_cpu": h["bk_cpu"],
+                "bk_cpu_mhz": h["bk_cpu_mhz"],
+                "bk_cpu_module": h["bk_cpu_module"],
+                "bk_mem": h["bk_mem"],
+                "bk_disk": h["bk_disk"],
+                "bk_mac": h["bk_mac"],
+                "bk_outer_mac": h["bk_outer_mac"],
+                "import_from": h["import_from"]
+            })
         
-        logger.info(f"创建了 {len(host_list)} 个主机实例")
+        logger.info(f"创建了 {len(host_list)} 个主机实例（同时写入 cc_HostBase 和 cc_ObjectBase_0_pub_bk_host）")
         
         # 5. 创建主机-模块挂载关系
         # 主机挂载到模块
