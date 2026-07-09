@@ -160,6 +160,7 @@ export default {
         bk_inst_name: data.bk_inst_name,
         default: data.default || 0,
         host_count: data.count || 0,
+        status: 'finished',
         child: (data.child || []).map(set => ({
           ...set,
           ...MODEL_INFO.set,
@@ -169,6 +170,7 @@ export default {
           default: set.default || 0,
           bk_biz_id: bizId,
           host_count: set.count || 0,
+          status: 'finished',
           child: (set.child || []).map(mod => ({
             ...mod,
             ...MODEL_INFO.module,
@@ -179,6 +181,7 @@ export default {
             bk_set_id: set.bk_inst_id,
             bk_biz_id: bizId,
             host_count: mod.count || 0,
+            status: 'finished',
             child: []
           }))
         }))
@@ -308,15 +311,18 @@ export default {
       const oldId = RouterQuery.get('node')
       const newId = node.id
 
+      // 同一节点重复点击，不更新URL
+      if (oldId === newId) {
+        return
+      }
+
       RouterQuery.set({
         node: newId,
         page: 1,
         _t: Date.now()
       })
 
-      if (oldId !== newId) {
-        this.$emit('node-select', node)
-      }
+      this.$emit('node-select', node)
     },
 
     handleExpandChange(node) {
