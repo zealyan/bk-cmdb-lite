@@ -23,7 +23,7 @@ const routes = [
     name: MENU_BUSINESS,
     component: dynamicRouterView,
     path: '/business',
-    redirect: { name: MENU_BUSINESS_TOPOLOGY },
+    redirect: '/business/2/index',
     meta: {
       menu: {
         i18n: '业务'
@@ -32,7 +32,7 @@ const routes = [
     children: [
       {
         name: MENU_BUSINESS_TOPOLOGY,
-        path: 'topology',
+        path: ':bizId/index',
         component: () => import('@/views/business/BusinessTopology.vue'),
         meta: {
           menu: {

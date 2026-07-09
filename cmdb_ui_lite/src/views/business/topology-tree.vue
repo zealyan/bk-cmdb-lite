@@ -170,9 +170,9 @@ export default {
     },
 
     getCurrentBizId() {
-      const queryBizId = RouterQuery.get('bk_biz_id')
-      if (queryBizId) {
-        return parseInt(queryBizId, 10)
+      const routeBizId = this.$route?.params?.bizId
+      if (routeBizId) {
+        return parseInt(routeBizId, 10)
       }
       return 2
     },
