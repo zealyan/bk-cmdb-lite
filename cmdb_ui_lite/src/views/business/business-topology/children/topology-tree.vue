@@ -132,6 +132,37 @@ export default {
         await this.$nextTick()
 
         this.createWatcher()
+
+        setTimeout(() => {
+          const initNodeId = defaultNodeId
+          const initNode = this.$refs.tree?.getNodeById(initNodeId)
+          
+          console.log('initTopology - initNodeId:', initNodeId)
+          console.log('initTopology - initNode:', initNode)
+          console.log('initTopology - initNode type:', typeof initNode)
+          console.log('initTopology - initNode has data:', initNode && 'data' in initNode)
+          console.log('initTopology - initNode.data:', initNode?.data)
+          console.log('initTopology - initNode.id:', initNode?.id)
+          
+          if (initNode) {
+            console.log('initTopology - emitting node-select event')
+            this.$emit('node-select', initNode)
+          } else {
+            console.log('initTopology - initNode is null, trying to find from treeData')
+            const findNode = (nodes, targetId) => {
+              for (const node of nodes) {
+                if (node.id === targetId) return node
+                if (node.child && node.child.length) {
+                  const found = findNode(node.child, targetId)
+                  if (found) return found
+                }
+              }
+              return null
+            }
+            const dataNode = findNode(this.treeData, initNodeId)
+            console.log('initTopology - dataNode from treeData:', dataNode)
+          }
+        }, 200)
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -301,6 +332,9 @@ export default {
       const oldId = RouterQuery.get('node')
       const newId = node.id
 
+      // 始终触发节点选择事件（用于联动主机列表）
+      this.$emit('node-select', node)
+
       // 同一节点重复点击，不更新URL，但允许展开/收起
       if (oldId === newId) {
         return
@@ -311,8 +345,6 @@ export default {
         page: 1,
         _t: Date.now()
       })
-
-      this.$emit('node-select', node)
     },
 
     handleExpandChange(node) {

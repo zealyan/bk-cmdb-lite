@@ -73,6 +73,7 @@ export default {
   watch: {
     node: {
       deep: false,
+      immediate: true,
       handler(node) {
         if (node && node.data) {
           const nodeId = node.id
@@ -97,6 +98,8 @@ export default {
       try {
         const data = this.node.data
         const objId = data.bk_obj_id
+        console.log('loadHostList called, objId:', objId, 'bk_inst_id:', data.bk_inst_id, 'bk_biz_id:', data.bk_biz_id)
+        
         const params = {
           page: this.pagination.current,
           page_size: this.pagination.limit
@@ -113,8 +116,14 @@ export default {
           this.pagination.count = 0
           return
         }
-        this.hostList = result.data.info || []
-        this.pagination.count = result.data.count || 0
+        
+        console.log('API result:', result)
+        console.log('result.data:', result.data)
+        
+        this.hostList = result.data?.info || []
+        this.pagination.count = result.data?.count || 0
+        
+        console.log('hostList length:', this.hostList.length, 'count:', this.pagination.count)
       } catch (e) {
         console.error('加载主机列表失败:', e)
         this.hostList = []
