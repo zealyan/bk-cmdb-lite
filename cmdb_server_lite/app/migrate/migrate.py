@@ -343,6 +343,80 @@ class DatabaseMigrator:
     def init_core_tables(self):
         """初始化核心表结构"""
         core_tables_sql = {
+            # 主线拓扑核心表（对应原项目 MongoDB collections）
+            # 参考：/workspace/cmdb_server_lite/docs/原项目/bk-cmdb-主线拓扑与业务拓扑树分析.md
+            "cc_ApplicationBase": """
+                CREATE TABLE IF NOT EXISTS cc_ApplicationBase (
+                    _id VARCHAR,
+                    bk_biz_id INTEGER PRIMARY KEY,
+                    bk_biz_name VARCHAR NOT NULL,
+                    "default" INTEGER DEFAULT 0,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_SetBase": """
+                CREATE TABLE IF NOT EXISTS cc_SetBase (
+                    _id VARCHAR,
+                    bk_set_id INTEGER PRIMARY KEY,
+                    bk_set_name VARCHAR NOT NULL,
+                    bk_parent_id INTEGER NOT NULL,
+                    bk_biz_id INTEGER NOT NULL,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    bk_service_status VARCHAR DEFAULT '1',
+                    bk_set_env VARCHAR DEFAULT '3',
+                    bk_set_desc VARCHAR,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_ModuleBase": """
+                CREATE TABLE IF NOT EXISTS cc_ModuleBase (
+                    _id VARCHAR,
+                    bk_module_id INTEGER PRIMARY KEY,
+                    bk_module_name VARCHAR NOT NULL,
+                    bk_parent_id INTEGER NOT NULL,
+                    bk_set_id INTEGER NOT NULL,
+                    bk_biz_id INTEGER NOT NULL,
+                    "default" INTEGER DEFAULT 0,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_HostBase": """
+                CREATE TABLE IF NOT EXISTS cc_HostBase (
+                    _id VARCHAR,
+                    bk_host_id INTEGER PRIMARY KEY,
+                    bk_host_name VARCHAR,
+                    bk_host_innerip VARCHAR,
+                    bk_host_outerip VARCHAR,
+                    bk_cloud_id INTEGER DEFAULT 0,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_ModuleHostConfig": """
+                CREATE TABLE IF NOT EXISTS cc_ModuleHostConfig (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bk_biz_id INTEGER NOT NULL,
+                    bk_host_id INTEGER NOT NULL,
+                    bk_module_id INTEGER NOT NULL,
+                    bk_set_id INTEGER NOT NULL,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    UNIQUE(bk_host_id, bk_module_id)
+                )
+            """,
             "cc_ObjClassification": """
                 CREATE TABLE IF NOT EXISTS cc_ObjClassification (
                     id INTEGER PRIMARY KEY,
@@ -1147,6 +1221,9 @@ class DatabaseMigrator:
         # 步骤10: 迁移唯一约束数据
         self.migrate_object_unique()
 
+        # 步骤11: 迁移主线拓扑数据（5个核心表）
+        self.migrate_mainline_topo()
+
         logger.info("数据库初始化迁移完成!")
 
     def migrate_object_unique(self):
@@ -1243,6 +1320,154 @@ class DatabaseMigrator:
             logger.info("为主机模型添加了外网IP唯一约束")
         
         logger.info(f"迁移了 {unique_id - 1} 个唯一约束")
+
+    def migrate_mainline_topo(self):
+        """
+        迁移主线拓扑数据
+        
+        根据原项目分析文档，初始化主线拓扑的核心实例数据：
+        - cc_ApplicationBase: 业务实例（含资源池/空闲机池）
+        - cc_SetBase: 集群实例
+        - cc_ModuleBase: 模块实例
+        - cc_HostBase: 主机实例
+        - cc_ModuleHostConfig: 主机-模块挂载关系
+        
+        bk_supplier_account 统一使用 '0'
+        """
+        logger.info("开始迁移主线拓扑数据...")
+        
+        # 1. 创建默认业务（资源池/空闲机池）
+        # 原项目 default=1 表示内置资源池业务
+        default_biz = {
+            "bk_biz_id": 1,
+            "bk_biz_name": "资源池",
+            "default": 1,
+            "bk_supplier_account": "0"
+        }
+        
+        self.execute_sql("""
+            INSERT OR REPLACE INTO cc_ApplicationBase
+            (_id, bk_biz_id, bk_biz_name, "default", bk_supplier_account)
+            VALUES (:_id, :bk_biz_id, :bk_biz_name, :default, :bk_supplier_account)
+        """, default_biz | {"_id": "biz_1"})
+        
+        # 创建示例业务
+        demo_biz_list = [
+            {"bk_biz_id": 2, "bk_biz_name": "蓝鲸平台", "default": 0, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_biz_name": "正式环境", "default": 0, "bk_supplier_account": "0"},
+            {"bk_biz_id": 4, "bk_biz_name": "测试环境", "default": 0, "bk_supplier_account": "0"},
+            {"bk_biz_id": 5, "bk_biz_name": "预发布环境", "default": 0, "bk_supplier_account": "0"},
+        ]
+        
+        for biz in demo_biz_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ApplicationBase
+                (_id, bk_biz_id, bk_biz_name, "default", bk_supplier_account)
+                VALUES (:_id, :bk_biz_id, :bk_biz_name, :default, :bk_supplier_account)
+            """, biz | {"_id": f"biz_{biz['bk_biz_id']}"})
+        
+        logger.info(f"创建了 {1 + len(demo_biz_list)} 个业务实例")
+        
+        # 2. 创建集群（空闲机池集群 + 示例集群）
+        # 集群的 bk_parent_id 指向业务的 bk_biz_id
+        set_list = [
+            # 空闲机池集群（属于资源池业务 bk_biz_id=1）
+            {"bk_set_id": 1, "bk_set_name": "空闲机池", "bk_parent_id": 1, "bk_biz_id": 1, "bk_supplier_account": "0"},
+            # 蓝鲸平台业务下的集群
+            {"bk_set_id": 10, "bk_set_name": "广州一区", "bk_parent_id": 2, "bk_biz_id": 2, "bk_supplier_account": "0"},
+            {"bk_set_id": 11, "bk_set_name": "广州二区", "bk_parent_id": 2, "bk_biz_id": 2, "bk_supplier_account": "0"},
+            # 正式环境业务下的集群
+            {"bk_set_id": 20, "bk_set_name": "生产集群", "bk_parent_id": 3, "bk_biz_id": 3, "bk_supplier_account": "0"},
+            # 测试环境业务下的集群
+            {"bk_set_id": 30, "bk_set_name": "测试集群", "bk_parent_id": 4, "bk_biz_id": 4, "bk_supplier_account": "0"},
+        ]
+        
+        for s in set_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_SetBase
+                (_id, bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, bk_supplier_account)
+                VALUES (:_id, :bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :bk_supplier_account)
+            """, s | {"_id": f"set_{s['bk_set_id']}"})
+        
+        logger.info(f"创建了 {len(set_list)} 个集群实例")
+        
+        # 3. 创建模块
+        # 模块的 bk_parent_id 指向集群的 bk_set_id
+        module_list = [
+            # 空闲机池模块
+            {"bk_module_id": 1, "bk_module_name": "空闲机", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 2, "bk_module_name": "故障机", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 3, "bk_module_name": "待回收", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 3, "bk_supplier_account": "0"},
+            # 广州一区下的模块
+            {"bk_module_id": 100, "bk_module_name": "web", "bk_parent_id": 10, "bk_set_id": 10, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            {"bk_module_id": 101, "bk_module_name": "api", "bk_parent_id": 10, "bk_set_id": 10, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            # 广州二区下的模块
+            {"bk_module_id": 110, "bk_module_name": "db", "bk_parent_id": 11, "bk_set_id": 11, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            # 生产集群下的模块
+            {"bk_module_id": 200, "bk_module_name": "app", "bk_parent_id": 20, "bk_set_id": 20, "bk_biz_id": 3, "default": 0, "bk_supplier_account": "0"},
+            # 测试集群下的模块
+            {"bk_module_id": 300, "bk_module_name": "test", "bk_parent_id": 30, "bk_set_id": 30, "bk_biz_id": 4, "default": 0, "bk_supplier_account": "0"},
+        ]
+        
+        for m in module_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ModuleBase
+                (_id, bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id, "default", bk_supplier_account)
+                VALUES (:_id, :bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id, :default, :bk_supplier_account)
+            """, m | {"_id": f"module_{m['bk_module_id']}"})
+        
+        logger.info(f"创建了 {len(module_list)} 个模块实例")
+        
+        # 4. 创建主机
+        host_list = [
+            {"bk_host_id": 1, "bk_host_name": "host-01", "bk_host_innerip": "192.168.1.1", "bk_host_outerip": "10.0.1.1", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 2, "bk_host_name": "host-02", "bk_host_innerip": "192.168.1.2", "bk_host_outerip": "10.0.1.2", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 3, "bk_host_name": "host-03", "bk_host_innerip": "192.168.1.3", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 4, "bk_host_name": "host-04", "bk_host_innerip": "192.168.1.4", "bk_host_outerip": "10.0.1.4", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 5, "bk_host_name": "host-05", "bk_host_innerip": "192.168.1.5", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 6, "bk_host_name": "host-06", "bk_host_innerip": "192.168.1.6", "bk_host_outerip": "10.0.1.6", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 7, "bk_host_name": "host-07", "bk_host_innerip": "192.168.1.7", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+            {"bk_host_id": 8, "bk_host_name": "host-08", "bk_host_innerip": "192.168.1.8", "bk_host_outerip": "10.0.1.8", "bk_cloud_id": 0, "bk_supplier_account": "0"},
+        ]
+        
+        for h in host_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_HostBase
+                (_id, bk_host_id, bk_host_name, bk_host_innerip, bk_host_outerip, bk_cloud_id, bk_supplier_account)
+                VALUES (:_id, :bk_host_id, :bk_host_name, :bk_host_innerip, :bk_host_outerip, :bk_cloud_id, :bk_supplier_account)
+            """, h | {"_id": f"host_{h['bk_host_id']}"})
+        
+        logger.info(f"创建了 {len(host_list)} 个主机实例")
+        
+        # 5. 创建主机-模块挂载关系
+        # 主机挂载到模块
+        module_host_config = [
+            # 主机1-2 挂载到 web 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 1, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 2, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机3 挂载到 api 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 3, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机4 挂载到 db 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 4, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
+            # 主机5-6 挂载到生产集群的 app 模块 (bk_biz_id=3)
+            {"bk_biz_id": 3, "bk_host_id": 5, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_host_id": 6, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            # 主机7 挂载到测试集群的 test 模块 (bk_biz_id=4)
+            {"bk_biz_id": 4, "bk_host_id": 7, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
+            # 主机8 挂载到空闲机池 (bk_biz_id=1)
+            {"bk_biz_id": 1, "bk_host_id": 8, "bk_module_id": 1, "bk_set_id": 1, "bk_supplier_account": "0"},
+        ]
+        
+        for mhc in module_host_config:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ModuleHostConfig
+                (bk_biz_id, bk_host_id, bk_module_id, bk_set_id, bk_supplier_account)
+                VALUES (:bk_biz_id, :bk_host_id, :bk_module_id, :bk_set_id, :bk_supplier_account)
+            """, mhc)
+        
+        logger.info(f"创建了 {len(module_host_config)} 个主机-模块挂载关系")
+        
+        logger.info("主线拓扑数据迁移完成!")
 
 
 if __name__ == "__main__":
