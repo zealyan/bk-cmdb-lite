@@ -221,7 +221,7 @@ export default {
     },
 
     async setNodeCount(nodes) {
-      if (!nodes.length) return
+      if (!nodes || !Array.isArray(nodes) || !nodes.length) return
 
       const normalNodes = nodes.filter(n => n.data && ['biz', 'set', 'module'].includes(n.data.bk_obj_id))
       if (!normalNodes.length) return
@@ -235,7 +235,8 @@ export default {
           bk_biz_id: data.bk_biz_id || this.bizId
         }))
 
-        const results = await topoAPI.getTopoStatistics(this.bizId, { condition })
+        const response = await topoAPI.getTopoStatistics(this.bizId, { condition })
+        const results = response.data || []
 
         normalNodes.forEach(({ data }) => {
           const count = results.find(r =>
