@@ -116,6 +116,17 @@ const getOperatorSymbol = (operator, symbolMap) => {
   return data[operator]
 }
 
+const splitIP = (raw) => {
+  const list = []
+  if (!raw) return list
+  raw.trim().split(/\n|;|；|,|，/)
+    .forEach((text) => {
+      const ip = text.trim()
+      ip.length && list.push(ip)
+    })
+  return list
+}
+
 export default {
   DEFAULT_IP,
   getDefaultIP,
@@ -123,5 +134,6 @@ export default {
   getOperatorSideEffect,
   numberUseIn,
   getOperatorSymbol,
-  getDefaultData
+  getDefaultData,
+  splitIP
 }
