@@ -78,6 +78,8 @@
 <script>
 import HostListOptions from './host-list-options.vue'
 import ColumnsConfig from '@/components/columns-config/columns-config.js'
+import FilterForm from '@/components/filters/filter-form.js'
+import FilterStore, { setupFilterStore } from '@/components/filters/store'
 import tableMixin from '@/mixins/table'
 import { topoAPI } from '@/api/topo'
 import { modelAPI } from '@/api/client'
@@ -184,6 +186,9 @@ export default {
       }
     }
   },
+  created() {
+    this.initFilterStore()
+  },
   mounted() {
     this.disabledTableSettingDefaultBehavior()
     this.unwatchFilter = this.$watch(() => this.filterTags, () => {
@@ -201,6 +206,24 @@ export default {
     this.unwatchFilter && this.unwatchFilter()
   },
   methods: {
+    /**
+     * 初始化 FilterStore
+     */
+    async initFilterStore() {
+      const bizId = this.node?.data?.bk_biz_id || this.$route.params.bizId || 1
+      await setupFilterStore({
+        bk_biz_id: bizId,
+        modelIds: ['host', 'module', 'set', 'biz'],
+        searchHandler: () => {
+          this.table.pagination.current = 1
+          this.loadHostList()
+        },
+        modelPropertyMap: {
+          host: this.allProperties.length ? this.allProperties : DEFAULT_TABLE_HEADER
+        }
+      })
+    },
+
     /**
      * 加载主机模型属性列表
      */
@@ -390,6 +413,50 @@ export default {
           })
         }
 
+        // 添加 FilterStore 中的高级筛选条件
+        const filterCondition = FilterStore.condition
+        const filterIP = FilterStore.IP
+        if (filterCondition && Object.keys(filterCondition).length > 0) {
+          Object.keys(filterCondition).forEach(key => {
+            const cond = filterCondition[key]
+            if (cond && cond.value !== null && cond.value !== undefined && cond.value !== '') {
+              const [modelId, fieldId] = key.split('_')
+              const existing = payload.condition.find(c => c.bk_obj_id === modelId)
+              if (existing) {
+                existing.condition.push({
+                  field: fieldId,
+                  operator: cond.operator || '$eq',
+                  value: cond.value
+                })
+              } else {
+                payload.condition.push({
+                  bk_obj_id: modelId,
+                  fields: [],
+                  condition: [{
+                    field: fieldId,
+                    operator: cond.operator || '$eq',
+                    value: cond.value
+                  }]
+                })
+              }
+            }
+          })
+        }
+
+        // 添加 IP 筛选条件
+        if (filterIP && filterIP.text) {
+          const ipList = filterIP.text.split('\n').filter(ip => ip.trim())
+          if (ipList.length > 0) {
+            payload.ip = {
+              data: ipList,
+              exact: filterIP.exact || false,
+              flag: []
+            }
+            if (filterIP.inner) payload.ip.flag.push('bk_host_innerip')
+            if (filterIP.outer) payload.ip.flag.push('bk_host_outerip')
+          }
+        }
+
         // 调用新的 searchHosts 接口
         const result = await topoAPI.searchHosts(payload)
 
@@ -569,11 +636,10 @@ export default {
     },
 
     /**
-     * 高级筛选
+     * 高级筛选 - 打开筛选侧边抽屉
      */
     handleSetFilters() {
-      // 预留：高级筛选弹窗
-      console.log('高级筛选')
+      FilterForm.show()
     },
 
     /**

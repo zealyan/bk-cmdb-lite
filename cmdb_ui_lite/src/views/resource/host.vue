@@ -17,6 +17,12 @@
           style="width: 300px;"
           @change="handleSearch"
         />
+        <icon-button
+          class="ml10"
+          icon="icon-cc-funnel"
+          v-bk-tooltips.top="'高级筛选'"
+          @click="handleSetFilters">
+        </icon-button>
       </div>
 
       <bk-table
@@ -62,8 +68,14 @@
 </template>
 
 <script>
+import IconButton from '@/components/ui/button/icon-button.vue'
+import FilterForm from '@/components/filters/filter-form.js'
+
 export default {
   name: 'ResourceHost',
+  components: {
+    IconButton
+  },
   data () {
     return {
       searchKeyword: '',
@@ -137,6 +149,9 @@ export default {
       this.searchKeyword = value
       this.paginationConfig.current = 1
     },
+    handleSetFilters () {
+      FilterForm.show()
+    },
     handleRefresh () {
       this.$bkMessage({
         message: '刷新成功',
@@ -192,6 +207,8 @@ export default {
 }
 
 .search-bar {
+  display: flex;
+  align-items: center;
   margin-bottom: 16px;
 }
 
