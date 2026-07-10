@@ -62,8 +62,16 @@
         </template>
       </bk-table-column>
 
-      <!-- 表格设置列（列配置） - 与原项目一致：使用 type="setting" + @header-click 处理 -->
-      <bk-table-column type="setting"></bk-table-column>
+      <!-- 表格设置列（列配置） - 使用普通列 + 自定义齿轮图标，避免触发 bk-table 内置 setting popover -->
+      <bk-table-column width="50" align="center" fixed="right">
+        <template slot="header">
+          <span class="table-setting-btn"
+            v-bk-tooltips.top="'列设置'"
+            @click.stop="handleSettingClick">
+            <i class="bk-icon icon-cc-settings"></i>
+          </span>
+        </template>
+      </bk-table-column>
 
       <!-- 空数据占位 -->
       <div slot="empty" class="table-empty">
@@ -482,13 +490,25 @@ export default {
     },
 
     /**
-     * 表头点击（列设置）- 与原项目一致：通过 type="setting" 触发列配置
+     * 表头点击（列设置）
      */
     handleHeaderClick(column) {
-      if (column.type !== 'setting') {
-        return
+      if (column.type === 'setting') {
+        this.openColumnsConfig()
       }
-      // 使用 ColumnsConfig.open() 方式打开，与原项目一致
+    },
+
+    /**
+     * 设置按钮点击（打开列配置侧边栏）
+     */
+    handleSettingClick() {
+      this.openColumnsConfig()
+    },
+
+    /**
+     * 打开列配置面板
+     */
+    openColumnsConfig() {
       ColumnsConfig.open({
         props: {
           properties: this.allProperties,
