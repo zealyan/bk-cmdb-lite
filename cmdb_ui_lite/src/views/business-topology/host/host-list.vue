@@ -468,7 +468,7 @@ export default {
 
         // 添加 IP 筛选条件
         if (filterIP && filterIP.text) {
-          const ipList = filterIP.text.split('\n').filter(ip => ip.trim())
+          const ipList = Utils.splitIP(filterIP.text)
           if (ipList.length > 0) {
             const flagParts = []
             if (filterIP.inner) flagParts.push('bk_host_innerip')
