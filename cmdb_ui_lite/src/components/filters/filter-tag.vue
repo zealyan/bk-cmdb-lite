@@ -36,7 +36,7 @@ export default {
   },
   computed: {
     condition() {
-      return FilterStore.condition?.condition || {}
+      return FilterStore.condition || {}
     },
     showIPTag() {
       const list = Utils.splitIP(FilterStore.IP.text)

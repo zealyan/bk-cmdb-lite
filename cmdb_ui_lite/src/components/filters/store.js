@@ -19,8 +19,13 @@ const FilterStore = new Vue({
   },
   watch: {
     selected: {
-      handler() {
-        this.initCondition()
+      handler(newVal, oldVal) {
+        // 只在 selected 真正变化时才重建 condition
+        // 避免在 handleSearch 中 updateSelected 后的 watch 覆盖 setCondition 的值
+        if (!oldVal || newVal.length !== oldVal.length ||
+            newVal.some((item, i) => item.bk_property_id !== (oldVal[i] && oldVal[i].bk_property_id))) {
+          this.initCondition()
+        }
       }
     }
   },
@@ -146,12 +151,19 @@ const FilterStore = new Vue({
       this.selected.forEach((property) => {
         const id = property.bk_property_id
         if (Object.prototype.hasOwnProperty.call(this.condition, id)) {
+          // 保留已有值，不被覆盖
           newCondition[id] = this.condition[id]
         } else {
+          // 新属性使用默认值
           newCondition[id] = Utils.getDefaultData(property)
         }
       })
-      this.condition = newCondition
+      // 只在 key 集合变化时才替换，避免覆盖已有值
+      const oldKeys = Object.keys(this.condition).sort().join(',')
+      const newKeys = Object.keys(newCondition).sort().join(',')
+      if (oldKeys !== newKeys) {
+        this.condition = newCondition
+      }
     }
   }
 })

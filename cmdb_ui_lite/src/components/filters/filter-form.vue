@@ -395,18 +395,25 @@ export default {
     handleSearch() {
       this.searchTimer && clearTimeout(this.searchTimer)
       this.searchTimer = setTimeout(() => {
-        const condition = {
-          condition: JSON.parse(JSON.stringify(this.condition)),
-          IP: JSON.parse(JSON.stringify(this.IPCondition))
-        }
+        // 深拷贝当前 condition 和 IP，避免引用问题
+        const submitCondition = JSON.parse(JSON.stringify(this.condition))
+        const submitIP = JSON.parse(JSON.stringify(this.IPCondition))
         if (this.type === 'index') {
-          return this.searchAction(condition)
+          return this.searchAction({ condition: submitCondition, IP: submitIP })
         }
 
         FilterStore.resetPage(true)
+        // 先 setCondition，再 updateSelected
+        // 因为 updateSelected 会触发 watch -> initCondition，可能覆盖 condition
+        // 所以先更新 selected，然后在 nextTick 中设置 condition
         FilterStore.updateSelected([...this.selected])
-        FilterStore.setCondition(condition)
-        this.close()
+        this.$nextTick(() => {
+          FilterStore.setCondition({
+            condition: submitCondition,
+            IP: submitIP
+          })
+          this.close()
+        })
       }, 300)
     },
     handleReset() {
