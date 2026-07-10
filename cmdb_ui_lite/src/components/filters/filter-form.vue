@@ -351,43 +351,43 @@ export default {
     getDefaultOperator(property) {
       const type = property.bk_property_type
       const defaultMap = {
-        singlechar: 'IN',
-        shortchar: 'IN',
-        longchar: 'IN',
-        text: 'IN',
+        singlechar: '$in',
+        shortchar: '$in',
+        longchar: '$in',
+        text: '$in',
         int: '$eq',
         float: '$eq',
-        enum: 'IN',
-        enummulti: 'IN',
-        list: 'IN',
+        enum: '$in',
+        enummulti: '$in',
+        list: '$in',
         bool: '$eq',
-        date: 'RANGE',
-        time: 'RANGE',
-        objuser: 'IN',
-        organization: 'IN',
-        timezone: 'IN',
-        foreignkey: 'IN',
-        array: 'IN',
-        object: 'IN'
+        date: '$range',
+        time: '$range',
+        objuser: '$in',
+        organization: '$in',
+        timezone: '$in',
+        foreignkey: '$in',
+        array: '$in',
+        object: '$in'
       }
       return defaultMap[type] || '$eq'
     },
     getOperators(property) {
       const type = property.bk_property_type
       const operatorsMap = {
-        float: ['$eq', '$ne', '$gte', '$lte', 'RANGE', 'IN'],
-        int: ['$eq', '$ne', '$gte', '$lte', 'RANGE', 'IN'],
-        longchar: ['IN', '$nin', 'CONTAINS', 'LIKE'],
-        singlechar: ['IN', '$nin', 'CONTAINS', 'LIKE'],
-        shortchar: ['IN', '$nin', 'CONTAINS', 'LIKE'],
-        text: ['IN', '$nin', 'CONTAINS', 'LIKE'],
-        array: ['IN', '$nin', 'CONTAINS', 'LIKE'],
-        object: ['IN', '$nin', 'CONTAINS', 'LIKE'],
-        enum: ['IN', '$nin', '$eq'],
-        enummulti: ['IN', '$nin'],
-        list: ['IN', '$nin'],
-        date: ['$gte', '$lte', 'RANGE'],
-        time: ['$gte', '$lte', 'RANGE'],
+        float: ['$eq', '$ne', '$gte', '$lte', '$range', '$in'],
+        int: ['$eq', '$ne', '$gte', '$lte', '$range', '$in'],
+        longchar: ['$in', '$nin', '$contains', '$regex'],
+        singlechar: ['$in', '$nin', '$contains', '$regex'],
+        shortchar: ['$in', '$nin', '$contains', '$regex'],
+        text: ['$in', '$nin', '$contains', '$regex'],
+        array: ['$in', '$nin', '$contains', '$regex'],
+        object: ['$in', '$nin', '$contains', '$regex'],
+        enum: ['$in', '$nin', '$eq'],
+        enummulti: ['$in', '$nin'],
+        list: ['$in', '$nin'],
+        date: ['$gte', '$lte', '$range'],
+        time: ['$gte', '$lte', '$range'],
         bool: ['$eq', '$ne']
       }
       return (operatorsMap[type] || ['$eq']).map(op => ({ id: op, name: op, desc: op }))
