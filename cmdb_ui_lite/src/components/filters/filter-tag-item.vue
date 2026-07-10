@@ -66,11 +66,7 @@ export default {
       FilterForm.show()
     },
     handleRemove() {
-      const cond = FilterStore.condition[this.property.bk_property_id]
-      if (cond) {
-        const defaultValue = Utils.getOperatorSideEffect(this.property, cond.operator, '')
-        cond.value = defaultValue
-      }
+      FilterStore.resetValue(this.property)
     }
   }
 }

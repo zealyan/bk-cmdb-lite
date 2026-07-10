@@ -41,6 +41,7 @@ export default {
     },
     handleRemove() {
       FilterStore.updateIP(Utils.getDefaultIP())
+      FilterStore.dispatchSearch()
     }
   }
 }

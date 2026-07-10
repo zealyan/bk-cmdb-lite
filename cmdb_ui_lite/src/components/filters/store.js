@@ -87,6 +87,27 @@ const FilterStore = new Vue({
       this.page = 1
       this.dispatchSearch()
     },
+    removeSelected(property) {
+      const index = this.selected.findIndex(target => target.bk_property_id === property.bk_property_id)
+      if (index > -1) {
+        this.selected.splice(index, 1)
+      }
+    },
+    resetValue(property, silent = false) {
+      const properties = Array.isArray(property) ? property : [property]
+      properties.forEach((target) => {
+        const id = target.bk_property_id
+        if (this.condition[id]) {
+          const { operator } = this.condition[id]
+          const value = Utils.getOperatorSideEffect(target, operator, '')
+          this.$set(this.condition, id, { operator, value })
+        }
+      })
+      this.updateUserBehavior(properties)
+      if (!silent) {
+        this.dispatchSearch()
+      }
+    },
     hasCondition() {
       const hasIP = Object.keys(this.IP).some(key => {
         const value = this.IP[key]
