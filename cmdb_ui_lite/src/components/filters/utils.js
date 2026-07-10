@@ -37,17 +37,30 @@ const getOperatorSideEffect = (property, operator, value) => {
   if (!operator) return value
 
   const type = property.bk_property_type
+  const isArrayOp = ['$in', '$nin'].includes(operator)
+
+  // 数组类型操作符（$in/$nin）：value 必须是数组
+  if (isArrayOp) {
+    if (Array.isArray(value)) return value
+    if (typeof value === 'string' && value.length > 0) return [value]
+    return []
+  }
+
+  // 范围操作符（$range）：value 必须是数组
+  if (operator === '$range') {
+    if (Array.isArray(value) && value.length >= 2) return value
+    return ['', '']
+  }
+
+  // 数值类型的 $in/$nin 也返回数组
   if (type === 'int' || type === 'float' || type === 'double' || type === 'long') {
-    if (operator === 'RANGE') {
-      return (value && Array.isArray(value)) ? value : ['', '']
-    }
-    if (operator === 'IN' || operator === 'NIN') {
+    if (operator === '$in' || operator === '$nin') {
       return (value && Array.isArray(value)) ? value : []
     }
   }
 
   if (type === 'enummulti' || type === 'list') {
-    if (operator === 'IN' || operator === 'NIN') {
+    if (operator === '$in' || operator === '$nin') {
       return (value && Array.isArray(value)) ? value : []
     }
   }

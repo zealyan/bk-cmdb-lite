@@ -22,7 +22,8 @@
               type="textarea"
               :rows="3"
               v-model="IPCondition.text"
-              :placeholder="editBlockPlaceholder">
+              :placeholder="editBlockPlaceholder"
+              @paste="handleIPPaste">
             </bk-input>
           </div>
           <div class="ip-options">
@@ -310,11 +311,43 @@ export default {
         this.IPCondition[negativeType] = true
       }
     },
+    handleIPPaste(event) {
+      const text = event.clipboardData.getData('text')
+      if (!text) return
+      event.preventDefault()
+      const values = Utils.splitIP(text)
+      const currentText = this.IPCondition.text || ''
+      const currentValues = currentText ? Utils.splitIP(currentText) : []
+      const merged = [...new Set([...currentValues, ...values])]
+      this.IPCondition.text = merged.join('\n')
+    },
     handleOperatorChange(property, operator) {
       const condition = this.condition[property.bk_property_id]
       if (!condition) return
       const { value } = condition
-      const effectValue = Utils.getOperatorSideEffect(property, operator, value)
+
+      // 操作符切换时转换 value 类型
+      let newValue = value
+      const isArrayOp = ['$in', '$nin'].includes(operator)
+      const wasArrayOp = ['$in', '$nin'].includes(condition.operator)
+
+      if (isArrayOp && !wasArrayOp) {
+        // 从非数组操作符切换到数组操作符：字符串 → 数组
+        if (typeof value === 'string' && value.length > 0) {
+          newValue = [value]
+        } else if (!Array.isArray(value)) {
+          newValue = []
+        }
+      } else if (!isArrayOp && wasArrayOp) {
+        // 从数组操作符切换到非数组操作符：数组 → 字符串
+        if (Array.isArray(value) && value.length > 0) {
+          newValue = value[0]
+        } else {
+          newValue = ''
+        }
+      }
+
+      const effectValue = Utils.getOperatorSideEffect(property, operator, newValue)
       condition.value = effectValue
     },
     async handleRemove(property) {
@@ -330,12 +363,10 @@ export default {
         if (!currentIds.includes(property.bk_property_id)) {
           this.selected.push(property)
           if (!this.condition[property.bk_property_id]) {
-            const defaultOperator = this.getDefaultOperator(property)
-            const operators = this.getOperators(property)
-            const operator = operators.length > 0 ? operators.find(op => op.id === defaultOperator)?.id || operators[0].id : defaultOperator
+            const defaultData = Utils.getDefaultData(property)
             this.$set(this.condition, property.bk_property_id, {
-              operator,
-              value: ''
+              operator: defaultData.operator,
+              value: defaultData.value
             })
           }
         }
