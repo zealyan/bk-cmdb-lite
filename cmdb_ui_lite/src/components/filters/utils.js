@@ -61,10 +61,31 @@ const numberUseIn = (property, operator) => {
   return ['int', 'float', 'double', 'long'].includes(type) && ['IN', 'NIN'].includes(operator)
 }
 
+const QUERY_OPERATOR_SYMBOL = {
+  '$eq': '=',
+  '$ne': '≠',
+  '$in': 'in',
+  '$nin': 'not in',
+  '$gt': '>',
+  '$lt': '<',
+  '$gte': '≥',
+  '$lte': '≤',
+  '$regex': 'like',
+  '$range': '≤ ≥',
+  '$contains': 'contains',
+  '$contains_s': 'contains(CS)'
+}
+
+const getOperatorSymbol = (operator, symbolMap) => {
+  const data = symbolMap || QUERY_OPERATOR_SYMBOL
+  return data[operator]
+}
+
 export default {
   DEFAULT_IP,
   getDefaultIP,
   getPlaceholder,
   getOperatorSideEffect,
-  numberUseIn
+  numberUseIn,
+  getOperatorSymbol
 }

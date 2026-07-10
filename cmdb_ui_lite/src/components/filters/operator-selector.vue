@@ -1,23 +1,33 @@
 <template>
   <bk-select
-    :model-value="modelValue"
-    :placeholder="'请选择'"
-    :options="options"
-    @change="handleChange">
+    v-model="localValue"
+    v-bind="$attrs"
+    v-on="listeners"
+    :clearable="false">
+    <bk-option v-for="(option, index) in options"
+      class="operator-option"
+      :key="index"
+      :id="option.id"
+      :name="option.name">
+      <span>{{option.name}}</span>
+    </bk-option>
   </bk-select>
 </template>
 
 <script>
+import Utils from './utils'
+import { QUERY_OPERATOR } from '@/utils/query-operator'
+
 export default {
   name: 'OperatorSelector',
   props: {
-    modelValue: {
+    value: {
       type: String,
       default: ''
     },
     property: {
       type: Object,
-      required: true
+      default: () => ({})
     },
     customTypeMap: {
       type: Object,
@@ -33,19 +43,58 @@ export default {
     }
   },
   computed: {
+    listeners() {
+      const internalEvent = ['input', 'change']
+      const listeners = {}
+      Object.keys(this.$listeners).forEach((key) => {
+        if (!internalEvent.includes(key)) {
+          listeners[key] = this.$listeners[key]
+        }
+      })
+      return listeners
+    },
     options() {
-      const type = this.property.bk_property_type
-      const operators = this.customTypeMap[type] || []
-      return operators.map(op => ({
-        label: `${this.symbolMap[op]} ${this.descMap[op]}`,
-        value: op
+      const { EQ, NE, IN, NIN, LT, GT, LTE, GTE, RANGE, LIKE } = QUERY_OPERATOR
+      const defaultTypeMap = {
+        bool: [EQ, NE],
+        date: [GTE, LTE],
+        enum: [IN, NIN],
+        enummulti: [IN, NIN],
+        float: [EQ, NE, GT, LT, RANGE],
+        int: [EQ, NE, GT, LT, RANGE],
+        list: [IN, NIN],
+        longchar: [IN, NIN, LIKE],
+        objuser: [IN, NIN],
+        organization: [IN, NIN],
+        singlechar: [IN, NIN, LIKE],
+        time: [GTE, LTE],
+        timezone: [IN, NIN],
+        foreignkey: [IN, NIN],
+        table: [IN, NIN],
+        array: [IN, NIN, LIKE],
+        object: [IN, NIN, LIKE],
+        map: [IN, NIN],
+        shortchar: [IN, NIN, LIKE],
+        text: [IN, NIN, LIKE],
+        char: [IN, NIN, LIKE],
+        long: [EQ, NE, GT, LT, RANGE]
+      }
+      const typeMap = { ...defaultTypeMap, ...this.customTypeMap }
+      const { bk_property_type: propertyType } = this.property
+      const operators = typeMap[propertyType] || [EQ]
+      return operators.map(operator => ({
+        id: operator,
+        name: Utils.getOperatorSymbol(operator, this.symbolMap) || operator.replace('$', '')
       }))
-    }
-  },
-  methods: {
-    handleChange(value) {
-      this.$emit('update:modelValue', value)
-      this.$emit('change', value)
+    },
+    localValue: {
+      get() {
+        return this.value
+      },
+      set(value) {
+        this.$emit('input', value)
+        this.$emit('change', value)
+      }
     }
   }
 }

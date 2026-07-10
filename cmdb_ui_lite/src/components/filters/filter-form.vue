@@ -256,7 +256,8 @@ export default {
     },
     getComponentName(property) {
       const type = property.bk_property_type
-      const { operator } = this.condition[property.bk_property_id]
+      const condition = this.condition[property.bk_property_id] || {}
+      const { operator } = condition
       const normal = this.getSimpleComponentName(type)
 
       if (Utils.numberUseIn(property, operator)) {
@@ -296,9 +297,11 @@ export default {
       }
     },
     handleOperatorChange(property, operator) {
-      const { value } = this.condition[property.bk_property_id]
+      const condition = this.condition[property.bk_property_id]
+      if (!condition) return
+      const { value } = condition
       const effectValue = Utils.getOperatorSideEffect(property, operator, value)
-      this.condition[property.bk_property_id].value = effectValue
+      condition.value = effectValue
     },
     async handleRemove(property) {
       const index = this.selected.indexOf(property)
@@ -463,20 +466,17 @@ export default {
 .filter-layout {
   height: 100%;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
 }
 
 .filter-form {
   padding: 0 14px;
-  flex: 1;
 }
 
 .filter-ip {
-  padding: 7px 10px 0 !important;
+  padding: 7px 10px 0px !important;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 9999;
   background: white;
 
   .filter-operate {
@@ -507,65 +507,82 @@ export default {
 }
 
 .filter-item {
-  position: relative;
-  padding: 7px 10px 7px 15px !important;
+  padding: 2px 10px 10px;
 
-  .item-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-weight: normal;
-    margin-bottom: 10px;
+  &:not(.filter-ip):hover {
+    background: #f5f6fa;
+    .item-remove {
+      opacity: 1;
+    }
   }
 
-  .item-label-suffix {
-    font-size: 12px;
-    color: #979ba5;
-    margin-left: 8px;
+  .item-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 24px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    .item-label-suffix {
+      font-size: 12px;
+      color: #979ba5;
+    }
   }
 
   .item-content-wrapper {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    min-height: 32px;
   }
 
   .item-operator {
-    flex-shrink: 0;
-    margin-right: 10px;
+    flex: 128px 0 0;
+    margin-right: 8px;
+
+    & ~ .item-value {
+      max-width: calc(100% - 136px);
+    }
   }
 
   .item-value {
     flex: 1;
-    :deep(.bk-form-control) {
-      font-size: 12px;
-    }
   }
 
   .item-remove {
     position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #c4c6cc;
-    font-size: 18px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    right: -10px;
+    top: 3px;
+    font-size: 20px;
+    opacity: 0;
     cursor: pointer;
-    padding: 5px;
-    &:hover {
-      color: #7d8088;
-    }
-  }
+    color: #63656e;
 
-  &.last-item {
-    padding-bottom: 15px !important;
+    &:hover {
+      color: #ea3636;
+    }
   }
 }
 
 .filter-options {
   display: flex;
-  justify-content: flex-end;
-  padding: 10px 14px;
-  border-top: 1px solid #e7e9ef;
-  background: #f9f9f9;
+  align-items: center;
+  padding: 10px 24px;
+
+  &.is-sticky {
+    border-top: 1px solid #dcdee5;
+    background-color: #fff;
+  }
+
+  .option-reset {
+    margin-left: auto;
+  }
 }
 
 .option-search {
