@@ -206,8 +206,8 @@ export default {
         const { addSelect, deleteSelect } = getConditionSelect(val, this.selected)
 
         this.scrollToBottom = this.hasAddSelected(val, this.selected, addSelect)
-        this.condition = this.initCondition()
         updatePropertySelect(this.selected, this.handleRemove, addSelect, deleteSelect, 'push', filterCondition)
+        this.condition = this.initCondition()
       }
     },
     storageIPCondition: {
