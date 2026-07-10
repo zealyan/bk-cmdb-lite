@@ -1080,6 +1080,21 @@ def _build_condition_sql(field: str, operator: str, value: Any,
         like_value = f'%{value}%'
         return (f'{field} LIKE :{p_name}', {p_name: like_value})
 
+    if operator in ('$gt', '$lt', '$gte', '$lte'):
+        op_map = {'$gt': '>', '$lt': '<', '$gte': '>=', '$lte': '<='}
+        sql_op = op_map[operator]
+        return (f'{field} {sql_op} :{p_name}', {p_name: value})
+
+    if operator == '$range':
+        # $range: value 为 [start, end]，生成 field >= start AND field <= end
+        if isinstance(value, list) and len(value) >= 2:
+            p1 = f'{p_name}_0'
+            p2 = f'{p_name}_1'
+            return (f'({field} >= :{p1} AND {field} <= :{p2})',
+                    {p1: value[0], p2: value[1]})
+        elif isinstance(value, list) and len(value) == 1:
+            return (f'{field} >= :{p_name}', {p_name: value[0]})
+
     # 默认 $eq
     return (f'{field} = :{p_name}', {p_name: value})
 

@@ -411,29 +411,57 @@ export default {
         // 添加 FilterStore 中的高级筛选条件
         const filterCondition = FilterStore.condition
         const filterIP = FilterStore.IP
+        const filterSelected = FilterStore.selected || []
         if (filterCondition && Object.keys(filterCondition).length > 0) {
           Object.keys(filterCondition).forEach(key => {
             const cond = filterCondition[key]
-            if (cond && cond.value !== null && cond.value !== undefined && cond.value !== '') {
-              const [modelId, fieldId] = key.split('_')
+            if (cond === null || cond === undefined) return
+            // 跳过空值和空数组
+            const val = cond.value
+            if (val === null || val === undefined || val === '') return
+            if (Array.isArray(val) && val.length === 0) return
+
+            // 通过 selected 属性列表查找 bk_obj_id
+            const property = filterSelected.find(p => p.bk_property_id === key)
+            const modelId = property ? property.bk_obj_id : 'host'
+            const fieldId = key
+
+            // $range 操作符拆分为 $gte + $lte（与原项目一致）
+            if (cond.operator === '$range' && Array.isArray(val) && val.length >= 2) {
               const existing = payload.condition.find(c => c.bk_obj_id === modelId)
+              const rangeConds = [
+                { field: fieldId, operator: '$gte', value: val[0] },
+                { field: fieldId, operator: '$lte', value: val[1] }
+              ]
               if (existing) {
-                existing.condition.push({
-                  field: fieldId,
-                  operator: cond.operator || '$eq',
-                  value: cond.value
-                })
+                existing.condition.push(...rangeConds)
               } else {
                 payload.condition.push({
                   bk_obj_id: modelId,
                   fields: [],
-                  condition: [{
-                    field: fieldId,
-                    operator: cond.operator || '$eq',
-                    value: cond.value
-                  }]
+                  condition: rangeConds
                 })
               }
+              return
+            }
+
+            const existing = payload.condition.find(c => c.bk_obj_id === modelId)
+            if (existing) {
+              existing.condition.push({
+                field: fieldId,
+                operator: cond.operator || '$eq',
+                value: val
+              })
+            } else {
+              payload.condition.push({
+                bk_obj_id: modelId,
+                fields: [],
+                condition: [{
+                  field: fieldId,
+                  operator: cond.operator || '$eq',
+                  value: val
+                }]
+              })
             }
           })
         }
@@ -442,13 +470,14 @@ export default {
         if (filterIP && filterIP.text) {
           const ipList = filterIP.text.split('\n').filter(ip => ip.trim())
           if (ipList.length > 0) {
+            const flagParts = []
+            if (filterIP.inner) flagParts.push('bk_host_innerip')
+            if (filterIP.outer) flagParts.push('bk_host_outerip')
             payload.ip = {
               data: ipList,
-              exact: filterIP.exact || false,
-              flag: []
+              exact: filterIP.exact ? 1 : 0,
+              flag: flagParts.join('|')
             }
-            if (filterIP.inner) payload.ip.flag.push('bk_host_innerip')
-            if (filterIP.outer) payload.ip.flag.push('bk_host_outerip')
           }
         }
 

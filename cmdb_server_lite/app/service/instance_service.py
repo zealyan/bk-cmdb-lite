@@ -165,7 +165,7 @@ class InstanceService:
                 if field_type == 'bool':
                     value = InstanceService._parse_bool_value_for_search(value)
 
-                # 映射前端操作符
+                # 映射前端操作符（语义操作符 → MongoDB 风格操作符）
                 op_mapping = {
                     'contains': '$regex',
                     'equal': '$eq',
@@ -175,7 +175,13 @@ class InstanceService:
                     'greater_than': '$gt',
                     'less_than': '$lt',
                     'greater_or_equal': '$gte',
-                    'less_or_equal': '$lte'
+                    'less_or_equal': '$lte',
+                    'between': '$range',
+                    'not_between': '$nrange',
+                    'datetime_greater_or_equal': '$gte',
+                    'datetime_less_or_equal': '$lte',
+                    'datetime_greater_than': '$gt',
+                    'datetime_less_than': '$lt'
                 }
                 if op in op_mapping:
                     op = op_mapping[op]
@@ -569,6 +575,31 @@ class InstanceService:
                 like_parts.append(f'LOWER(CAST("{safe_field}" AS TEXT)) LIKE LOWER(:{param_name})')
                 params[param_name] = f'%{v}%'
             return '(' + ' OR '.join(like_parts) + ')', param_counter
+        elif op == '$range':
+            # $range: value 为 [start, end]，生成 field >= start AND field <= end
+            if len(val_list) >= 2:
+                p1 = f'cond_{param_counter}'
+                param_counter += 1
+                p2 = f'cond_{param_counter}'
+                param_counter += 1
+                params[p1] = val_list[0]
+                params[p2] = val_list[1]
+                return f'("{safe_field}" >= :{p1} AND "{safe_field}" <= :{p2})', param_counter
+            elif len(val_list) == 1:
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                params[param_name] = val_list[0]
+                return f'"{safe_field}" >= :{param_name}', param_counter
+        elif op == '$nrange':
+            # $nrange: value 为 [start, end]，生成 NOT (field >= start AND field <= end)
+            if len(val_list) >= 2:
+                p1 = f'cond_{param_counter}'
+                param_counter += 1
+                p2 = f'cond_{param_counter}'
+                param_counter += 1
+                params[p1] = val_list[0]
+                params[p2] = val_list[1]
+                return f'NOT ("{safe_field}" >= :{p1} AND "{safe_field}" <= :{p2})', param_counter
         else:
             if len(val_list) == 1:
                 param_name = f'cond_{param_counter}'
