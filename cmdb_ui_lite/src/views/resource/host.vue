@@ -70,6 +70,8 @@
 <script>
 import IconButton from '@/components/ui/button/icon-button.vue'
 import FilterForm from '@/components/filters/filter-form.js'
+import FilterStore, { setupFilterStore } from '@/components/filters/store'
+import { modelAPI } from '@/api/client'
 
 export default {
   name: 'ResourceHost',
@@ -79,59 +81,23 @@ export default {
   data () {
     return {
       searchKeyword: '',
-      hosts: [
-        {
-          id: 1,
-          inner_ip: '192.168.1.101',
-          outer_ip: '10.0.0.101',
-          cloud_area: '北京一区',
-          host_name: 'web-server-01',
-          cloud_vendor: '腾讯云',
-          status: 'running'
-        },
-        {
-          id: 2,
-          inner_ip: '192.168.1.102',
-          outer_ip: '10.0.0.102',
-          cloud_area: '北京一区',
-          host_name: 'web-server-02',
-          cloud_vendor: '腾讯云',
-          status: 'running'
-        },
-        {
-          id: 3,
-          inner_ip: '192.168.1.103',
-          outer_ip: '',
-          cloud_area: '上海一区',
-          host_name: 'db-server-01',
-          cloud_vendor: '阿里云',
-          status: 'stopped'
-        },
-        {
-          id: 4,
-          inner_ip: '192.168.1.104',
-          outer_ip: '10.0.0.104',
-          cloud_area: '上海一区',
-          host_name: 'cache-server-01',
-          cloud_vendor: '阿里云',
-          status: 'running'
-        },
-        {
-          id: 5,
-          inner_ip: '192.168.1.105',
-          outer_ip: '10.0.0.105',
-          cloud_area: '广州一区',
-          host_name: 'app-server-01',
-          cloud_vendor: '华为云',
-          status: 'running'
-        }
-      ],
+      hosts: [],
       paginationConfig: {
-        count: 5,
+        count: 0,
         limit: 10,
         current: 1,
         'limit-list': [10, 20, 50, 100, 500]
-      }
+      },
+      unwatchFilter: null
+    }
+  },
+  mounted() {
+    this.initFilterStore()
+    this.loadHostList()
+  },
+  beforeDestroy() {
+    if (this.unwatchFilter) {
+      this.unwatchFilter()
     }
   },
   computed: {
@@ -145,6 +111,87 @@ export default {
     }
   },
   methods: {
+    async initFilterStore() {
+      await setupFilterStore({
+        bk_biz_id: 0,
+        modelIds: ['host'],
+        searchHandler: this.searchHandler.bind(this)
+      })
+      this.unwatchFilter = this.$watch(
+        () => [FilterStore.selected, FilterStore.condition, FilterStore.IP],
+        () => {
+          this.searchHandler()
+        },
+        { deep: true }
+      )
+    },
+    searchHandler() {
+      this.loadHostList()
+    },
+    async loadHostList() {
+      try {
+        const filterCondition = FilterStore.condition
+        const filterIP = FilterStore.IP
+        const filterSelected = FilterStore.selected || []
+        
+        const params = {
+          page: this.paginationConfig.current,
+          page_size: this.paginationConfig.limit
+        }
+        
+        if (Object.keys(filterCondition).length > 0) {
+          params.condition = []
+          Object.keys(filterCondition).forEach(key => {
+            const cond = filterCondition[key]
+            const val = cond.value
+            if (val === null || val === undefined || val === '') return
+            
+            const property = filterSelected.find(p => p.bk_property_id === key)
+            const modelId = property ? property.bk_obj_id : 'host'
+            
+            let submitValue = val
+            if (['$in', '$nin'].includes(cond.operator)) {
+              if (typeof val === 'string') {
+                submitValue = val.split(/[\n,，;；]/).map(s => s.trim()).filter(s => s.length > 0)
+              } else if (!Array.isArray(val)) {
+                submitValue = [val]
+              }
+            }
+            
+            const existing = params.condition.find(c => c.bk_obj_id === modelId)
+            if (existing) {
+              existing.condition.push({
+                field: key,
+                operator: cond.operator || '$eq',
+                value: submitValue
+              })
+            } else {
+              params.condition.push({
+                bk_obj_id: modelId,
+                fields: [],
+                condition: [{
+                  field: key,
+                  operator: cond.operator || '$eq',
+                  value: submitValue
+                }]
+              })
+            }
+          })
+        }
+        
+        const result = await modelAPI.listInstances('host', params)
+        if (result && result.data) {
+          this.hosts = result.data.info || []
+          this.paginationConfig.count = result.data.count || 0
+        }
+      } catch (error) {
+        console.error('加载主机列表失败:', error)
+        this.$bkMessage({
+          message: '加载主机列表失败',
+          theme: 'error'
+        })
+      }
+    },
     handleSearch (value) {
       this.searchKeyword = value
       this.paginationConfig.current = 1
@@ -153,10 +200,7 @@ export default {
       FilterForm.show()
     },
     handleRefresh () {
-      this.$bkMessage({
-        message: '刷新成功',
-        theme: 'success'
-      })
+      this.loadHostList()
     },
     handleAdd () {
       this.$bkInfo({
@@ -174,9 +218,12 @@ export default {
     },
     handlePageChange (page) {
       this.paginationConfig.current = page
+      this.loadHostList()
     },
     handleLimitChange (limit) {
       this.paginationConfig.limit = limit
+      this.paginationConfig.current = 1
+      this.loadHostList()
     }
   }
 }

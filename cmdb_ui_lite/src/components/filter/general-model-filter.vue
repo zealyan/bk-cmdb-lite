@@ -85,15 +85,18 @@
                   size="small"
                   @enter="handleSearch">
                 </bk-input>
-                <bk-input
+                <bk-tag-input
                   v-else-if="isInOperator(item.operator)"
-                  v-model="item.valueText"
-                  type="textarea"
+                  v-model="item.valueTags"
                   :placeholder="getInPlaceholder(item)"
-                  :rows="1"
+                  :has-delete-icon="true"
+                  :allow-create="true"
+                  :allow-auto-match="true"
+                  :collapse-tags="true"
+                  :paste-fn="(val) => handleTagPaste(val, item)"
                   size="small"
-                  @enter="handleSearch">
-                </bk-input>
+                  @change="handleTagChange(item)">
+                </bk-tag-input>
                 <bk-input
                   v-else
                   v-model="item.valueText"
@@ -331,12 +334,11 @@ export default {
         
         let valueText = ''
         let valueRange = ''
+        let valueTags = []
         
         if (isDateTime) {
-          // 对于日期时间类型，cmdb-search-date 和 cmdb-search-time 组件绑定的是 valueText
           valueText = Array.isArray(value) ? [...value] : (value ? [value] : [])
         } else if (isEnumOrList) {
-          // 枚举、布尔、列表类型使用 $in 操作符，值为数组
           const isInOp = this.isInOperator(operator)
           if (isInOp && typeof value === 'string') {
             valueText = value.split(',').map(v => v.trim()).filter(v => v)
@@ -346,11 +348,13 @@ export default {
         } else if (this.isRangeOperator(operator)) {
           valueRange = Array.isArray(value) ? value.join('\n') : value
         } else if (this.isInOperator(operator)) {
-          // in 操作符的值可能是数组，需要处理
           if (Array.isArray(value)) {
+            valueTags = [...value]
             valueText = value.join('\n')
           } else {
-            valueText = String(value)
+            const values = String(value).split(/[\n,，;；]/).map(v => v.trim()).filter(v => v.length > 0)
+            valueTags = values
+            valueText = value
           }
         } else {
           valueText = Array.isArray(value) ? value.join(',') : value
@@ -361,7 +365,8 @@ export default {
           property,
           operator,
           valueText,
-          valueRange
+          valueRange,
+          valueTags
         })
       })
       
@@ -396,7 +401,7 @@ export default {
       }
       
       if (this.isInOperator(item.operator)) {
-        return item.valueText || ''
+        return item.valueTags.length > 0 ? item.valueTags : item.valueText
       }
       
       return item.valueText || ''
@@ -543,7 +548,8 @@ export default {
         property,
         operator,
         valueText: isEnumOrList || isDateTime ? [] : (isBool ? '' : ''),
-        valueRange: ''
+        valueRange: '',
+        valueTags: []
       })
     },
     getDefaultOperator(property) {
@@ -614,6 +620,19 @@ export default {
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
+      item.valueTags = []
+    },
+    handleTagPaste(val, item) {
+      if (!val) return item.valueTags
+      const values = val.split(/,|;|\n/)
+        .map(v => v.trim())
+        .filter(v => v.length > 0)
+      const newValue = [...new Set([...item.valueTags, ...values])]
+      item.valueTags = newValue
+      return newValue
+    },
+    handleTagChange(item) {
+      item.valueText = item.valueTags.join('\n')
     },
     handleSearch() {
       const conditionMap = {}
