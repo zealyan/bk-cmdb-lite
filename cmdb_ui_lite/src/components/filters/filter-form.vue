@@ -251,6 +251,8 @@ export default {
         const id = property.bk_property_id
         if (Object.prototype.hasOwnProperty.call(this.condition, id)) {
           newCondition[id] = this.condition[id]
+        } else if (Object.prototype.hasOwnProperty.call(FilterStore.condition, id)) {
+          newCondition[id] = JSON.parse(JSON.stringify(FilterStore.condition[id]))
         } else {
           newCondition[id] = Utils.getDefaultData(property)
         }
@@ -457,6 +459,14 @@ export default {
       this.$emit('closed')
     },
     open() {
+      const storeCondition = {}
+      this.selected.forEach((property) => {
+        const id = property.bk_property_id
+        if (Object.prototype.hasOwnProperty.call(FilterStore.condition, id)) {
+          storeCondition[id] = JSON.parse(JSON.stringify(FilterStore.condition[id]))
+        }
+      })
+      this.condition = { ...this.condition, ...storeCondition }
       this.originIPCondition = { ...this.IPCondition }
       this.originCondition = JSON.parse(JSON.stringify(this.condition))
       this.isShow = true

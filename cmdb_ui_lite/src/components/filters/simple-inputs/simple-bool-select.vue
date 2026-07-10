@@ -1,9 +1,8 @@
 <template>
   <bk-select
-    :model-value="modelValue"
+    v-model="localValue"
     :options="options"
-    :placeholder="placeholder"
-    @change="handleChange">
+    :placeholder="placeholder">
   </bk-select>
 </template>
 
@@ -11,7 +10,7 @@
 export default {
   name: 'SimpleBoolSelect',
   props: {
-    modelValue: {
+    value: {
       type: [Boolean, String],
       default: ''
     },
@@ -26,12 +25,15 @@ export default {
         { label: '是', value: true },
         { label: '否', value: false }
       ]
-    }
-  },
-  methods: {
-    handleChange(value) {
-      this.$emit('update:modelValue', value)
-      this.$emit('change', value)
+    },
+    localValue: {
+      get() {
+        return this.value
+      },
+      set(val) {
+        this.$emit('input', val)
+        this.$emit('change', val)
+      }
     }
   }
 }

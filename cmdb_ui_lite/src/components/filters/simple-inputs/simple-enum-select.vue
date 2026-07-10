@@ -1,10 +1,9 @@
 <template>
   <bk-select
-    :model-value="modelValue"
+    v-model="localValue"
     :options="options"
     :multiple="multiple"
-    :placeholder="placeholder"
-    @change="handleChange">
+    :placeholder="placeholder">
   </bk-select>
 </template>
 
@@ -12,7 +11,7 @@
 export default {
   name: 'SimpleEnumSelect',
   props: {
-    modelValue: {
+    value: {
       type: [String, Array],
       default: ''
     },
@@ -44,12 +43,15 @@ export default {
         console.error('Parse enum option failed:', e)
       }
       return []
-    }
-  },
-  methods: {
-    handleChange(value) {
-      this.$emit('update:modelValue', value)
-      this.$emit('change', value)
+    },
+    localValue: {
+      get() {
+        return this.value
+      },
+      set(val) {
+        this.$emit('input', val)
+        this.$emit('change', val)
+      }
     }
   }
 }

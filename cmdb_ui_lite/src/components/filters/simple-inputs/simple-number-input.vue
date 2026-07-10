@@ -1,9 +1,8 @@
 <template>
   <bk-input
     type="number"
-    :model-value="modelValue"
-    :placeholder="placeholder"
-    @change="handleChange">
+    v-model="localValue"
+    :placeholder="placeholder">
   </bk-input>
 </template>
 
@@ -11,7 +10,7 @@
 export default {
   name: 'SimpleNumberInput',
   props: {
-    modelValue: {
+    value: {
       type: [Number, String],
       default: ''
     },
@@ -20,10 +19,15 @@ export default {
       default: ''
     }
   },
-  methods: {
-    handleChange(value) {
-      this.$emit('update:modelValue', value)
-      this.$emit('change', value)
+  computed: {
+    localValue: {
+      get() {
+        return this.value
+      },
+      set(val) {
+        this.$emit('input', val)
+        this.$emit('change', val)
+      }
     }
   }
 }

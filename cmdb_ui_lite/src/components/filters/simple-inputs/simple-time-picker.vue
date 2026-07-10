@@ -1,8 +1,7 @@
 <template>
   <bk-time-picker
-    :model-value="modelValue"
-    :placeholder="placeholder"
-    @change="handleChange">
+    v-model="localValue"
+    :placeholder="placeholder">
   </bk-time-picker>
 </template>
 
@@ -10,7 +9,7 @@
 export default {
   name: 'SimpleTimePicker',
   props: {
-    modelValue: {
+    value: {
       type: String,
       default: ''
     },
@@ -19,10 +18,15 @@ export default {
       default: ''
     }
   },
-  methods: {
-    handleChange(value) {
-      this.$emit('update:modelValue', value)
-      this.$emit('change', value)
+  computed: {
+    localValue: {
+      get() {
+        return this.value
+      },
+      set(val) {
+        this.$emit('input', val)
+        this.$emit('change', val)
+      }
     }
   }
 }
