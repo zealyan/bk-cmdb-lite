@@ -398,6 +398,9 @@ export default {
         // 深拷贝当前 condition 和 IP，避免引用问题
         const submitCondition = JSON.parse(JSON.stringify(this.condition))
         const submitIP = JSON.parse(JSON.stringify(this.IPCondition))
+        console.log('[filter-form] handleSearch → this.condition:', JSON.stringify(this.condition))
+        console.log('[filter-form] handleSearch → this.selected:', this.selected.map(p => p.bk_property_id))
+        console.log('[filter-form] handleSearch → submitCondition:', JSON.stringify(submitCondition))
         if (this.type === 'index') {
           return this.searchAction({ condition: submitCondition, IP: submitIP })
         }
@@ -408,10 +411,13 @@ export default {
         // 所以先更新 selected，然后在 nextTick 中设置 condition
         FilterStore.updateSelected([...this.selected])
         this.$nextTick(() => {
+          console.log('[filter-form] nextTick → FilterStore.condition BEFORE setCondition:', JSON.stringify(FilterStore.condition))
           FilterStore.setCondition({
             condition: submitCondition,
             IP: submitIP
           })
+          console.log('[filter-form] nextTick → FilterStore.condition AFTER setCondition:', JSON.stringify(FilterStore.condition))
+          console.log('[filter-form] nextTick → FilterStore.selected:', FilterStore.selected.map(p => p.bk_property_id))
           this.close()
         })
       }, 300)

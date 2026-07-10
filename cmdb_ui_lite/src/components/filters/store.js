@@ -43,18 +43,22 @@ const FilterStore = new Vue({
       this.modelPropertyMap = map
     },
     updateSelected(selected) {
+      console.log('[FilterStore] updateSelected:', selected.map(p => p.bk_property_id))
       this.selected = selected
     },
     updateCondition(condition) {
       this.condition = { ...this.condition, ...condition }
     },
     setCondition(data) {
+      console.log('[FilterStore] setCondition → data:', JSON.stringify(data))
       if (data.condition) {
         this.condition = data.condition
       }
       if (data.IP) {
         this.IP = data.IP
       }
+      console.log('[FilterStore] setCondition → this.condition:', JSON.stringify(this.condition))
+      console.log('[FilterStore] setCondition → this.selected:', this.selected.map(p => p.bk_property_id))
       this.dispatchSearch()
     },
     updateIP(IP) {
@@ -147,6 +151,8 @@ const FilterStore = new Vue({
       }
     },
     initCondition() {
+      console.log('[FilterStore] initCondition → current condition:', JSON.stringify(this.condition))
+      console.log('[FilterStore] initCondition → selected keys:', this.selected.map(p => p.bk_property_id))
       const newCondition = {}
       this.selected.forEach((property) => {
         const id = property.bk_property_id
@@ -161,8 +167,12 @@ const FilterStore = new Vue({
       // 只在 key 集合变化时才替换，避免覆盖已有值
       const oldKeys = Object.keys(this.condition).sort().join(',')
       const newKeys = Object.keys(newCondition).sort().join(',')
+      console.log('[FilterStore] initCondition → oldKeys:', oldKeys, 'newKeys:', newKeys)
       if (oldKeys !== newKeys) {
         this.condition = newCondition
+        console.log('[FilterStore] initCondition → REPLACED condition:', JSON.stringify(this.condition))
+      } else {
+        console.log('[FilterStore] initCondition → NO CHANGE (keys match)')
       }
     }
   }
