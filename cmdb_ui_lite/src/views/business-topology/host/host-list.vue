@@ -32,7 +32,7 @@
       v-bkloading="{ isLoading: loading, opacity: 1 }"
       :data="table.data"
       :pagination="table.pagination"
-      :max-height="tableMaxHeight"
+      :max-height="$APP.height - filtersTagHeight - 250"
       :shift-multi-checked="true"
       @page-change="handlePageChange"
       @page-limit-change="handleLimitChange"
@@ -145,7 +145,7 @@ export default {
       },
       searchKeyword: '',
       filterTags: [],
-      tableMaxHeight: 600,
+      filtersTagHeight: 0,
       lastNodeId: null
     }
   },
@@ -183,11 +183,19 @@ export default {
     }
   },
   mounted() {
-    this.updateTableMaxHeight()
-    window.addEventListener('resize', this.updateTableMaxHeight)
+    this.unwatchFilter = this.$watch(() => this.filterTags, () => {
+      this.$nextTick(() => {
+        const el = this.$el.querySelector('.filter-tag-wrapper')
+        if (el && el.getBoundingClientRect) {
+          this.filtersTagHeight = el.getBoundingClientRect().height
+        } else {
+          this.filtersTagHeight = 0
+        }
+      })
+    }, { immediate: true, deep: true })
   },
   beforeDestroy() {
-    window.removeEventListener('resize', this.updateTableMaxHeight)
+    this.unwatchFilter && this.unwatchFilter()
   },
   methods: {
     /**
@@ -578,17 +586,6 @@ export default {
      */
     handleRemoveFilter(index) {
       this.filterTags.splice(index, 1)
-    },
-
-    /**
-     * 更新表格最大高度（自适应）
-     * 与原项目一致：使用视口高度 - 顶部区域 - 分页区域
-     */
-    updateTableMaxHeight() {
-      // 原项目: $APP.height - filtersTagHeight - 250
-      // 250 包含：工具栏高度 + 分页高度 + 其他间距
-      const filtersTagHeight = this.filterTags.length ? 40 : 0
-      this.tableMaxHeight = window.innerHeight - filtersTagHeight - 250
     }
   }
 }
@@ -596,10 +593,7 @@ export default {
 
 <style lang="scss" scoped>
 .list-layout {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+    overflow: hidden;
 }
 
 .filter-tag-wrapper {
@@ -644,9 +638,12 @@ export default {
   }
 }
 
+.filter-tag-wrapper ~ .host-table {
+    margin-top: 0;
+}
+
 .host-table {
-  margin-top: 10px;
-  padding: 0 20px;
+    margin-top: 10px;
 }
 
 .host-id-link {

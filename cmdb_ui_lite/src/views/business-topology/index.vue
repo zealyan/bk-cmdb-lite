@@ -265,6 +265,8 @@ export default {
 .right-panel {
   flex: 1;
   min-width: 0;
+  height: 100%;
+  overflow: hidden;
 
   .topology-tab {
     height: 100%;
@@ -276,7 +278,6 @@ export default {
 
     ::v-deep .bk-tab-section {
       height: calc(100% - 50px);
-      overflow: auto;
     }
   }
 }
