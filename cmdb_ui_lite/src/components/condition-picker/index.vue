@@ -17,17 +17,18 @@
     <bk-button class="form-condition-button" :style="{ marginTop: selected.length ? '5px' : 0 }"
       :text="true"
       :disabled="disabled"
-      @click="openPopover">
+      @click="isShow = true">
       <i class="bk-icon icon-plus-circle"></i>
       {{ text }}
     </bk-button>
     <property-selector
-      v-if="isShow"
-      :key="popKey"
       slot="content"
+      v-if="isShow"
       ref="addConditionComp"
-      :selected="currentSelected"
-      :properties="properties"
+      :selected="selected"
+      :disabled-property-map="disabledProperties"
+      :models="models"
+      :property-map="propertyMap"
       :height="height"
       @change="handleChange">
     </property-selector>
@@ -35,8 +36,8 @@
 </template>
 
 <script>
+import FilterStore from '@/components/filters/store'
 import PropertySelector from './property-selector.vue'
-import FilterStore from '@/store/filter-store.js'
 
 export default {
   name: 'ConditionPicker',
@@ -52,90 +53,83 @@ export default {
       type: String,
       default: '添加条件'
     },
+    type: {
+      type: Number,
+      default: 3 // 1动态分组 2资源实例 3主机高级筛选
+    },
     selected: {
       type: Array,
-      default: () => []
+      default: () => ([])
     },
-    properties: {
-      type: Array,
-      default: () => []
+    propertyMap: {
+      type: [Object, Array],
+      default: () => ({})
     },
     handler: Function
   },
   data() {
     return {
       height: 490,
-      isShow: false,
-      popKey: 0
+      isShow: false
     }
   },
   computed: {
-    currentSelected() {
-      const val = FilterStore.selected.length > 0 ? FilterStore.selected : this.selected
-      console.log('[DEBUG] ConditionPicker currentSelected computed', {
-        fromFilterStore: FilterStore.selected.length,
-        fromProps: this.selected.length,
-        result: val.length
+    groups() {
+      const sequence = ['host', 'module', 'set', 'biz']
+      return Object.keys(this.propertyMap).map((modelId) => {
+        return {
+          id: modelId,
+          name: modelId,
+          children: this.propertyMap[modelId]
+        }
+      }).sort((groupA, groupB) => sequence.indexOf(groupA.id) - sequence.indexOf(groupB.id))
+    },
+    models() {
+      return this.groups.map(group => ({
+        id: group.id,
+        bk_obj_name: group.name,
+        bk_obj_id: group.id
+      }))
+    },
+    disabledProperties() {
+      const disabledPropertyMap = {}
+      this.groups.forEach((group) => {
+        disabledPropertyMap[group.id] = []
       })
-      return val
-    }
-  },
-  created() {
-    console.log('[DEBUG] ConditionPicker created', {
-      propsSelected: this.selected.length,
-      propsProperties: this.properties.length
-    })
-    if (this.properties.length > 0) {
-      FilterStore.setProperties(this.properties)
+      return disabledPropertyMap
     }
   },
   watch: {
-    properties: {
-      immediate: true,
-      handler(newVal) {
-        console.log('[DEBUG] ConditionPicker properties watch', newVal?.length)
-        if (newVal && newVal.length > 0) {
-          FilterStore.setProperties(newVal)
+    isShow(val) {
+      if (val) {
+        const { bottom = 0 } = this.$refs?.popover?.$el?.getClientRects()?.[0] || {}
+        const dis = window.innerHeight - bottom
+        if (dis > 370 && dis < 500) {
+          this.height = dis - 10
+        } else {
+          this.height = 490
         }
       }
     }
   },
   methods: {
-    openPopover() {
-      console.log('[DEBUG] ConditionPicker openPopover called', {
-        popKey: this.popKey,
-        selected: this.selected.length,
-        filterStoreSelected: FilterStore.selected.length
-      })
-      this.isShow = false
-      this.$nextTick(() => {
-        this.isShow = true
-        this.popKey++
-        if (this.selected.length > 0) {
-          FilterStore.updateSelected(this.selected)
-        }
-        console.log('[DEBUG] ConditionPicker openPopover done', {
-          newPopKey: this.popKey,
-          isShow: this.isShow
-        })
-      })
-    },
     confirm() {
-      console.log('[DEBUG] ConditionPicker confirm called')
       this.isShow = false
     },
     handleChange() {
-      console.log('[DEBUG] ConditionPicker handleChange called')
-      const selected = this.$refs?.addConditionComp?.localSelected ?? this.currentSelected
-      console.log('[DEBUG] ConditionPicker handleChange selected', selected?.length, selected?.map(p => p.bk_property_name))
-      FilterStore.updateSelected([...selected])
-      if (this.handler) {
-        this.handler([...selected])
+      const selected = this.$refs?.addConditionComp?.localSelected ?? this.selected
+      if (this.type !== 3) {
+        return setTimeout(() => this.handler && this.handler([...selected]))
       }
+      setTimeout(() => {
+        FilterStore.updateSelected(selected)
+        FilterStore.updateUserBehavior(selected)
+      })
     }
   }
 }
 </script>
+
 <style lang="scss" scoped>
 .form-condition-button {
   :deep(> div) {

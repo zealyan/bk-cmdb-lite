@@ -1,7 +1,5 @@
 <template>
-  <div class="property-selector-content" :style="{
-    height: `${height}px`
-  }">
+  <div class="property-selector-content" :style="{ height: `${height}px` }">
     <div class="property-selector-options">
       <bk-input class="options-filter"
         v-model.trim="filter"
@@ -11,43 +9,58 @@
       </bk-input>
     </div>
     <div class="property-selector-container">
-      <div class="property-selector-group clearfix">
+      <div class="property-selector-group clearfix"
+        v-for="model in models"
+        v-show="isShowGroup(model)"
+        :key="model.id">
         <label class="group-label">
-          属性
+          {{model.bk_obj_name}}
           <span class="count">
-            （{{ matchedProperties.length }}）
+            （{{matchedPropertyMap[model.bk_obj_id] ? matchedPropertyMap[model.bk_obj_id].length : 0}}）
           </span>
         </label>
         <bk-checkbox
-          ref="checkboxRef"
-          :indeterminate="indeterminate"
-          :checked="allChecked"
-          @change="handleAllCheckChange"
-          class="all-check"
-        >全选</bk-checkbox>
+          :disabled="getCheckDisabled(model.bk_obj_id)"
+          :indeterminate="indeterminate[model.bk_obj_id]"
+          :checked="allChecked[model.bk_obj_id]"
+          @change="handleChangeAllCheck(model.bk_obj_id, $event)"
+          class="all-check">
+          全选
+        </bk-checkbox>
         <div class="group-property-list">
           <bk-checkbox
             :class="['group-property-item',
                      { 'is-checked': isChecked(property),
-                       'is-checked-diabled': isDisabled(property) }]"
-            v-for="property in matchedProperties"
-            :key="property.bk_property_id"
+                       'is-checked-diabled': isDisabled(model, property) }]"
+            v-for="property in matchedPropertyMap[model.bk_obj_id]"
+            v-show="isShowProperty(property)"
+            :key="property.id"
             :title="property.bk_property_name"
             :checked="isChecked(property)"
-            :disabled="isDisabled(property)"
-            @change="handlePropertyChange(property, $event)">
-            <div style="width: calc(100% - 30px);">
-              <div class="group-property-name">{{ property.bk_property_name }}</div>
+            :disabled="isDisabled(model, property)"
+            @change="handleChange(property, $event)">
+            <div style="width: calc(100% - 30px);"
+              v-bk-tooltips.top-start="{
+                disabled: !isDisabled(model, property),
+                content: '该字段不支持配置'
+              }">
+              <div class="group-property-name">{{property.bk_property_name}}</div>
             </div>
             <i class="icon-cc-selected"></i>
           </bk-checkbox>
         </div>
       </div>
     </div>
+
+    <cmdb-data-empty v-if="isShowEmpty"
+      :stuff="dataEmpty"
+      @clear="handleClearFilter"></cmdb-data-empty>
   </div>
 </template>
 
 <script>
+import debounce from 'lodash.debounce'
+
 export default {
   name: 'PropertySelector',
   props: {
@@ -57,215 +70,192 @@ export default {
     },
     selected: {
       type: Array,
-      default: () => []
+      default: () => ([])
     },
-    properties: {
+    disabledPropertyMap: {
+      type: Object,
+      default: () => ({})
+    },
+    models: {
       type: Array,
-      default: () => []
+      default: () => ([])
+    },
+    propertyMap: {
+      type: [Object, Array],
+      default: () => ({})
     }
   },
   data() {
     return {
       filter: '',
+      matchedPropertyMap: {},
       localSelected: [],
-      allChecked: false,
-      indeterminate: false,
-      matchedProperties: []
+      indeterminate: {},
+      allChecked: {},
+      disabledPropertyCounts: {},
+      dataEmpty: {
+        type: 'empty',
+        payload: {
+          defaultText: '暂无数据'
+        }
+      }
     }
   },
   computed: {
-    availableProperties() {
-      // 与原项目保持一致: 排除 bk_isapi=true 的系统字段和 id 字段
-      return this.properties.filter(p => p.bk_property_id !== 'id' && !p.bk_isapi)
-    },
-    disabledPropertyIds() {
-      return this.selected.map(p => p.bk_property_id)
+    isShowEmpty() {
+      let isNoData = true
+      Object.values(this.matchedPropertyMap).forEach((value) => {
+        if (value && value.length > 0) isNoData = false
+      })
+      return isNoData
     }
   },
   watch: {
-    filter(val) {
-      console.log('[DEBUG] filter watch', val)
-      this.handleFilter(val)
+    propertyMap: {
+      handler(val) {
+        this.matchedPropertyMap = JSON.parse(JSON.stringify(val))
+        this.initDisabledProperty()
+        this.initChecked()
+      },
+      immediate: true
     },
     selected: {
-      immediate: true,
-      deep: true,
-      handler(newVal) {
-        console.log('[DEBUG] selected prop watch', newVal?.length, newVal?.map(p => p.bk_property_name))
-        this.localSelected = [...newVal]
-        // 确保 matchedProperties 已经被初始化
-        if (this.matchedProperties.length === 0 && this.availableProperties.length > 0) {
-          this.matchedProperties = [...this.availableProperties]
-          console.log('[DEBUG] selected watcher initialized matchedProperties', this.matchedProperties.length)
-        }
-        this.checkAllState()
-      }
+      handler(val) {
+        this.localSelected = [...val]
+        this.initChecked()
+      },
+      immediate: true
+    },
+    filter(val) {
+      this.handleFilter(val)
+      this.dataEmpty.type = val ? 'search' : 'empty'
     }
   },
-  created() {
-    console.log('[DEBUG] created lifecycle', {
-      selectedLength: this.selected.length,
-      propertiesLength: this.properties.length
-    })
-    this.localSelected = [...this.selected]
-    this.matchedProperties = [...this.availableProperties]
-    this.filter = ''
-    this.checkAllState()
-  },
-  mounted() {
-    console.log('[DEBUG] mounted lifecycle', {
-      selectedLength: this.selected.length,
-      propertiesLength: this.properties.length,
-      localSelected: this.localSelected.map(p => p.bk_property_name)
-    })
-    this.localSelected = [...this.selected]
-    this.matchedProperties = [...this.availableProperties]
-    this.filter = ''
-    this.checkAllState()
-  },
   methods: {
-    handleFilter(filter) {
-      console.log('[DEBUG] handleFilter', { filter, availableCount: this.availableProperties.length })
-      if (!filter) {
-        this.matchedProperties = this.availableProperties
+    handleFilter: debounce(function(filter) {
+      if (!filter.length) {
+        this.matchedPropertyMap = JSON.parse(JSON.stringify(this.propertyMap))
       } else {
-        const lowerFilter = filter.toLowerCase()
-        this.matchedProperties = this.availableProperties.filter(property => {
-          return property.bk_property_name.toLowerCase().includes(lowerFilter) || 
-                 property.bk_property_id.toLowerCase().includes(lowerFilter)
+        const matchedPropertyMapOther = {}
+        const lowerCaseFilter = filter.toLowerCase()
+        Object.keys(this.propertyMap).forEach((modelId) => {
+          const properties = this.propertyMap[modelId] || []
+          matchedPropertyMapOther[modelId] = properties.filter((property) => {
+            const lowerCaseName = (property.bk_property_name || '').toLowerCase()
+            const lowerPropertyId = (property.bk_property_id || '').toLowerCase()
+            return lowerCaseName.indexOf(lowerCaseFilter) > -1 || lowerPropertyId.indexOf(lowerCaseFilter) > -1
+          })
         })
+        this.matchedPropertyMap = matchedPropertyMapOther
       }
-      console.log('[DEBUG] handleFilter result', { matchedCount: this.matchedProperties.length })
-      this.checkAllState()
+      Object.keys(this.matchedPropertyMap).forEach(property => this.allCheckState({ bk_obj_id: property }))
+    }, 300),
+
+    isShowGroup(model) {
+      const props = this.matchedPropertyMap[model.bk_obj_id]
+      return props && props.length > 0
     },
+
+    isShowProperty(property) {
+      const modelId = property.bk_obj_id
+      return this.matchedPropertyMap[modelId] && this.matchedPropertyMap[modelId].some(target => target === property)
+    },
+
     isChecked(property) {
-      const checked = this.localSelected.some(target => target.bk_property_id === property.bk_property_id)
-      return checked
+      return this.localSelected.some(target => target.id === property.id)
     },
-    isDisabled(property) {
-      return this.disabledPropertyIds.includes(property.bk_property_id)
+
+    isDisabled(model, property) {
+      return this.disabledPropertyMap[model.bk_obj_id] && this.disabledPropertyMap[model.bk_obj_id].includes(property.bk_property_id)
     },
-    handlePropertyChange(property, event) {
-      console.log('[DEBUG] handlePropertyChange', {
-        property: property.bk_property_name,
-        eventType: typeof event,
-        event
-      })
-      let checked
-      if (typeof event === 'boolean') {
-        checked = event
-      } else if (event.target) {
-        checked = event.target.checked
-      } else {
-        checked = false
-      }
-      console.log('[DEBUG] handlePropertyChange resolved', { checked })
-      this.updateLocalSelected(property, checked)
-      this.checkAllState()
-      console.log('[DEBUG] after handlePropertyChange', {
-        localSelectedLength: this.localSelected.length,
-        allChecked: this.allChecked,
-        indeterminate: this.indeterminate
-      })
-      this.$emit('change')
+
+    getLength(bkObjId) {
+      const length = (this.matchedPropertyMap[bkObjId] || []).length
+      const disabledLength = this.disabledPropertyCounts[bkObjId] || 0
+      return { length, disabledLength }
     },
-    handleAllCheckChange(event) {
-      console.log('[DEBUG] handleAllCheckChange', {
-        eventType: typeof event,
-        event
-      })
-      let checked
-      if (typeof event === 'boolean') {
-        checked = event
-      } else if (event.target) {
-        checked = event.target.checked
-      } else {
-        checked = false
-      }
-      console.log('[DEBUG] handleAllCheckChange resolved', { checked })
-      this.indeterminate = false
-      this.allChecked = checked
-      console.log('[DEBUG] handleAllCheckChange before', {
-        localSelectedLength: this.localSelected.length,
-        matchedPropertiesLength: this.matchedProperties.length
-      })
-      if (checked) {
-        this.matchedProperties.forEach(target => {
-          if (!this.isDisabled(target)) {
-            this.addToSelected(target)
-          }
-        })
-      } else {
-        this.localSelected = this.localSelected.filter(item => this.isDisabled(item))
-      }
-      console.log('[DEBUG] handleAllCheckChange after', {
-        localSelectedLength: this.localSelected.length,
-        allChecked: this.allChecked
-      })
-      this.checkAllState()
-      console.log('[DEBUG] after checkAllState in allCheck', {
-        allChecked: this.allChecked,
-        indeterminate: this.indeterminate
-      })
-      this.$emit('change')
+
+    getCheckDisabled(bkObjId) {
+      const { length, disabledLength } = this.getLength(bkObjId)
+      return length === disabledLength
     },
-    addToSelected(property) {
-      const exists = this.localSelected.some(item => item.bk_property_id === property.bk_property_id)
-      if (!exists) {
-        this.localSelected.push(property)
-        console.log('[DEBUG] addToSelected added', property.bk_property_name)
-      } else {
-        console.log('[DEBUG] addToSelected already exists', property.bk_property_name)
-      }
-    },
+
     updateLocalSelected(property, checked) {
-      console.log('[DEBUG] updateLocalSelected', {
-        property: property.bk_property_name,
-        checked
-      })
-      const index = this.localSelected.findIndex(item => item.bk_property_id === property.bk_property_id)
-      console.log('[DEBUG] updateLocalSelected index', index)
+      const index = this.localSelected.findIndex(target => target.id === property.id)
       if (checked && index === -1) {
         this.localSelected.push(property)
-        console.log('[DEBUG] updateLocalSelected added')
-      } else if (!checked && index > -1) {
+      }
+      if (!checked && index > -1) {
         this.localSelected.splice(index, 1)
-        console.log('[DEBUG] updateLocalSelected removed')
       }
-      console.log('[DEBUG] updateLocalSelected final length', this.localSelected.length)
     },
-    checkAllState() {
-      console.log('[DEBUG] checkAllState called')
-      const availableCount = this.matchedProperties.filter(p => !this.isDisabled(p)).length
-      const checkedCount = this.matchedProperties.filter(p => this.isChecked(p) && !this.isDisabled(p)).length
-      console.log('[DEBUG] checkAllState counts', {
-        availableCount,
-        checkedCount
-      })
-      if (availableCount === 0) {
-        this.allChecked = false
-        this.indeterminate = false
-        console.log('[DEBUG] checkAllState no available items')
-        return
-      }
-      if (checkedCount > 0) {
-        if (checkedCount === availableCount) {
-          this.allChecked = true
-          this.indeterminate = false
-          console.log('[DEBUG] checkAllState all checked')
-        } else {
-          this.allChecked = false
-          this.indeterminate = true
-          console.log('[DEBUG] checkAllState partially checked, show indeterminate')
+
+    handleChange(property, checked) {
+      this.updateLocalSelected(property, checked)
+      this.allCheckState(property)
+      this.$emit('change')
+    },
+
+    handleChangeAllCheck(bkObjId, checked) {
+      this.$set(this.indeterminate, bkObjId, false)
+      this.$set(this.allChecked, bkObjId, checked)
+      const properties = this.matchedPropertyMap[bkObjId] || []
+      properties.forEach((target) => {
+        const isDisabled = this.disabledPropertyMap[bkObjId] && this.disabledPropertyMap[bkObjId].includes(target.bk_property_id)
+        if (!isDisabled) {
+          this.updateLocalSelected(target, checked)
         }
-      } else {
-        this.allChecked = false
-        this.indeterminate = false
-        console.log('[DEBUG] checkAllState none checked')
+      })
+      this.$emit('change')
+    },
+
+    allCheckState({ bk_obj_id: bkObjId }) {
+      const { length, disabledLength } = this.getLength(bkObjId)
+      if (length === 0) return
+      const matchedPropertyMapIdSet = new Set()
+      const properties = this.matchedPropertyMap[bkObjId] || []
+      properties.forEach(property => matchedPropertyMapIdSet.add(property.id))
+      const currentCheckedCount = this.localSelected.filter(target => target.bk_obj_id === bkObjId
+        && matchedPropertyMapIdSet.has(target.id)).length || 0
+
+      let isIndeterminate = false
+      let isChecked = false
+
+      if (currentCheckedCount > 0) {
+        if (currentCheckedCount === length - disabledLength) {
+          isChecked = true
+        } else {
+          isIndeterminate = true
+        }
       }
-      console.log('[DEBUG] checkAllState result', {
-        allChecked: this.allChecked,
-        indeterminate: this.indeterminate
+      this.$set(this.indeterminate, bkObjId, isIndeterminate)
+      this.$set(this.allChecked, bkObjId, isChecked)
+    },
+
+    handleClearFilter() {
+      this.filter = ''
+    },
+
+    initChecked() {
+      this.models.forEach((model) => {
+        const objId = model.bk_obj_id
+        if (objId) {
+          this.allCheckState({ bk_obj_id: objId })
+        }
+      })
+    },
+
+    initDisabledProperty() {
+      Object.keys(this.matchedPropertyMap).forEach((bkObjId) => {
+        let length = 0
+        const properties = this.matchedPropertyMap[bkObjId] || []
+        properties.forEach((target) => {
+          const isDisabled = this.disabledPropertyMap[bkObjId] && this.disabledPropertyMap[bkObjId].includes(target.bk_property_id)
+          if (isDisabled) {
+            length += 1
+          }
+        })
+        this.$set(this.disabledPropertyCounts, bkObjId, length)
       })
     }
   }
@@ -278,31 +268,7 @@ export default {
   max-height: 500px;
   padding: 10px 14px;
   margin: -.3rem -.6rem;
-  box-sizing: border-box;
 }
-
-.property-selector-options {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.options-filter {
-  width: 100%;
-  box-sizing: border-box;
-  :deep(.bk-form-control) {
-    width: 100%;
-    box-sizing: border-box;
-  }
-  :deep(.bk-input-text) {
-    width: 100%;
-    box-sizing: border-box;
-  }
-  :deep(.bk-form-input) {
-    width: 100%;
-    box-sizing: border-box;
-  }
-}
-
 .property-selector-container {
   max-height: calc(100% - 32px);
   margin-right: -14px;
@@ -310,119 +276,103 @@ export default {
   padding: 0 14px;
   overflow-y: auto;
 }
-
 .property-selector-group {
   margin-top: 15px;
-}
 
-.group-label {
-  display: block;
-  font-weight: bold;
-  font-size: 12px;
-  color: #313237;
-  float: left;
-}
-
-.count {
-  font-size: 12px;
-  color: #63656E;
-  font-weight: normal;
-}
-
-.all-check {
-  float: right;
-  :deep(.bk-checkbox-text) {
+  .group-label {
+    display: block;
+    font-weight: bold;
     font-size: 12px;
-  }
-}
+    color: #313237;
+    float: left;
 
-.group-property-list {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  margin-top: 4px;
-  gap: 3px 14px;
-  float: left;
-  width: 100%;
-}
-
-.group-property-item {
-  display: inline-flex;
-  align-items: center;
-  flex: calc(50% - 4px);
-  line-height: 32px;
-  padding-left: 6px;
-  margin-left: -6px;
-  box-sizing: border-box;
-  border-radius: 2px;
-  transition: background-color 0.2s;
-}
-
-.group-property-name {
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.icon-cc-selected {
-  font-size: 24px;
-  color: #3A84FF;
-  opacity: 0;
-}
-
-.group-property-item {
-  &:hover {
-    background: #F5F7FA;
+    .count {
+      font-size: 12px;
+      color: #63656E;
+      font-weight: normal;
+    }
   }
 
-  &.is-checked {
-    background: #F5F7FA;
+  .all-check {
+    float: right;
+    ::v-deep(.bk-checkbox-text) {
+      font-size: 12px;
+    }
   }
-}
 
-.group-property-item.is-checked {
-  :deep(.bk-checkbox-text) {
-    color: #3A84FF;
-  }
-  .icon-cc-selected {
-    opacity: 1;
-  }
-}
-
-.group-property-item.is-checked-diabled {
-  background: #f9fafd;
-  :deep(.bk-checkbox-text),
-  .icon-cc-selected {
-    color: #dcdee5;
-  }
-}
-
-.group-property-item :deep {
-  .bk-checkbox {
-    flex: 16px 0 0;
-    opacity: 0;
-    position: absolute;
-  }
-  .bk-checkbox-text {
-    font-size: 12px;
-    padding-right: 10px;
-    margin: 0;
-    width: 100%;
+  .group-property-list {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    gap: 3px 14px;
+    float: left;
+    width: 100%;
 
-.clearfix::after {
-  content: '';
-  display: table;
-  clear: both;
+    .group-property-item {
+      display: inline-flex;
+      align-items: center;
+      flex: calc(50% - 4px);
+      line-height: 32px;
+      padding-left: 6px;
+      margin-left: -6px;
+
+      .group-property-name {
+        display: block;
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .icon-cc-selected {
+        font-size: 24px;
+        color: #3A84FF;
+        opacity: 0;
+      }
+
+      &.is-checked,
+      &:hover {
+        background: #F5F7FA;
+        border-radius: 2px;
+      }
+
+      &.is-checked {
+        ::v-deep(.bk-checkbox-text) {
+          color: #3A84FF;
+        }
+        .icon-cc-selected {
+          opacity: 1;
+        }
+      }
+
+      &.is-checked-diabled {
+        background: #f9fafd;
+        ::v-deep(.bk-checkbox-text),
+        .icon-cc-selected {
+          color: #dcdee5;
+        }
+      }
+
+      ::v-deep {
+        .bk-checkbox {
+          flex: 16px 0 0;
+          opacity: 0;
+          position: absolute;
+        }
+        .bk-checkbox-text {
+          font-size: 12px;
+          padding-right: 10px;
+          margin: 0;
+          width: 100%;
+          display: flex;
+          justify-content: space-between;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
+    }
+  }
 }
 </style>
