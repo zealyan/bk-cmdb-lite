@@ -119,11 +119,19 @@ export default {
     handleChange() {
       const selected = this.$refs?.addConditionComp?.localSelected ?? this.selected
       if (this.type !== 3) {
-        return setTimeout(() => this.handler && this.handler([...selected]))
+        // type=1/2 时：更新 FilterStore 并通知父组件
+        setTimeout(() => {
+          FilterStore.updateSelected(selected)
+          FilterStore.updateUserBehavior(selected)
+          this.$emit('change', [...selected])
+          this.handler && this.handler([...selected])
+        })
+        return
       }
       setTimeout(() => {
         FilterStore.updateSelected(selected)
         FilterStore.updateUserBehavior(selected)
+        this.$emit('change', [...selected])
       })
     }
   }

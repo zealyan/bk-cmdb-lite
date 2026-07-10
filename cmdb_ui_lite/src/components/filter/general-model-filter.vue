@@ -11,11 +11,12 @@
       <div class="filter-header">
         <div class="filter-operate">
           <condition-picker
-            :properties="properties"
+            :property-map="groupedPropertyMap"
             :selected="filterItems.map(item => item.property)"
             :disabled="!showAddButton"
-            :handler="handleAddConditions"
-          ></condition-picker>
+            :type="2"
+            @change="handleConditionPickerChange">
+          </condition-picker>
           <bk-button
             v-if="hasCondition"
             class="clear-btn"
@@ -221,6 +222,26 @@ export default {
         return Math.floor(screenWidth * 0.85)
       }
       return Math.floor(screenWidth * 0.95)
+    },
+    /**
+     * 将平面属性数组转换为按模型分组的 propertyMap
+     * 与 condition-picker 组件的 propertyMap prop 兼容
+     */
+    groupedPropertyMap() {
+      const map = {}
+      const fallbackModelId = this.$route?.params?.modelId || 'default'
+      this.properties.forEach(property => {
+        const modelId = property.bk_obj_id || fallbackModelId
+        if (!map[modelId]) {
+          map[modelId] = []
+        }
+        // 确保每个属性都有 bk_obj_id，用于后续分组
+        if (!property.bk_obj_id) {
+          property = { ...property, bk_obj_id: modelId }
+        }
+        map[modelId].push(property)
+      })
+      return map
     },
     hasCondition() {
       return this.filterItems.some(item => {
@@ -555,6 +576,24 @@ export default {
           this.addItem(property)
         }
       })
+    },
+    /**
+     * condition-picker 变更回调（与新版 condition-picker 兼容）
+     * 新版 condition-picker 通过 FilterStore 管理选中状态
+     */
+    handleConditionPickerChange() {
+      const FilterStore = require('@/components/filters/store').default
+      const selected = FilterStore.selected || []
+      // 找出新增的属性
+      const currentIds = this.filterItems.map(item => item.property.bk_property_id)
+      selected.forEach(property => {
+        if (!currentIds.includes(property.bk_property_id)) {
+          this.addItem(property)
+        }
+      })
+      // 找出移除的属性
+      const selectedIds = selected.map(p => p.bk_property_id)
+      this.filterItems = this.filterItems.filter(item => selectedIds.includes(item.property.bk_property_id))
     },
     handleRemoveItem(index) {
       this.filterItems.splice(index, 1)
