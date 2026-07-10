@@ -54,7 +54,7 @@ class FilterStore {
   updateUserBehavior (selected) {
     const behaviors = [...this.userBehavior]
     selected.forEach(item => {
-      const index = behaviors.findIndex(behavior => behavior.id === item.id)
+      const index = behaviors.findIndex(behavior => behavior.bk_property_id === item.bk_property_id)
       if (index > -1) {
         behaviors.splice(index, 1)
       }

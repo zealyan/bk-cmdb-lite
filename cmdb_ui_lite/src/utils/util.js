@@ -7,14 +7,14 @@ export const getConditionSelect = (val, oldVal) => {
   }
 
   val.forEach(item => {
-    const index = oldVal.findIndex(oldItem => oldItem.id === item.id)
+    const index = oldVal.findIndex(oldItem => oldItem.bk_property_id === item.bk_property_id)
     if (index === -1) {
       addSelect.push(item)
     }
   })
 
   oldVal.forEach(item => {
-    const index = val.findIndex(newItem => newItem.id === item.id)
+    const index = val.findIndex(newItem => newItem.bk_property_id === item.bk_property_id)
     if (index === -1) {
       deleteSelect.push(item)
     }

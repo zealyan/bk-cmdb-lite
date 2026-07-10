@@ -61,7 +61,7 @@
         <bk-form-item
           class="filter-item"
           v-for="(property, index) in selected"
-          :key="property.id"
+          :key="property.bk_property_id"
           :class="[`filter-item-${property.bk_property_type}`, { 'last-item': index === selected.length - 1 && scrollToBottom }]">
           <label class="item-label">
             {{ property.bk_property_name }}
@@ -75,7 +75,7 @@
               :custom-type-map="customOperatorTypeMap"
               :symbol-map="operatorSymbolMap"
               :desc-map="operatorDescMap"
-              v-model="condition[property.id].operator"
+              v-model="condition[property.bk_property_id].operator"
               @change="handleOperatorChange(property, ...arguments)">
             </operator-selector>
             <component
@@ -83,8 +83,8 @@
               :is="getComponentName(property)"
               :placeholder="getPlaceholder(property)"
               :property="property"
-              :ref="`component-${property.id}`"
-              v-model.trim="condition[property.id].value"
+              :ref="`component-${property.bk_property_id}`"
+              v-model.trim="condition[property.bk_property_id].value"
               @change="handleChange"
               @inputchange="handleInputChange">
             </component>
@@ -255,7 +255,7 @@ export default {
     },
     getComponentName(property) {
       const type = property.bk_property_type
-      const { operator } = this.condition[property.id]
+      const { operator } = this.condition[property.bk_property_id]
       const normal = this.getSimpleComponentName(type)
 
       if (Utils.numberUseIn(property, operator)) {
@@ -295,9 +295,9 @@ export default {
       }
     },
     handleOperatorChange(property, operator) {
-      const { value } = this.condition[property.id]
+      const { value } = this.condition[property.bk_property_id]
       const effectValue = Utils.getOperatorSideEffect(property, operator, value)
-      this.condition[property.id].value = effectValue
+      this.condition[property.bk_property_id].value = effectValue
     },
     async handleRemove(property) {
       const index = this.selected.indexOf(property)
@@ -329,7 +329,7 @@ export default {
     },
     clearCondition() {
       Object.keys(this.condition).forEach(id => {
-        const property = this.selected.find(p => p.id?.toString() === id?.toString())
+        const property = this.selected.find(p => p.bk_property_id?.toString() === id?.toString())
         const propertyCondition = this.condition[id]
         if (propertyCondition) {
           const defaultValue = Utils.getOperatorSideEffect(property, propertyCondition.operator, '')

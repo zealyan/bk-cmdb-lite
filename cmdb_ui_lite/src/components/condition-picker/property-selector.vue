@@ -162,7 +162,7 @@ export default {
     },
 
     isChecked(property) {
-      return this.localSelected.some(target => target.id === property.id)
+      return this.localSelected.some(target => target.bk_property_id === property.bk_property_id)
     },
 
     isDisabled(model, property) {
@@ -181,7 +181,7 @@ export default {
     },
 
     updateLocalSelected(property, checked) {
-      const index = this.localSelected.findIndex(target => target.id === property.id)
+      const index = this.localSelected.findIndex(target => target.bk_property_id === property.bk_property_id)
       if (checked && index === -1) {
         this.localSelected.push(property)
       }
@@ -214,9 +214,9 @@ export default {
       if (length === 0) return
       const matchedPropertyMapIdSet = new Set()
       const properties = this.matchedPropertyMap[bkObjId] || []
-      properties.forEach(property => matchedPropertyMapIdSet.add(property.id))
+      properties.forEach(property => matchedPropertyMapIdSet.add(property.bk_property_id))
       const currentCheckedCount = this.localSelected.filter(target => target.bk_obj_id === bkObjId
-        && matchedPropertyMapIdSet.has(target.id)).length || 0
+        && matchedPropertyMapIdSet.has(target.bk_property_id)).length || 0
 
       let isIndeterminate = false
       let isChecked = false
