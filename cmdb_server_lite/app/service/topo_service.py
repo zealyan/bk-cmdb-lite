@@ -915,6 +915,8 @@ def search_hosts(params: Dict[str, Any],
     ip_data = ip_info.get('data', [])
     ip_exact = ip_info.get('exact', 0)
     ip_flag = ip_info.get('flag', 'bk_host_innerip|bk_host_outerip')
+    if isinstance(ip_flag, list):
+        ip_flag = '|'.join(ip_flag)
 
     if ip_data:
         ip_cond, ip_params = _build_ip_condition(ip_data, ip_exact, ip_flag, param_idx)
