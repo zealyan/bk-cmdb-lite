@@ -150,13 +150,22 @@ export function buildSearchParams(condition, properties, options = {}) {
                 return
             }
 
+            // $in/$nin 操作符：将字符串分割为数组
+            let submitValue = value
+            if (operator === '$in' || operator === '$nin') {
+                if (typeof value === 'string') {
+                    submitValue = value.split(/[\n,，;；]/).map(s => s.trim()).filter(s => s.length > 0)
+                } else if (!Array.isArray(value)) {
+                    submitValue = [value]
+                }
+            }
+
             const cond = {
                 field: fieldId,
                 operator: operator,
+                value: submitValue,
                 fuzzy: operator === '$regex' || operator === '$like'
             }
-
-            cond.value = value
 
             conditions.push(cond)
         })

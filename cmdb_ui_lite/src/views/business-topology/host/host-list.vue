@@ -446,12 +446,22 @@ export default {
               return
             }
 
+            // $in/$nin 操作符：将字符串分割为数组
+            let submitValue = val
+            if (['$in', '$nin'].includes(cond.operator)) {
+              if (typeof val === 'string') {
+                submitValue = val.split(/[\n,，;；]/).map(s => s.trim()).filter(s => s.length > 0)
+              } else if (!Array.isArray(val)) {
+                submitValue = [val]
+              }
+            }
+
             const existing = payload.condition.find(c => c.bk_obj_id === modelId)
             if (existing) {
               existing.condition.push({
                 field: fieldId,
                 operator: cond.operator || '$eq',
-                value: val
+                value: submitValue
               })
             } else {
               payload.condition.push({
@@ -460,7 +470,7 @@ export default {
                 condition: [{
                   field: fieldId,
                   operator: cond.operator || '$eq',
-                  value: val
+                  value: submitValue
                 }]
               })
             }
