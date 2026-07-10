@@ -65,25 +65,33 @@
 
     <!-- 右侧搜索区 -->
     <div class="options options-right">
-      <bk-input class="option-fast-search"
-        v-model.trim="searchKeyword"
-        placeholder="IP/主机名称"
-        right-icon="bk-icon icon-search"
-        @enter="handleSearch"
-        @clear="handleClearSearch">
-      </bk-input>
-      <bk-button class="option-filter ml10"
-        icon="bk-icon icon-funnel"
+      <filter-fast-search class="option-fast-search"
+        @search="handleSearch">
+      </filter-fast-search>
+      <filter-collection class="option-collection ml10"
+        @apply="handleCollectionApply">
+      </filter-collection>
+      <icon-button :class="['option-filter', 'ml10', { active: hasFilterCondition }]"
+        icon="icon-cc-funnel"
+        v-bk-tooltips.top="'高级筛选'"
         @click="handleSetFilters">
-        高级筛选
-      </bk-button>
+      </icon-button>
     </div>
   </div>
 </template>
 
 <script>
+import FilterFastSearch from '@/components/filters/filter-fast-search.vue'
+import FilterCollection from '@/components/filters/filter-collection.vue'
+import IconButton from '@/components/ui/button/icon-button.vue'
+
 export default {
   name: 'HostListOptions',
+  components: {
+    FilterFastSearch,
+    FilterCollection,
+    IconButton
+  },
   props: {
     // 选中的主机数量
     selection: {
@@ -105,7 +113,8 @@ export default {
     return {
       isTransferMenuOpen: false,
       isMoreMenuOpen: false,
-      searchKeyword: ''
+      searchKeyword: '',
+      hasFilterCondition: false
     }
   },
   computed: {
@@ -146,15 +155,20 @@ export default {
     handleRefresh() {
       this.$emit('refresh')
     },
-    handleSearch() {
-      this.$emit('search', this.searchKeyword)
+    handleSearch(keyword) {
+      this.searchKeyword = keyword
+      this.$emit('search', keyword)
     },
     handleClearSearch() {
       this.searchKeyword = ''
       this.$emit('search', '')
     },
     handleSetFilters() {
+      this.hasFilterCondition = true
       this.$emit('set-filters')
+    },
+    handleCollectionApply(collection) {
+      this.$emit('collection-apply', collection)
     }
   }
 }
@@ -184,7 +198,39 @@ export default {
   }
 
   .option-fast-search {
-    width: 300px;
+    flex: 1;
+    max-width: 300px;
+    margin-left: 10px;
+  }
+
+  .option-collection,
+  .option-filter {
+    flex: 32px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    cursor: pointer;
+    color: #63656e;
+    border-radius: 2px;
+    transition: color 0.2s;
+
+    &:hover,
+    &.active {
+      color: $primaryColor;
+    }
+  }
+
+  .option-filter {
+    ::v-deep {
+      .icon-wrapper {
+        font-size: 0;
+
+        &:before {
+          font-size: 14px;
+        }
+      }
+    }
   }
 
   .dropdown-icon {
