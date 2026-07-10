@@ -85,6 +85,7 @@
               :is="getComponentName(property)"
               :placeholder="getPlaceholder(property)"
               :property="property"
+              :operator="condition[property.bk_property_id]?.operator || ''"
               :ref="`component-${property.bk_property_id}`"
               v-model.trim="condition[property.bk_property_id].value"
               @change="handleChange"

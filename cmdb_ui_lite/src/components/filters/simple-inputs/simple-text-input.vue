@@ -30,6 +30,10 @@ export default {
       type: [String, Array],
       default: ''
     },
+    operator: {
+      type: String,
+      default: ''
+    },
     placeholder: {
       type: String,
       default: ''
@@ -37,7 +41,7 @@ export default {
   },
   computed: {
     isMultiple() {
-      return Array.isArray(this.value)
+      return ['$in', '$nin'].includes(this.operator)
     },
     localValue: {
       get() {
