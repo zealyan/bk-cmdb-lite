@@ -41,7 +41,8 @@
               :icon="icon"
               :selected="selected"
               :property-map="propertyMap"
-              :type="3">
+              :type="3"
+              @change="handleConditionPickerChange">
             </condition-picker>
             <bk-popconfirm
               content="确定清空筛选条件"
@@ -305,6 +306,76 @@ export default {
       await this.$nextTick()
       FilterStore.updateSelected([...this.selected])
       FilterStore.updateUserBehavior(this.selected)
+    },
+    handleConditionPickerChange(selected) {
+      const currentIds = this.selected.map(item => item.bk_property_id)
+      selected.forEach(property => {
+        if (!currentIds.includes(property.bk_property_id)) {
+          this.selected.push(property)
+          if (!this.condition[property.bk_property_id]) {
+            const defaultOperator = this.getDefaultOperator(property)
+            const operators = this.getOperators(property)
+            const operator = operators.length > 0 ? operators.find(op => op.id === defaultOperator)?.id || operators[0].id : defaultOperator
+            this.condition[property.bk_property_id] = {
+              operator,
+              value: null
+            }
+          }
+        }
+      })
+      const selectedIds = selected.map(p => p.bk_property_id)
+      this.selected = this.selected.filter(item => selectedIds.includes(item.bk_property_id))
+      Object.keys(this.condition).forEach(id => {
+        if (!selectedIds.includes(id)) {
+          delete this.condition[id]
+        }
+      })
+      FilterStore.updateSelected([...this.selected])
+      FilterStore.updateUserBehavior(this.selected)
+    },
+    getDefaultOperator(property) {
+      const type = property.bk_property_type
+      const defaultMap = {
+        singlechar: 'IN',
+        shortchar: 'IN',
+        longchar: 'IN',
+        text: 'IN',
+        int: '$eq',
+        float: '$eq',
+        enum: 'IN',
+        enummulti: 'IN',
+        list: 'IN',
+        bool: '$eq',
+        date: 'RANGE',
+        time: 'RANGE',
+        objuser: 'IN',
+        organization: 'IN',
+        timezone: 'IN',
+        foreignkey: 'IN',
+        array: 'IN',
+        object: 'IN'
+      }
+      return defaultMap[type] || '$eq'
+    },
+    getOperators(property) {
+      const type = property.bk_property_type
+      const operatorsMap = {
+        float: ['$eq', '$ne', '$gte', '$lte', 'RANGE', 'IN'],
+        int: ['$eq', '$ne', '$gte', '$lte', 'RANGE', 'IN'],
+        longchar: ['IN', '$nin', 'CONTAINS', 'LIKE'],
+        singlechar: ['IN', '$nin', 'CONTAINS', 'LIKE'],
+        shortchar: ['IN', '$nin', 'CONTAINS', 'LIKE'],
+        text: ['IN', '$nin', 'CONTAINS', 'LIKE'],
+        array: ['IN', '$nin', 'CONTAINS', 'LIKE'],
+        object: ['IN', '$nin', 'CONTAINS', 'LIKE'],
+        enum: ['IN', '$nin', '$eq'],
+        enummulti: ['IN', '$nin'],
+        list: ['IN', '$nin'],
+        date: ['$gte', '$lte', 'RANGE'],
+        time: ['$gte', '$lte', 'RANGE'],
+        bool: ['$eq', '$ne']
+      }
+      return (operatorsMap[type] || ['$eq']).map(op => ({ id: op, name: op, desc: op }))
     },
     handleSearch() {
       this.searchTimer && clearTimeout(this.searchTimer)
