@@ -331,10 +331,10 @@ export default {
             const defaultOperator = this.getDefaultOperator(property)
             const operators = this.getOperators(property)
             const operator = operators.length > 0 ? operators.find(op => op.id === defaultOperator)?.id || operators[0].id : defaultOperator
-            this.condition[property.bk_property_id] = {
+            this.$set(this.condition, property.bk_property_id, {
               operator,
-              value: null
-            }
+              value: ''
+            })
           }
         }
       })
@@ -404,7 +404,7 @@ export default {
         }
 
         FilterStore.resetPage(true)
-        FilterStore.updateSelected(this.selected)
+        FilterStore.updateSelected([...this.selected])
         FilterStore.setCondition(condition)
         this.close()
       }, 300)
