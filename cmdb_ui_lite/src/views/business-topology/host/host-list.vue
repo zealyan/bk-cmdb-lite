@@ -17,13 +17,7 @@
     </host-list-options>
 
     <!-- 筛选标签展示区 -->
-    <div class="filter-tag-wrapper" v-if="filterTags.length">
-      <span class="filter-tag" v-for="(tag, index) in filterTags" :key="index">
-        <label class="tag-name">{{ tag.name }}</label>
-        <span class="tag-value">{{ tag.value }}</span>
-        <i class="tag-delete bk-icon icon-close" @click="handleRemoveFilter(index)"></i>
-      </span>
-    </div>
+    <host-filter-tag class="filter-tag" ref="filterTag"></host-filter-tag>
 
     <!-- 主机数据表格 -->
     <bk-table
@@ -77,6 +71,7 @@
 
 <script>
 import HostListOptions from './host-list-options.vue'
+import HostFilterTag from '@/components/filters/filter-tag.vue'
 import ColumnsConfig from '@/components/columns-config/columns-config.js'
 import FilterForm from '@/components/filters/filter-form.js'
 import FilterStore, { setupFilterStore } from '@/components/filters/store'
@@ -111,7 +106,8 @@ export default {
   name: 'HostList',
   mixins: [tableMixin],
   components: {
-    HostListOptions
+    HostListOptions,
+    HostFilterTag
   },
   props: {
     // 当前选中的拓扑节点
@@ -148,7 +144,6 @@ export default {
         disabledColumns: ['bk_host_id', 'bk_host_name']
       },
       searchKeyword: '',
-      filterTags: [],
       filtersTagHeight: 0,
       lastNodeId: null
     }
@@ -191,9 +186,9 @@ export default {
   },
   mounted() {
     this.disabledTableSettingDefaultBehavior()
-    this.unwatchFilter = this.$watch(() => this.filterTags, () => {
+    this.unwatchFilter = this.$watch(() => [FilterStore.selected, FilterStore.condition, FilterStore.IP], () => {
       this.$nextTick(() => {
-        const el = this.$el.querySelector('.filter-tag-wrapper')
+        const el = this.$el.querySelector('.filter-tag .filter-wrapper')
         if (el && el.getBoundingClientRect) {
           this.filtersTagHeight = el.getBoundingClientRect().height
         } else {
@@ -647,13 +642,6 @@ export default {
      */
     handleRefresh() {
       this.loadHostList()
-    },
-
-    /**
-     * 移除筛选标签
-     */
-    handleRemoveFilter(index) {
-      this.filterTags.splice(index, 1)
     }
   }
 }
@@ -664,50 +652,12 @@ export default {
     overflow: hidden;
 }
 
-.filter-tag-wrapper {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 20px 0;
-}
-
 .filter-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 0 0 5px;
-  border-radius: 2px;
-  font-size: 12px;
-  background: #f0f1f5;
-  line-height: 22px;
-  cursor: pointer;
+    padding: 0 20px;
 
-  .tag-name {
-    padding-right: 5px;
-    color: #63656E;
-  }
-
-  .tag-value {
-    color: #313238;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .tag-delete {
-    font-size: 18px;
-    color: #9b9ea8;
-    cursor: pointer;
-    margin: 0 5px;
-
-    &:hover {
-      color: #313238;
+    & ~ .host-table {
+        margin-top: 0;
     }
-  }
-}
-
-.filter-tag-wrapper ~ .host-table {
-    margin-top: 0;
 }
 
 .host-table {

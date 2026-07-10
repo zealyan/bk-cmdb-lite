@@ -78,24 +78,19 @@
       </icon-button>
     </div>
   </div>
-
-  <!-- 筛选标签区域 -->
-  <filter-tag></filter-tag>
 </template>
 
 <script>
 import FilterFastSearch from '@/components/filters/filter-fast-search.vue'
 import FilterCollection from '@/components/filters/filter-collection.vue'
 import IconButton from '@/components/ui/button/icon-button.vue'
-import FilterTag from '@/components/filters/filter-tag.vue'
 
 export default {
   name: 'HostListOptions',
   components: {
     FilterFastSearch,
     FilterCollection,
-    IconButton,
-    FilterTag
+    IconButton
   },
   props: {
     // 选中的主机数量
