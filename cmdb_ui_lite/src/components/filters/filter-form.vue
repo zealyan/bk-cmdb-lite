@@ -206,7 +206,7 @@ export default {
         const { addSelect, deleteSelect } = getConditionSelect(val, this.selected)
 
         this.scrollToBottom = this.hasAddSelected(val, this.selected, addSelect)
-        this.condition = this.setCondition(this.condition)
+        this.condition = this.initCondition()
         updatePropertySelect(this.selected, this.handleRemove, addSelect, deleteSelect, 'push', filterCondition)
       }
     },
@@ -241,6 +241,18 @@ export default {
       Object.keys(nowCondition).forEach(id => {
         if (Object.prototype.hasOwnProperty.call(nowCondition, id)) {
           newCondition[id] = nowCondition[id]
+        }
+      })
+      return newCondition
+    },
+    initCondition() {
+      const newCondition = {}
+      this.selected.forEach((property) => {
+        const id = property.bk_property_id
+        if (Object.prototype.hasOwnProperty.call(this.condition, id)) {
+          newCondition[id] = this.condition[id]
+        } else {
+          newCondition[id] = Utils.getDefaultData(property)
         }
       })
       return newCondition

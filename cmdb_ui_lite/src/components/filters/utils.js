@@ -61,6 +61,41 @@ const numberUseIn = (property, operator) => {
   return ['int', 'float', 'double', 'long'].includes(type) && ['IN', 'NIN'].includes(operator)
 }
 
+const getDefaultData = (property, defaultData = { operator: '$in', value: [] }) => {
+  const defaultMap = {
+    singlechar: { operator: '$in', value: [] },
+    shortchar: { operator: '$in', value: [] },
+    int: { operator: '$eq', value: '' },
+    long: { operator: '$eq', value: '' },
+    float: { operator: '$eq', value: '' },
+    double: { operator: '$eq', value: '' },
+    enum: { operator: '$in', value: [] },
+    enummulti: { operator: '$in', value: [] },
+    date: { operator: '$range', value: [] },
+    time: { operator: '$range', value: [] },
+    datetime: { operator: '$eq', value: '' },
+    longchar: { operator: '$in', value: [] },
+    text: { operator: '$in', value: [] },
+    char: { operator: '$in', value: [] },
+    objuser: { operator: '$in', value: [] },
+    timezone: { operator: '$in', value: [] },
+    bool: { operator: '$eq', value: '' },
+    list: { operator: '$in', value: [] },
+    organization: { operator: '$in', value: [] },
+    array: { operator: '$in', value: [] },
+    map: { operator: '$in', value: [] },
+    object: { operator: '$in', value: [] },
+    foreignkey: { operator: '$in', value: [] },
+    table: { operator: '$in', value: [] }
+  }
+
+  return {
+    operator: defaultData.operator,
+    value: defaultData.value,
+    ...(defaultMap[property?.bk_property_type] || { operator: '$eq', value: '' })
+  }
+}
+
 const QUERY_OPERATOR_SYMBOL = {
   '$eq': '=',
   '$ne': '≠',
@@ -87,5 +122,6 @@ export default {
   getPlaceholder,
   getOperatorSideEffect,
   numberUseIn,
-  getOperatorSymbol
+  getOperatorSymbol,
+  getDefaultData
 }
