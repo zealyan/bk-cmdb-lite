@@ -258,7 +258,7 @@ export default {
       const nodes = []
       let parentNode = node
       while (parentNode) {
-        nodes.push(...parentNode.children)
+        nodes.push(...(parentNode.children || []))
         if (!parentNode.parent) {
           nodes.push(parentNode)
         }
