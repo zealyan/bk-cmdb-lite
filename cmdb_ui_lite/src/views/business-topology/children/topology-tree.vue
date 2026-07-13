@@ -114,13 +114,9 @@ export default {
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
 
-        this.createWatcher()
-
         await this.$nextTick()
 
-        setTimeout(() => {
-          this.setDefaultState()
-        }, 100)
+        this.createWatcher()
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -183,7 +179,7 @@ export default {
     },
 
     createWatcher() {
-      this.nodeUnwatch = RouterQuery.watch('node', this.setDefaultState)
+      this.nodeUnwatch = RouterQuery.watch('node', this.setDefaultState, { immediate: true })
       this.filterUnwatch = RouterQuery.watch('keyword', (value) => {
         this.filterKeyword = value || ''
       })
