@@ -213,7 +213,7 @@ export default {
         const expandedIds = JSON.parse(saved)
         this.isRestoringExpanded = true
         expandedIds.forEach(id => {
-          this.$refs.tree?.setExpanded(id)
+          this.$refs.tree?.setExpanded(id, { emitEvent: false })
         })
         this.$nextTick(() => {
           this.isRestoringExpanded = false
