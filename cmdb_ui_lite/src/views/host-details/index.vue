@@ -58,35 +58,6 @@
           </div>
         </bk-tab-panel>
 
-        <bk-tab-panel name="topology" label="业务拓扑" v-if="isBusinessHost">
-          <div class="topology-panel">
-            <div v-if="topologyLoading" class="empty-state">
-              <span>加载中...</span>
-            </div>
-            <div v-else-if="topologyData.length === 0" class="empty-state">
-              <span>暂无拓扑数据</span>
-            </div>
-            <div v-else class="topology-tree-wrap">
-              <div v-for="(biz, bizIndex) in topologyData" :key="biz.bk_biz_id" class="biz-item">
-                <div class="biz-name">
-                  <i class="bk-icon icon-cube"></i>
-                  <span>{{ biz.bk_biz_name }}</span>
-                </div>
-                <div v-for="(set, setIndex) in biz.sets" :key="set.bk_set_id" class="set-item">
-                  <div class="set-name">
-                    <i class="bk-icon icon-layers"></i>
-                    <span>{{ set.bk_set_name }}</span>
-                  </div>
-                  <div v-for="(module, modIndex) in set.modules" :key="module.bk_module_id" class="module-item">
-                    <i class="bk-icon icon-crown"></i>
-                    <span>{{ module.bk_module_name }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </bk-tab-panel>
-
         <bk-tab-panel name="association" label="关联">
           <div v-bkloading="{ isLoading: associationLoading }">
             <div v-if="!isAssociationReady" class="empty-state">
@@ -260,9 +231,6 @@ export default {
     activeTab (newTab) {
       if (newTab === 'association') {
         this.loadAssociationData()
-      }
-      if (newTab === 'topology') {
-        this.loadTopologyData()
       }
     }
   },
@@ -776,71 +744,6 @@ export default {
       font-size: 14px;
       color: #313237;
       word-break: break-all;
-    }
-  }
-}
-
-.topology-panel {
-  padding: 20px;
-  background: #fff;
-  min-height: 200px;
-
-  .topology-tree-wrap {
-    .biz-item {
-      margin-bottom: 16px;
-
-      &:last-child {
-        margin-bottom: 0;
-      }
-
-      .biz-name {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 14px;
-        font-weight: 600;
-        color: #313238;
-        padding: 8px 12px;
-        background: #f5f7fa;
-        border-radius: 4px;
-        margin-bottom: 8px;
-
-        i {
-          color: #3a84ff;
-        }
-      }
-
-      .set-item {
-        margin-left: 24px;
-        margin-bottom: 8px;
-
-        .set-name {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #63656e;
-          padding: 6px 12px;
-
-          i {
-            color: #ff9c01;
-          }
-        }
-
-        .module-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-left: 24px;
-          font-size: 13px;
-          color: #979ba5;
-          padding: 4px 12px;
-
-          i {
-            color: #2dcb6e;
-          }
-        }
-      }
     }
   }
 }
