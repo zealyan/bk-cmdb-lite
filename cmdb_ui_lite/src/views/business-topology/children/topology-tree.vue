@@ -69,7 +69,8 @@ export default {
       loading: false,
       loadedNodes: new Set(),
       initialized: false,
-      bizId: null
+      bizId: null,
+      isRestoringExpanded: false
     }
   },
   watch: {
@@ -102,6 +103,7 @@ export default {
   beforeDestroy() {
     window.removeEventListener('resize', this.updateTreeHeight)
     this.destroyWatcher()
+    this.saveExpandedState()
   },
   methods: {
     async initTopology() {
@@ -192,20 +194,52 @@ export default {
       this.filterUnwatch && this.filterUnwatch()
     },
 
+    saveExpandedState() {
+      if (!this.$refs.tree || !this.$refs.tree.nodes) return
+      const expandedIds = this.$refs.tree.nodes
+        .filter(node => node.expanded)
+        .map(node => node.id)
+      try {
+        sessionStorage.setItem(`topology_expanded_${this.bizId}`, JSON.stringify(expandedIds))
+      } catch (e) {
+        // ignore
+      }
+    },
+
+    restoreExpandedState() {
+      try {
+        const saved = sessionStorage.getItem(`topology_expanded_${this.bizId}`)
+        if (!saved) return
+        const expandedIds = JSON.parse(saved)
+        this.isRestoringExpanded = true
+        expandedIds.forEach(id => {
+          this.$refs.tree?.setExpanded(id)
+        })
+        this.$nextTick(() => {
+          this.isRestoringExpanded = false
+        })
+      } catch (e) {
+        // ignore
+      }
+    },
+
     setDefaultState() {
       const queryNodeId = this.$route.query.node || ''
       const bizId = this.getCurrentBizId()
       const [firstNode] = this.$refs.tree?.nodes || []
       const defaultNodeId = queryNodeId || (firstNode ? firstNode.id : `biz-${bizId}`)
       const defaultNode = this.$refs.tree?.getNodeById(defaultNodeId)
-      
+
       // setDefaultState: 根据URL或默认规则设置拓扑树选中状态
-      
+
       if (defaultNode) {
-          this.handleDefaultExpand(defaultNode)
-          this.$refs.tree.setExpanded(defaultNode.id)
-          this.$refs.tree.setSelected(defaultNode.id, { emitEvent: true })
-        }
+        this.handleDefaultExpand(defaultNode)
+        this.$refs.tree.setExpanded(defaultNode.id)
+        this.$refs.tree.setSelected(defaultNode.id, { emitEvent: true })
+      }
+
+      // 恢复之前保存的展开状态
+      this.restoreExpandedState()
     },
 
     getNodePath(node) {
@@ -315,7 +349,9 @@ export default {
 
     handleExpandChange(node) {
       if (!node.expanded) return
+      if (this.isRestoringExpanded) return
       this.setNodeCount([node, ...node.children])
+      this.saveExpandedState()
     },
 
     updateTreeHeight() {

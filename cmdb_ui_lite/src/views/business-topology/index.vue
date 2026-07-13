@@ -116,7 +116,11 @@ export default {
       RouterQuery.setAll(query)
     }
   },
-  async created() {
+  async beforeRouteLeave(to, from, next) {
+    this.$refs.topologyTree?.saveExpandedState()
+    next()
+  },
+  created() {
     this.unwatch = RouterQuery.watch('tab', (value = 'hostList') => {
       this.activeTab = value
     })
