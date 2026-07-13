@@ -245,6 +245,14 @@ export default {
       if (defaultNode) {
         const { tree } = this.$refs
 
+        if (!queryNodeId) {
+          RouterQuery.set({
+            node: defaultNode.id,
+            page: 1,
+            _t: Date.now()
+          })
+        }
+
         if (queryTopoPathArray.length) {
           queryTopoPathArray.forEach(pathId => {
             const pathNode = tree?.getNodeById(pathId)
