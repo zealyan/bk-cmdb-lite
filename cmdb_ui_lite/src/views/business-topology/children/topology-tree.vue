@@ -230,16 +230,18 @@ export default {
       const defaultNodeId = queryNodeId || (firstNode ? firstNode.id : `biz-${bizId}`)
       const defaultNode = this.$refs.tree?.getNodeById(defaultNodeId)
 
-      // setDefaultState: 根据URL或默认规则设置拓扑树选中状态
-
       if (defaultNode) {
         this.handleDefaultExpand(defaultNode)
         this.$refs.tree.setExpanded(defaultNode.id)
         this.$refs.tree.setSelected(defaultNode.id, { emitEvent: true })
       }
 
-      // 恢复之前保存的展开状态
       this.restoreExpandedState()
+
+      const bizNode = this.$refs.tree?.getNodeById(`biz-${bizId}`)
+      if (bizNode) {
+        this.$refs.tree?.setExpanded(bizNode.id, { emitEvent: false })
+      }
     },
 
     getNodePath(node) {
@@ -348,8 +350,18 @@ export default {
     },
 
     handleExpandChange(node) {
-      if (!node.expanded) return
-      if (this.isRestoringExpanded) return
+      if (node.data?.bk_obj_id === 'biz' && !node.expanded) {
+        this.$nextTick(() => {
+          this.$refs.tree?.setExpanded(node.id, { emitEvent: false })
+        })
+        return
+      }
+
+      if (!node.expanded || this.isRestoringExpanded) {
+        this.saveExpandedState()
+        return
+      }
+
       this.setNodeCount([node, ...node.children])
       this.saveExpandedState()
     },
