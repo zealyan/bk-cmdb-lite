@@ -252,6 +252,12 @@ export default {
               tree.setExpanded(pathNode.id, { emitEvent: false })
             }
           })
+        } else if (queryNodeId && defaultNode.parent) {
+          let parentNode = defaultNode.parent
+          while (parentNode) {
+            tree.setExpanded(parentNode.id, { emitEvent: false })
+            parentNode = parentNode.parent
+          }
         }
 
         tree.setExpanded(defaultNode.id)
