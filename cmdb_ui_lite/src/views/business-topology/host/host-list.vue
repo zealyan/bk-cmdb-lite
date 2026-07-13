@@ -80,6 +80,7 @@ import tableMixin from '@/mixins/table'
 import { topoAPI } from '@/api/topo'
 import { modelAPI } from '@/api/client'
 import { userCustom } from '@/api/client'
+import RouterQuery from '@/utils/router-query'
 
 // 默认表头列定义（简化版，与原项目 host 属性对应）
 const DEFAULT_TABLE_HEADER = [
@@ -123,16 +124,17 @@ export default {
     }
   },
   data() {
+    const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
     return {
-      loading: false,
-      allProperties: [],
+      hostId: null,
+      hostName: null,
       table: {
         data: [],
         selection: [],
         sort: 'bk_host_id',
         pagination: {
           count: 0,
-          current: 1,
+          current: page,
           limit: 10,
           'limit-list': [10, 50, 100, 500]
         }
@@ -166,10 +168,15 @@ export default {
       handler(node) {
         if (node && node.data) {
           const nodeId = node.id
-          // 同一节点不重复加载
-          if (nodeId === this.lastNodeId) return
+          const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
+          this.table.pagination.current = page
+          
+          if (nodeId === this.lastNodeId) {
+            this.loadHostList()
+            return
+          }
+          
           this.lastNodeId = nodeId
-          this.table.pagination.current = 1
           this.loadHostAttributes()
           this.loadHostList()
         }
@@ -187,6 +194,10 @@ export default {
   },
   mounted() {
     this.disabledTableSettingDefaultBehavior()
+    
+    const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
+    this.table.pagination.current = page
+    
     this.unwatchFilter = this.$watch(() => [FilterStore.selected, FilterStore.condition, FilterStore.IP], () => {
       this.$nextTick(() => {
         const el = this.$el.querySelector('.filter-tag .filter-wrapper')
@@ -559,6 +570,11 @@ export default {
      */
     handlePageChange(current = 1) {
       this.table.pagination.current = current
+      RouterQuery.set({
+        page: current,
+        node: RouterQuery.get('node'),
+        _t: Date.now()
+      })
       this.loadHostList()
     },
 
@@ -568,6 +584,10 @@ export default {
     handleLimitChange(limit) {
       this.table.pagination.limit = limit
       this.table.pagination.current = 1
+      RouterQuery.set({
+        page: 1,
+        _t: Date.now()
+      })
       this.loadHostList()
     },
 
@@ -620,11 +640,18 @@ export default {
       if (!hostId) return
       
       const bizId = this.$route.params.bizId
+      const page = this.table.pagination.current
+      const node = RouterQuery.get('node')
+      
       this.$router.push({
         name: 'menu_business_host_details',
         params: {
           bizId: bizId,
           id: hostId
+        },
+        query: {
+          page: page,
+          node: node
         }
       })
     },

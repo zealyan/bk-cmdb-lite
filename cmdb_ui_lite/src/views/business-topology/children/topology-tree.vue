@@ -73,7 +73,8 @@ export default {
       initialized: false,
       bizId: null,
       defaultExpandedNodes: [],
-      defaultSelectedNode: null
+      defaultSelectedNode: null,
+      isInitializing: true
     }
   },
   watch: {
@@ -108,30 +109,21 @@ export default {
   methods: {
     async initTopology() {
       this.loading = true
+      this.isInitializing = true
       try {
         const topology = await this.getInstanceTopology()
 
-        const queryNodeId = RouterQuery.get('node', '')
+        const queryNodeId = this.$route.query.node || ''
         const bizId = this.getCurrentBizId()
         const defaultNodeId = queryNodeId || `biz-${bizId}`
 
         this.defaultSelectedNode = defaultNodeId
         this.defaultExpandedNodes = [defaultNodeId]
 
-        if (!queryNodeId) {
-          RouterQuery.set({
-            node: defaultNodeId,
-            page: 1,
-            _t: Date.now()
-          })
-        }
-
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
 
         await this.$nextTick()
-
-        this.createWatcher()
 
         setTimeout(() => {
           const initNodeId = defaultNodeId
@@ -141,6 +133,12 @@ export default {
             this.$emit('node-select', initNode)
           }
         }, 200)
+
+        await this.$nextTick()
+
+        this.isInitializing = false
+
+        this.createWatcher()
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -215,12 +213,17 @@ export default {
     },
 
     setDefaultState() {
-      const queryNodeId = RouterQuery.get('node', '')
+      const queryNodeId = this.$route.query.node || ''
       const [firstNode] = this.$refs.tree?.nodes || []
       const defaultNode = queryNodeId ? this.$refs.tree?.getNodeById(queryNodeId) : firstNode
       
       if (defaultNode) {
         this.handleDefaultExpand(defaultNode)
+        
+        // 如果 URL 中有 node 参数，触发节点选择事件
+        if (queryNodeId) {
+          this.$emit('node-select', defaultNode)
+        }
       }
     },
 
@@ -307,7 +310,7 @@ export default {
     },
 
     handleSelectChange(node) {
-      const oldId = RouterQuery.get('node')
+      const oldId = this.$route.query.node
       const newId = node.id
 
       // 始终触发节点选择事件（用于联动主机列表）
@@ -318,9 +321,16 @@ export default {
         return
       }
 
+      // 初始化期间不更新 URL，避免覆盖已有的 page 参数
+      if (this.isInitializing) {
+        this.isInitializing = false
+        return
+      }
+
+      const currentPage = this.$route.query.page || 1
       RouterQuery.set({
         node: newId,
-        page: 1,
+        page: currentPage,
         _t: Date.now()
       })
     },

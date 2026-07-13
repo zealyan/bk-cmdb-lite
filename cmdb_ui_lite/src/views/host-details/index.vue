@@ -471,9 +471,17 @@ export default {
 
     handleBack() {
       if (this.isBusinessHost) {
-        this.$router.push({
+        const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
+        const node = this.$route.query.node || `biz-${this.bizId}`
+        
+        this.$router.replace({
           name: MENU_BUSINESS_TOPOLOGY,
-          params: { bizId: this.bizId }
+          params: { bizId: this.bizId },
+          query: {
+            page: page,
+            node: node,
+            _t: Date.now()
+          }
         })
       } else {
         this.$router.back()
