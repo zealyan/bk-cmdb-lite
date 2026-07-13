@@ -174,6 +174,13 @@ export const modelAPI = {
     return http.post('/api/v1/models/instances/count', { obj_ids: objIds })
   },
 
+  // 获取主机拓扑信息（业务拓扑下的主机详情）
+  getHostTopology (hostId, bizId) {
+    const params = {}
+    if (bizId) params.bk_biz_id = bizId
+    return http.get(`/api/v1/topo/host/${hostId}/topology`, { params })
+  },
+
   // 查询模型的唯一约束
   searchObjectUnique (modelId) {
     return http.post(`/find/objectunique/object/${modelId}`, [])

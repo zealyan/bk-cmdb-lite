@@ -114,7 +114,7 @@ export default {
     async initFilterStore() {
       await setupFilterStore({
         bk_biz_id: 0,
-        modelIds: ['host'],
+        modelIds: ['bk_host'],
         searchHandler: this.searchHandler.bind(this)
       })
       this.unwatchFilter = this.$watch(
@@ -147,7 +147,7 @@ export default {
             if (val === null || val === undefined || val === '') return
             
             const property = filterSelected.find(p => p.bk_property_id === key)
-            const modelId = property ? property.bk_obj_id : 'host'
+            const modelId = property ? property.bk_obj_id : 'bk_host'
             
             let submitValue = val
             if (['$in', '$nin'].includes(cond.operator)) {
@@ -179,7 +179,7 @@ export default {
           })
         }
         
-        const result = await modelAPI.listInstances('host', params)
+        const result = await modelAPI.listInstances('bk_host', params)
         if (result && result.data) {
           this.hosts = result.data.info || []
           this.paginationConfig.count = result.data.count || 0

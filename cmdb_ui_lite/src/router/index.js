@@ -4,10 +4,12 @@ import dynamicRouterView from '@/components/layout/dynamic-router-view'
 import {
   MENU_BUSINESS,
   MENU_BUSINESS_TOPOLOGY,
+  MENU_BUSINESS_HOST_DETAILS,
   MENU_RESOURCE,
   MENU_RESOURCE_MANAGEMENT,
   MENU_RESOURCE_INSTANCE,
   MENU_RESOURCE_INSTANCE_DETAILS,
+  MENU_RESOURCE_HOST_DETAILS,
   MENU_MODEL,
   MENU_MODEL_MANAGEMENT
 } from '@/dictionary/menu-symbol'
@@ -37,6 +39,20 @@ const routes = [
         meta: {
           menu: {
             i18n: '业务拓扑'
+          },
+          layout: {
+            breadcrumbs: true
+          }
+        }
+      },
+      {
+        name: MENU_BUSINESS_HOST_DETAILS,
+        path: ':bizId/host/:id',
+        component: () => import('@/views/host-details/index.vue'),
+        meta: {
+          menu: {
+            i18n: '主机详情',
+            relative: MENU_BUSINESS_TOPOLOGY
           },
           layout: {
             breadcrumbs: true

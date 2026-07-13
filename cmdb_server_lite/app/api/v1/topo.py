@@ -587,3 +587,41 @@ def search_hosts():
         raise
     except Exception as e:
         raise APIException(f'主机搜索失败: {str(e)}', 500)
+
+
+@topo_bp.route('/host/<int:bk_host_id>/topology', methods=['GET'])
+def get_host_topology(bk_host_id):
+    """
+    获取主机的业务拓扑信息
+
+    QueryParams:
+        bk_biz_id: 业务ID（可选）
+        bk_supplier_account: 供应商账号，默认 '0'
+
+    Returns:
+        {
+            result: true,
+            data: [...],
+            code: 0,
+            message: ''
+        }
+    """
+    bk_biz_id = request.args.get('bk_biz_id', type=int)
+    supplier_account = request.args.get('bk_supplier_account', '0')
+
+    try:
+        result = topo_service.get_host_topology(
+            bk_host_id=bk_host_id,
+            bk_biz_id=bk_biz_id,
+            supplier_account=supplier_account
+        )
+        return jsonify({
+            'result': True,
+            'data': result,
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'获取主机拓扑失败: {str(e)}', 500)

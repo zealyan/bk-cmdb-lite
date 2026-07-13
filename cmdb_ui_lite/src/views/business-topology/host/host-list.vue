@@ -83,24 +83,24 @@ import { userCustom } from '@/api/client'
 
 // 默认表头列定义（简化版，与原项目 host 属性对应）
 const DEFAULT_TABLE_HEADER = [
-  { bk_property_id: 'bk_host_id', bk_property_name: '主机ID', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_host_name', bk_property_name: '主机名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_host_outerip', bk_property_name: '外网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_cloud_id', bk_property_name: '云区域', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_name', bk_property_name: '操作系统名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_version', bk_property_name: '操作系统版本', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_cpu', bk_property_name: 'CPU核数', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_mem', bk_property_name: '内存容量', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_disk', bk_property_name: '磁盘容量', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_mac', bk_property_name: 'MAC地址', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_sn', bk_property_name: '设备序列号', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_asset_id', bk_property_name: '资产编号', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'operator', bk_property_name: '运维人员', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_comment', bk_property_name: '备注', bk_property_type: 'text', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'create_time', bk_property_name: '创建时间', bk_property_type: 'datetime', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'last_time', bk_property_name: '最后修改时间', bk_property_type: 'datetime', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false }
+  { bk_property_id: 'bk_host_id', bk_property_name: '主机ID', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_name', bk_property_name: '主机名称', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_outerip', bk_property_name: '外网IP', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_cloud_id', bk_property_name: '云区域', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_name', bk_property_name: '操作系统名称', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_version', bk_property_name: '操作系统版本', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_cpu', bk_property_name: 'CPU核数', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_mem', bk_property_name: '内存容量', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_disk', bk_property_name: '磁盘容量', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_mac', bk_property_name: 'MAC地址', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_sn', bk_property_name: '设备序列号', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_asset_id', bk_property_name: '资产编号', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'operator', bk_property_name: '运维人员', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_comment', bk_property_name: '备注', bk_property_type: 'text', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'create_time', bk_property_name: '创建时间', bk_property_type: 'datetime', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'last_time', bk_property_name: '最后修改时间', bk_property_type: 'datetime', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false }
 ]
 
 export default {
@@ -401,7 +401,7 @@ export default {
         // 添加搜索关键词条件（主机名称模糊搜索）
         if (this.searchKeyword) {
           payload.condition.push({
-            bk_obj_id: 'host',
+            bk_obj_id: 'bk_host',
             fields: [],
             condition: [
               { field: 'bk_host_name', operator: 'contains', value: this.searchKeyword }
@@ -615,9 +615,18 @@ export default {
      * 值点击（主机ID跳转详情）
      */
     handleValueClick(row, column) {
-      if (column.bk_obj_id !== 'host' || column.bk_property_id !== 'bk_host_id') return
-      // 预留：跳转主机详情
-      console.log('跳转主机详情:', row.host?.bk_host_id || row.bk_host_id)
+      if (column.bk_obj_id !== 'bk_host' || column.bk_property_id !== 'bk_host_id') return
+      const hostId = row.host?.bk_host_id || row.bk_host_id
+      if (!hostId) return
+      
+      const bizId = this.$route.params.bizId
+      this.$router.push({
+        name: 'menu_business_host_details',
+        params: {
+          bizId: bizId,
+          id: hostId
+        }
+      })
     },
 
     /**

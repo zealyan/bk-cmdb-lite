@@ -11,5 +11,9 @@ export const MENU_RESOURCE_MANAGEMENT = 'menu_resource_management'
 export const MENU_RESOURCE_COLLECTION = 'menu_resource_collection'
 export const MENU_RESOURCE_INSTANCE = 'menu_resource_instance'
 export const MENU_RESOURCE_INSTANCE_DETAILS = 'menu_resource_instance_details'
+export const MENU_RESOURCE_HOST = 'menu_resource_host'
+export const MENU_RESOURCE_HOST_DETAILS = 'menu_resource_host_details'
+
+export const MENU_BUSINESS_HOST_DETAILS = 'menu_business_host_details'
 
 export const MENU_MODEL_MANAGEMENT = 'menu_model_management'

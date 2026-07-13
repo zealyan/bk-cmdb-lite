@@ -1179,3 +1179,108 @@ def _build_ip_condition(ip_data: list, ip_exact: int, ip_flag: str,
     if len(conditions) > 1:
         return ('(' + ' OR '.join(conditions) + ')', params)
     return (conditions[0], params)
+
+
+def get_host_topology(bk_host_id: int, bk_biz_id: int = None,
+                      supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """
+    获取主机的业务拓扑信息（业务 -> 集群 -> 模块）
+
+    Args:
+        bk_host_id: 主机ID
+        bk_biz_id: 业务ID（可选，不传则返回所有业务）
+        supplier_account: 供应商账号
+
+    Returns:
+        [
+            {
+                bk_biz_id: 1,
+                bk_biz_name: '业务1',
+                sets: [
+                    {
+                        bk_set_id: 1,
+                        bk_set_name: '集群1',
+                        modules: [
+                            { bk_module_id: 1, bk_module_name: '模块1' },
+                            ...
+                        ]
+                    },
+                    ...
+                ]
+            },
+            ...
+        ]
+    """
+    params = {
+        'host_id': bk_host_id,
+        'supplier': supplier_account
+    }
+
+    where_clause = """
+        WHERE mhc.bk_host_id = :host_id
+          AND mhc.bk_supplier_account = :supplier
+          AND biz.bk_supplier_account = :supplier
+          AND s.bk_supplier_account = :supplier
+          AND m.bk_supplier_account = :supplier
+    """
+
+    if bk_biz_id:
+        where_clause += " AND mhc.bk_biz_id = :biz_id"
+        params['biz_id'] = bk_biz_id
+
+    sql = f"""
+        SELECT
+            biz.bk_biz_id,
+            biz.bk_biz_name,
+            s.bk_set_id,
+            s.bk_set_name,
+            m.bk_module_id,
+            m.bk_module_name
+        FROM cc_ModuleHostConfig mhc
+        INNER JOIN cc_ApplicationBase biz
+            ON mhc.bk_biz_id = biz.bk_biz_id
+        INNER JOIN cc_SetBase s
+            ON mhc.bk_set_id = s.bk_set_id
+            AND mhc.bk_biz_id = s.bk_biz_id
+        INNER JOIN cc_ModuleBase m
+            ON mhc.bk_module_id = m.bk_module_id
+            AND mhc.bk_set_id = m.bk_set_id
+            AND mhc.bk_biz_id = m.bk_biz_id
+        {where_clause}
+        ORDER BY biz.bk_biz_id, s.bk_set_id, m.bk_module_id
+    """
+
+    rows = query_all(sql, params)
+
+    biz_map = {}
+    for row in rows:
+        biz_id = row['bk_biz_id']
+        set_id = row['bk_set_id']
+        module_id = row['bk_module_id']
+
+        if biz_id not in biz_map:
+            biz_map[biz_id] = {
+                'bk_biz_id': biz_id,
+                'bk_biz_name': row['bk_biz_name'],
+                'sets': {}
+            }
+
+        if set_id not in biz_map[biz_id]['sets']:
+            biz_map[biz_id]['sets'][set_id] = {
+                'bk_set_id': set_id,
+                'bk_set_name': row['bk_set_name'],
+                'modules': []
+            }
+
+        biz_map[biz_id]['sets'][set_id]['modules'].append({
+            'bk_module_id': module_id,
+            'bk_module_name': row['bk_module_name']
+        })
+
+    result = []
+    for biz_id in sorted(biz_map.keys()):
+        biz = biz_map[biz_id]
+        biz['sets'] = [biz['sets'][sid] for sid in sorted(biz['sets'].keys())]
+        result.append(biz)
+
+    return result
