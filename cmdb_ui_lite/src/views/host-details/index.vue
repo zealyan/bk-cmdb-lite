@@ -472,6 +472,7 @@ export default {
     handleBack() {
       console.log('[host-details] handleBack called', { 
         query: this.$route.query, 
+        _f: this.$route.query._f,
         page: this.$route.query.page,
         node: this.$route.query.node,
         isBusinessHost: this.isBusinessHost,
@@ -479,7 +480,7 @@ export default {
       })
       
       if (this.isBusinessHost) {
-        const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
+        const page = this.$route.query._f ? parseInt(this.$route.query._f, 10) : (this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1)
         const node = this.$route.query.node || `biz-${this.bizId}`
         
         console.log('[host-details] navigating back with', { page, node })

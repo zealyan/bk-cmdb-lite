@@ -47,7 +47,7 @@ const routes = [
       },
       {
         name: MENU_BUSINESS_HOST_DETAILS,
-        path: ':bizId/host/:id',
+        path: ':bizId/index/host/:id',
         component: () => import('@/views/host-details/index.vue'),
         meta: {
           menu: {

@@ -81,6 +81,7 @@ import { topoAPI } from '@/api/topo'
 import { modelAPI } from '@/api/client'
 import { userCustom } from '@/api/client'
 import RouterQuery from '@/utils/router-query'
+import { MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
 
 // 默认表头列定义（简化版，与原项目 host 属性对应）
 const DEFAULT_TABLE_HEADER = [
@@ -640,23 +641,29 @@ export default {
      * 值点击（主机ID跳转详情）
      */
     handleValueClick(row, column) {
-      if (column.bk_obj_id !== 'bk_host' || column.bk_property_id !== 'bk_host_id') return
-      const hostId = row.host?.bk_host_id || row.bk_host_id
+      console.log('[HostList] handleValueClick called', { row, column })
+      if (column.bk_property_id !== 'bk_host_id') return
+      
+      const hostId = row.host?.bk_host_id || row.bk_host_id || row.id
+      console.log('[HostList] handleValueClick: hostId=', hostId)
       if (!hostId) return
       
       const bizId = this.$route.params.bizId
       const page = this.table.pagination.current
       const node = RouterQuery.get('node')
       
+      console.log('[HostList] navigating to host details:', { bizId, hostId, page, node })
+      
       this.$router.push({
-        name: 'menu_business_host_details',
+        name: MENU_BUSINESS_HOST_DETAILS,
         params: {
           bizId: bizId,
           id: hostId
         },
         query: {
-          page: page,
-          node: node
+          _f: page,
+          node: node,
+          _t: Date.now()
         }
       })
     },
