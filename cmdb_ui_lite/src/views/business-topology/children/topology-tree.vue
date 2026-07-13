@@ -222,21 +222,45 @@ export default {
     setDefaultState() {
       const queryNodeId = this.$route.query.node || ''
       const bizId = this.getCurrentBizId()
+      const queryTopoPathArray = this.$route.query.topo_path ? this.$route.query.topo_path.split(',') : []
       const [firstNode] = this.$refs.tree?.nodes || []
-      const defaultNodeId = queryNodeId || (firstNode ? firstNode.id : `biz-${bizId}`)
-      const defaultNode = this.$refs.tree?.getNodeById(defaultNodeId)
 
-      if (defaultNode) {
-        this.handleDefaultExpand(defaultNode)
-        this.$refs.tree.setExpanded(defaultNode.id)
-        this.$refs.tree.setSelected(defaultNode.id, { emitEvent: true })
+      let defaultNode = null
+
+      if (queryNodeId) {
+        defaultNode = this.$refs.tree?.getNodeById(queryNodeId)
       }
 
-      this.restoreExpandedState()
+      if (!defaultNode && queryTopoPathArray.length) {
+        for (let i = queryTopoPathArray.length; i > 0; i--) {
+          defaultNode = this.$refs.tree?.getNodeById(queryTopoPathArray[i - 1])
+          if (defaultNode) break
+        }
+      }
 
-      const bizNode = this.$refs.tree?.getNodeById(`biz-${bizId}`)
-      if (bizNode) {
-        this.$refs.tree?.setExpanded(bizNode.id, { emitEvent: false })
+      if (!defaultNode) {
+        defaultNode = firstNode || this.$refs.tree?.getNodeById(`biz-${bizId}`)
+      }
+
+      if (defaultNode) {
+        const { tree } = this.$refs
+
+        if (queryTopoPathArray.length) {
+          queryTopoPathArray.forEach(pathId => {
+            const pathNode = tree?.getNodeById(pathId)
+            if (pathNode) {
+              tree.setExpanded(pathNode.id, { emitEvent: false })
+            }
+          })
+        }
+
+        tree.setExpanded(defaultNode.id)
+        tree.setSelected(defaultNode.id, { emitEvent: true })
+        this.handleDefaultExpand(defaultNode)
+
+        !this.initialized && this.$nextTick(() => {
+          this.initialized = true
+        })
       }
     },
 
@@ -311,6 +335,20 @@ export default {
       return `${data.bk_obj_id}-${data.bk_inst_id}`
     },
 
+    isContainerNode(node) {
+      return node.data?.is_container
+    },
+
+    genTopoPathByNode(node) {
+      const path = []
+      let currentNode = node
+      while (currentNode.parent) {
+        path.push(this.getNodeId(currentNode.data))
+        currentNode = currentNode.parent
+      }
+      return path.reverse()
+    },
+
     handleFilter() {
       if (this.filterKeyword) {
         this.$refs.tree.filter(this.filterKeyword)
@@ -326,23 +364,26 @@ export default {
       const oldId = this.$route.query.node
       const newId = node.id
 
-      // handleSelectChange: 处理拓扑节点选择变化
-
-      // 始终触发节点选择事件（用于联动主机列表）
       this.$emit('node-select', node)
 
-      // 同一节点重复点击，不更新URL，但允许展开/收起
       if (oldId === newId) {
         return
       }
 
       const currentPage = this.$route.query.page || 1
-      // 更新URL参数，保留当前分页
-      RouterQuery.set({
+      const query = {
         node: newId,
         page: currentPage,
         _t: Date.now()
-      })
+      }
+
+      if (this.isContainerNode(node)) {
+        query.topo_path = this.genTopoPathByNode(node).join(',')
+      } else {
+        query.topo_path = undefined
+      }
+
+      RouterQuery.set(query)
     },
 
     handleExpandChange(node) {
