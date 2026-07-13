@@ -133,7 +133,7 @@ export default {
         sort: 'bk_host_id',
         pagination: {
           count: 0,
-          current: 1,
+          current: parseInt(this.$route.query.page, 10) || 1,
           limit: 10,
           'limit-list': [10, 50, 100, 500]
         }
@@ -147,7 +147,8 @@ export default {
       },
       searchKeyword: '',
       filtersTagHeight: 0,
-      lastNodeId: null
+      lastNodeId: null,
+      isTableReady: false
     }
   },
   computed: {
@@ -193,7 +194,11 @@ export default {
   },
   mounted() {
     this.disabledTableSettingDefaultBehavior()
-    
+
+    this.$nextTick(() => {
+      this.isTableReady = true
+    })
+
     this.unwatchFilter = this.$watch(() => [FilterStore.selected, FilterStore.condition, FilterStore.IP], () => {
       this.$nextTick(() => {
         const el = this.$el.querySelector('.filter-tag .filter-wrapper')
@@ -566,6 +571,10 @@ export default {
      */
     handlePageChange(current = 1) {
       this.table.pagination.current = current
+      if (!this.isTableReady) {
+        this.loadHostList()
+        return
+      }
       RouterQuery.set({
         page: current,
         node: RouterQuery.get('node'),

@@ -104,12 +104,16 @@ export default {
   },
   watch: {
     activeTab(value) {
-      RouterQuery.setAll({
+      const query = {
         tab: value,
         node: RouterQuery.get('node'),
-        page: RouterQuery.get('page'),
         _t: Date.now()
-      })
+      }
+      const page = RouterQuery.get('page')
+      if (page !== null && page !== undefined && page !== '') {
+        query.page = page
+      }
+      RouterQuery.setAll(query)
     }
   },
   async created() {
@@ -188,12 +192,16 @@ export default {
       document.ondragstart = null
     },
     handleTabChange(name) {
-      RouterQuery.setAll({
+      const query = {
         tab: name,
         node: RouterQuery.get('node'),
-        page: RouterQuery.get('page'),
         _t: Date.now()
-      })
+      }
+      const page = RouterQuery.get('page')
+      if (page !== null && page !== undefined && page !== '') {
+        query.page = page
+      }
+      RouterQuery.setAll(query)
     },
     handleNodeSelect(node) {
       this.selectedNode = node

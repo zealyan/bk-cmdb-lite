@@ -199,13 +199,13 @@ export default {
       const defaultNodeId = queryNodeId || (firstNode ? firstNode.id : `biz-${bizId}`)
       const defaultNode = this.$refs.tree?.getNodeById(defaultNodeId)
       
-      console.log('[topology-tree] setDefaultState', { queryNodeId, defaultNodeId, page: this.$route.query.page })
+      // setDefaultState: 根据URL或默认规则设置拓扑树选中状态
       
       if (defaultNode) {
-        this.handleDefaultExpand(defaultNode)
-        this.$refs.tree.setExpanded(defaultNode.id)
-        this.$refs.tree.setSelected(defaultNode.id)
-      }
+          this.handleDefaultExpand(defaultNode)
+          this.$refs.tree.setExpanded(defaultNode.id)
+          this.$refs.tree.setSelected(defaultNode.id, { emitEvent: true })
+        }
     },
 
     getNodePath(node) {
@@ -294,7 +294,7 @@ export default {
       const oldId = this.$route.query.node
       const newId = node.id
 
-      console.log('[topology-tree] handleSelectChange', { oldId, newId, page: this.$route.query.page })
+      // handleSelectChange: 处理拓扑节点选择变化
 
       // 始终触发节点选择事件（用于联动主机列表）
       this.$emit('node-select', node)
@@ -305,7 +305,7 @@ export default {
       }
 
       const currentPage = this.$route.query.page || 1
-      console.log('[topology-tree] setting RouterQuery', { node: newId, page: currentPage })
+      // 更新URL参数，保留当前分页
       RouterQuery.set({
         node: newId,
         page: currentPage,
