@@ -470,9 +470,19 @@ export default {
     },
 
     handleBack() {
+      console.log('[host-details] handleBack called', { 
+        query: this.$route.query, 
+        page: this.$route.query.page,
+        node: this.$route.query.node,
+        isBusinessHost: this.isBusinessHost,
+        bizId: this.bizId
+      })
+      
       if (this.isBusinessHost) {
         const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
         const node = this.$route.query.node || `biz-${this.bizId}`
+        
+        console.log('[host-details] navigating back with', { page, node })
         
         this.$router.replace({
           name: MENU_BUSINESS_TOPOLOGY,

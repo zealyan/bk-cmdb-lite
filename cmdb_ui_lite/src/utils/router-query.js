@@ -163,6 +163,8 @@ class RouterQuery {
       }
     })
 
+    console.log('[RouterQuery.set]', { key, value, oldQuery: route.query, newQuery: query, stack: new Error().stack })
+
     this.router.replace({
       ...route,
       query
@@ -174,6 +176,8 @@ class RouterQuery {
 
     const route = this.route
     if (!route) return
+
+    console.log('[RouterQuery.setAll]', { oldQuery: route.query, newQuery: query, stack: new Error().stack })
 
     this.router.replace({
       ...route,

@@ -18,8 +18,6 @@
         childrenKey: 'child'
       }"
       :data="treeData"
-      :default-expanded-nodes="defaultExpandedNodes"
-      :default-selected-node="defaultSelectedNode"
       @select-change="handleSelectChange"
       @expand-change="handleExpandChange">
       <template #default="{ node, data }">
@@ -64,17 +62,14 @@ export default {
   },
   data() {
     return {
-      filterKeyword: RouterQuery.get('keyword', ''),
+      filterKeyword: '',
       nodeCountType: 'host_count',
       treeHeight: 600,
       treeData: [],
       loading: false,
       loadedNodes: new Set(),
       initialized: false,
-      bizId: null,
-      defaultExpandedNodes: [],
-      defaultSelectedNode: null,
-      isInitializing: true
+      bizId: null
     }
   },
   watch: {
@@ -92,7 +87,9 @@ export default {
       }
     },
     filterKeyword(value) {
-      RouterQuery.set('keyword', value)
+      if (RouterQuery.router) {
+        RouterQuery.set('keyword', value)
+      }
     }
   },
   created() {
@@ -109,36 +106,19 @@ export default {
   methods: {
     async initTopology() {
       this.loading = true
-      this.isInitializing = true
       try {
         const topology = await this.getInstanceTopology()
-
-        const queryNodeId = this.$route.query.node || ''
-        const bizId = this.getCurrentBizId()
-        const defaultNodeId = queryNodeId || `biz-${bizId}`
-
-        this.defaultSelectedNode = defaultNodeId
-        this.defaultExpandedNodes = [defaultNodeId]
 
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
 
+        this.createWatcher()
+
         await this.$nextTick()
 
         setTimeout(() => {
-          const initNodeId = defaultNodeId
-          const initNode = this.$refs.tree?.getNodeById(initNodeId)
-
-          if (initNode) {
-            this.$emit('node-select', initNode)
-          }
-        }, 200)
-
-        await this.$nextTick()
-
-        this.isInitializing = false
-
-        this.createWatcher()
+          this.setDefaultState()
+        }, 100)
       } catch (e) {
         console.error('加载拓扑树失败:', e)
         this.treeData = []
@@ -201,9 +181,9 @@ export default {
     },
 
     createWatcher() {
-      this.nodeUnwatch = RouterQuery.watch('node', this.setDefaultState, { immediate: true })
+      this.nodeUnwatch = RouterQuery.watch('node', this.setDefaultState)
       this.filterUnwatch = RouterQuery.watch('keyword', (value) => {
-        this.filterKeyword = value
+        this.filterKeyword = value || ''
       })
     },
 
@@ -214,16 +194,17 @@ export default {
 
     setDefaultState() {
       const queryNodeId = this.$route.query.node || ''
+      const bizId = this.getCurrentBizId()
       const [firstNode] = this.$refs.tree?.nodes || []
-      const defaultNode = queryNodeId ? this.$refs.tree?.getNodeById(queryNodeId) : firstNode
+      const defaultNodeId = queryNodeId || (firstNode ? firstNode.id : `biz-${bizId}`)
+      const defaultNode = this.$refs.tree?.getNodeById(defaultNodeId)
+      
+      console.log('[topology-tree] setDefaultState', { queryNodeId, defaultNodeId, page: this.$route.query.page })
       
       if (defaultNode) {
         this.handleDefaultExpand(defaultNode)
-        
-        // 如果 URL 中有 node 参数，触发节点选择事件
-        if (queryNodeId) {
-          this.$emit('node-select', defaultNode)
-        }
+        this.$refs.tree.setExpanded(defaultNode.id)
+        this.$refs.tree.setSelected(defaultNode.id)
       }
     },
 
@@ -313,6 +294,8 @@ export default {
       const oldId = this.$route.query.node
       const newId = node.id
 
+      console.log('[topology-tree] handleSelectChange', { oldId, newId, page: this.$route.query.page })
+
       // 始终触发节点选择事件（用于联动主机列表）
       this.$emit('node-select', node)
 
@@ -321,13 +304,8 @@ export default {
         return
       }
 
-      // 初始化期间不更新 URL，避免覆盖已有的 page 参数
-      if (this.isInitializing) {
-        this.isInitializing = false
-        return
-      }
-
       const currentPage = this.$route.query.page || 1
+      console.log('[topology-tree] setting RouterQuery', { node: newId, page: currentPage })
       RouterQuery.set({
         node: newId,
         page: currentPage,

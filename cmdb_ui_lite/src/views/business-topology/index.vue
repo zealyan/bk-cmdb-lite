@@ -104,8 +104,10 @@ export default {
   },
   watch: {
     activeTab(value) {
-      RouterQuery.set({
+      RouterQuery.setAll({
         tab: value,
+        node: RouterQuery.get('node'),
+        page: RouterQuery.get('page'),
         _t: Date.now()
       })
     }
@@ -186,8 +188,10 @@ export default {
       document.ondragstart = null
     },
     handleTabChange(name) {
-      RouterQuery.set({
+      RouterQuery.setAll({
         tab: name,
+        node: RouterQuery.get('node'),
+        page: RouterQuery.get('page'),
         _t: Date.now()
       })
     },

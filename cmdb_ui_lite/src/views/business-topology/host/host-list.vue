@@ -124,7 +124,6 @@ export default {
     }
   },
   data() {
-    const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
     return {
       hostId: null,
       hostName: null,
@@ -134,7 +133,7 @@ export default {
         sort: 'bk_host_id',
         pagination: {
           count: 0,
-          current: page,
+          current: 1,
           limit: 10,
           'limit-list': [10, 50, 100, 500]
         }
@@ -194,9 +193,6 @@ export default {
   },
   mounted() {
     this.disabledTableSettingDefaultBehavior()
-    
-    const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
-    this.table.pagination.current = page
     
     this.unwatchFilter = this.$watch(() => [FilterStore.selected, FilterStore.condition, FilterStore.IP], () => {
       this.$nextTick(() => {
