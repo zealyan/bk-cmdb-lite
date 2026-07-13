@@ -15,7 +15,10 @@ const menus = [{
     i18n: '业务拓扑',
     icon: 'icon-cc-topology',
     route: {
-      name: MENU_BUSINESS_TOPOLOGY
+      name: MENU_BUSINESS_TOPOLOGY,
+      params: {
+        bizId: 2
+      }
     }
   }]
 }, {

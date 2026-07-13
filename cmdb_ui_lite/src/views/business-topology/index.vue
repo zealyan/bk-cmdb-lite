@@ -121,6 +121,11 @@ export default {
     next()
   },
   created() {
+    console.log('[BusinessTopology] created: start')
+    console.log('[BusinessTopology] created: route:', this.$route.fullPath)
+    console.log('[BusinessTopology] created: params:', this.$route.params)
+    console.log('[BusinessTopology] created: query:', this.$route.query)
+
     this.unwatch = RouterQuery.watch('tab', (value = 'hostList') => {
       this.activeTab = value
     })
@@ -130,6 +135,10 @@ export default {
         this.pageLoading = false
       }, 300)
     })
+  },
+  mounted() {
+    console.log('[BusinessTopology] mounted: start')
+    console.log('[BusinessTopology] mounted: topologyTree ref:', this.$refs.topologyTree)
   },
   beforeDestroy() {
     document.removeEventListener('mousemove', this.handleResizeMove)

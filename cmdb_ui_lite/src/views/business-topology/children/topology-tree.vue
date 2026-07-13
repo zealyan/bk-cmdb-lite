@@ -17,7 +17,6 @@
         nameKey: 'bk_inst_name',
         childrenKey: 'child'
       }"
-      :data="treeData"
       @select-change="handleSelectChange"
       @expand-change="handleExpandChange">
       <template #default="{ node, data }">
@@ -107,21 +106,32 @@ export default {
   },
   methods: {
     async initTopology() {
+      console.log('[TopologyTree] initTopology: start')
       this.loading = true
       try {
         const topology = await this.getInstanceTopology()
+        console.log('[TopologyTree] initTopology: topology data loaded, length:', topology.length)
+        console.log('[TopologyTree] initTopology: first node:', topology[0] ? topology[0].bk_inst_name : 'null')
 
         this.treeData = topology
         this.$refs.tree.setData(this.treeData)
+        console.log('[TopologyTree] initTopology: tree data set')
 
         await this.$nextTick()
+        console.log('[TopologyTree] initTopology: nextTick 1 completed')
+        console.log('[TopologyTree] initTopology: tree nodes:', this.$refs.tree?.nodes?.map(n => n.id))
+
+        this.setDefaultStateDirectly()
+        console.log('[TopologyTree] initTopology: default state set directly')
 
         this.createWatcher()
+        console.log('[TopologyTree] initTopology: watcher created')
       } catch (e) {
-        console.error('加载拓扑树失败:', e)
+        console.error('[TopologyTree] initTopology: error:', e)
         this.treeData = []
       } finally {
         this.loading = false
+        console.log('[TopologyTree] initTopology: finished')
       }
     },
 
@@ -190,6 +200,53 @@ export default {
       this.filterUnwatch && this.filterUnwatch()
     },
 
+    setDefaultStateDirectly() {
+      console.log('[TopologyTree] setDefaultStateDirectly: start')
+      const queryNodeId = this.$route.query.node || ''
+      const bizId = this.getCurrentBizId()
+      const [firstNode] = this.$refs.tree?.nodes || []
+
+      let defaultNode = null
+
+      if (queryNodeId) {
+        defaultNode = this.$refs.tree?.getNodeById(queryNodeId)
+      }
+
+      if (!defaultNode) {
+        defaultNode = firstNode || this.$refs.tree?.getNodeById(`biz-${bizId}`)
+      }
+
+      if (defaultNode) {
+        const { tree } = this.$refs
+
+        console.log('[TopologyTree] setDefaultStateDirectly: defaultNode data:', JSON.stringify(defaultNode.data))
+        console.log('[TopologyTree] setDefaultStateDirectly: defaultNode has children:', defaultNode.children && defaultNode.children.length)
+        console.log('[TopologyTree] setDefaultStateDirectly: tree nodes before expand:', this.$refs.tree?.nodes?.map(n => ({ id: n.id, expanded: n.expanded, children: n.children?.length })))
+
+        if (!queryNodeId) {
+          RouterQuery.set({
+            node: defaultNode.id,
+            page: 1,
+            _t: Date.now()
+          })
+        }
+
+        console.log('[TopologyTree] setDefaultStateDirectly: calling tree.setExpanded(', defaultNode.id, ')')
+        tree.setExpanded(defaultNode.id)
+        
+        console.log('[TopologyTree] setDefaultStateDirectly: tree nodes after expand:', this.$refs.tree?.nodes?.map(n => ({ id: n.id, expanded: n.expanded })))
+        console.log('[TopologyTree] setDefaultStateDirectly: selected defaultNode:', defaultNode.id)
+        
+        tree.setSelected(defaultNode.id, { emitEvent: true })
+        this.handleDefaultExpand(defaultNode)
+
+        if (!this.initialized) {
+          this.initialized = true
+        }
+      }
+      console.log('[TopologyTree] setDefaultStateDirectly: finished')
+    },
+
     saveExpandedState() {
       if (!this.$refs.tree || !this.$refs.tree.nodes) return
       const expandedIds = this.$refs.tree.nodes
@@ -220,8 +277,8 @@ export default {
     },
 
     setDefaultState() {
+      console.log('[TopologyTree] setDefaultState: start')
       const queryNodeId = this.$route.query.node || ''
-      const bizId = this.getCurrentBizId()
       const queryTopoPathArray = this.$route.query.topo_path ? this.$route.query.topo_path.split(',') : []
       const [firstNode] = this.$refs.tree?.nodes || []
 
@@ -239,43 +296,21 @@ export default {
       }
 
       if (!defaultNode) {
-        defaultNode = firstNode || this.$refs.tree?.getNodeById(`biz-${bizId}`)
+        defaultNode = firstNode || this.$refs.tree?.getNodeById(`biz-${this.getCurrentBizId()}`)
       }
 
       if (defaultNode) {
         const { tree } = this.$refs
 
-        if (!queryNodeId) {
-          RouterQuery.set({
-            node: defaultNode.id,
-            page: 1,
-            _t: Date.now()
-          })
-        }
-
-        if (queryTopoPathArray.length) {
-          queryTopoPathArray.forEach(pathId => {
-            const pathNode = tree?.getNodeById(pathId)
-            if (pathNode) {
-              tree.setExpanded(pathNode.id, { emitEvent: false })
-            }
-          })
-        } else if (queryNodeId && defaultNode.parent) {
-          let parentNode = defaultNode.parent
-          while (parentNode) {
-            tree.setExpanded(parentNode.id, { emitEvent: false })
-            parentNode = parentNode.parent
-          }
-        }
-
         tree.setExpanded(defaultNode.id)
         tree.setSelected(defaultNode.id, { emitEvent: true })
         this.handleDefaultExpand(defaultNode)
 
-        !this.initialized && this.$nextTick(() => {
+        if (!this.initialized) {
           this.initialized = true
-        })
+        }
       }
+      console.log('[TopologyTree] setDefaultState: finished')
     },
 
     getNodePath(node) {

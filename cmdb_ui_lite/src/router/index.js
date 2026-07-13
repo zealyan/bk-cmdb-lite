@@ -19,7 +19,7 @@ Vue.use(VueRouter)
 const routes = [
   {
     path: '/',
-    redirect: { name: MENU_BUSINESS_TOPOLOGY }
+    redirect: '/business/2/index'
   },
   {
     name: MENU_BUSINESS,
