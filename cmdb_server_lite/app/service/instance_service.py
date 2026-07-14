@@ -7,16 +7,46 @@ import json
 
 class InstanceService:
     
+    # 内置模型表名映射（与蓝鲸CMDB原项目保持一致）
+    BUILTIN_TABLE_MAP = {
+        'biz': 'cc_ApplicationBase',
+        'set': 'cc_SetBase',
+        'module': 'cc_ModuleBase',
+        'host': 'cc_ObjectBase_0_pub_bk_host',
+        'bk_host': 'cc_ObjectBase_0_pub_bk_host'
+    }
+    
+    # 内置模型主键字段映射
+    BUILTIN_ID_FIELD_MAP = {
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'host': 'bk_host_id',
+        'bk_host': 'bk_host_id'
+    }
+    
     @staticmethod
     def _get_table_name(model_id):
-        """获取实例表名"""
+        """获取实例表名（内置模型使用专用表，自定义模型使用 ObjectBase 分表）"""
+        # 检查是否为内置模型
+        if model_id in InstanceService.BUILTIN_TABLE_MAP:
+            return InstanceService.BUILTIN_TABLE_MAP[model_id]
+        # 自定义模型使用 ObjectBase 分表
         return f"cc_ObjectBase_0_pub_{model_id}"
     
     @staticmethod
+    def _get_id_field(model_id):
+        """获取模型的主键字段名"""
+        if model_id in InstanceService.BUILTIN_ID_FIELD_MAP:
+            return InstanceService.BUILTIN_ID_FIELD_MAP[model_id]
+        return 'bk_inst_id'
+    
+    @staticmethod
     def get_instance(model_id, instance_id):
-        """获取单个实例（使用 bk_inst_id 作为标准实例ID，与蓝鲸原项目保持一致）"""
+        """获取单个实例"""
         table_name = InstanceService._get_table_name(model_id)
-        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id = :instance_id'
+        id_field = InstanceService._get_id_field(model_id)
+        sql = f'SELECT * FROM "{table_name}" WHERE "{id_field}" = :instance_id'
         instance = query_one(sql, {'instance_id': instance_id})
         if instance:
             instance = InstanceService._parse_json_fields(instance, model_id)
