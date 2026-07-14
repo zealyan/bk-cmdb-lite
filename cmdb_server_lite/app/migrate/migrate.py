@@ -193,6 +193,171 @@ SYSTEM_PROPERTIES = [
     }
 ]
 
+# 内置模型定义（biz/set/module）
+# 这些模型有独立的表（cc_ApplicationBase/cc_SetBase/cc_ModuleBase）
+# 需要在 cc_ObjDes 和 cc_ObjAttDes 中注册，以便前端正常显示属性
+BUILTIN_MODELS = [
+    {
+        "bk_obj_id": "biz",
+        "bk_obj_name": "业务",
+        "bk_obj_icon": "icon-cc-business",
+        "bk_classification_id": "bk_biz_topo",
+        "ispre": True,
+        "obj_sort_number": -3
+    },
+    {
+        "bk_obj_id": "set",
+        "bk_obj_name": "集群",
+        "bk_obj_icon": "icon-cc-set",
+        "bk_classification_id": "bk_biz_topo",
+        "ispre": True,
+        "obj_sort_number": -2
+    },
+    {
+        "bk_obj_id": "module",
+        "bk_obj_name": "模块",
+        "bk_obj_icon": "icon-cc-module",
+        "bk_classification_id": "bk_biz_topo",
+        "ispre": True,
+        "obj_sort_number": -1
+    }
+]
+
+# 内置模型属性定义
+BUILTIN_MODEL_ATTRIBUTES = {
+    "biz": [
+        {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "base"},
+        {"bk_property_id": "bk_biz_name", "bk_property_name": "业务名称", "bk_property_type": "singlechar",
+         "isrequired": True, "isreadonly": False, "isonly": True, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "base"},
+        {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 10, "bk_property_group": "default"},
+        {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "base"},
+        {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "datetime",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "datetime",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
+    ],
+    "set": [
+        {"bk_property_id": "bk_set_id", "bk_property_name": "集群ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "base"},
+        {"bk_property_id": "bk_set_name", "bk_property_name": "集群名称", "bk_property_type": "singlechar",
+         "isrequired": True, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "base"},
+        {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 2, "bk_property_group": "default"},
+        {"bk_property_id": "bk_parent_id", "bk_property_name": "父节点ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 3, "bk_property_group": "default"},
+        {"bk_property_id": "bk_set_desc", "bk_property_name": "集群描述", "bk_property_type": "longchar",
+         "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 5, "bk_property_group": "base"},
+        {"bk_property_id": "bk_set_env", "bk_property_name": "环境类型", "bk_property_type": "enum",
+         "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 6, "bk_property_group": "base",
+         "option": [
+             {"id": "1", "name": "测试环境", "type": "text", "is_default": False},
+             {"id": "2", "name": "体验环境", "type": "text", "is_default": False},
+             {"id": "3", "name": "正式环境", "type": "text", "is_default": True}
+         ]},
+        {"bk_property_id": "bk_service_status", "bk_property_name": "服务状态", "bk_property_type": "enum",
+         "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 7, "bk_property_group": "base",
+         "option": [
+             {"id": "1", "name": "开放", "type": "text", "is_default": True},
+             {"id": "2", "name": "关闭", "type": "text", "is_default": False}
+         ]},
+        {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 10, "bk_property_group": "default"},
+        {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "base"},
+        {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "datetime",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "datetime",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
+    ],
+    "module": [
+        {"bk_property_id": "bk_module_id", "bk_property_name": "模块ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "base"},
+        {"bk_property_id": "bk_module_name", "bk_property_name": "模块名称", "bk_property_type": "singlechar",
+         "isrequired": True, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "base"},
+        {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 2, "bk_property_group": "default"},
+        {"bk_property_id": "bk_set_id", "bk_property_name": "集群ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 3, "bk_property_group": "default"},
+        {"bk_property_id": "bk_parent_id", "bk_property_name": "父节点ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 4, "bk_property_group": "default"},
+        {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 10, "bk_property_group": "default"},
+        {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "base"},
+        {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "datetime",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "datetime",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
+    ]
+}
+
 # 模型分类映射
 MODEL_CLASSIFICATION_MAP = {
     "bk_switch": "bk_network",
@@ -750,6 +915,76 @@ class DatabaseMigrator:
             })
         
         logger.info(f"迁移了 {len(data.get('models', []))} 个模型")
+    
+    def migrate_builtin_models(self):
+        """迁移内置模型（biz/set/module）到 cc_ObjDes"""
+        for model in BUILTIN_MODELS:
+            model_id = model["bk_obj_id"]
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjDes 
+                (_id, id, bk_obj_id, bk_obj_name, bk_obj_icon, bk_classification_id, ispre,
+                 bk_supplier_account, creator, modifier, obj_sort_number)
+                VALUES (:_id, :id, :bk_obj_id, :bk_obj_name, :bk_obj_icon, :bk_classification_id,
+                        :ispre, '0', 'admin', 'admin', :obj_sort_number)
+            """, {
+                '_id': model_id,
+                'id': model["obj_sort_number"] + 100,
+                'bk_obj_id': model_id,
+                'bk_obj_name': model["bk_obj_name"],
+                'bk_obj_icon': model["bk_obj_icon"],
+                'bk_classification_id': model["bk_classification_id"],
+                'ispre': model["ispre"],
+                'obj_sort_number': model["obj_sort_number"]
+            })
+        logger.info(f"迁移了 {len(BUILTIN_MODELS)} 个内置模型")
+    
+    def migrate_builtin_model_attributes(self):
+        """迁移内置模型的属性定义到 cc_ObjAttDes"""
+        attr_id = 10000
+        total_attrs = 0
+        
+        for model_id, attributes in BUILTIN_MODEL_ATTRIBUTES.items():
+            for attr in attributes:
+                prop_type = attr.get("bk_property_type", "singlechar")
+                option = attr.get("option")
+                option = self.process_option(prop_type, option)
+                
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjAttDes
+                    (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                     bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                     bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
+                     bk_property_index, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                            :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                            :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
+                            :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
+                """, {
+                    '_id': f"{model_id}.{attr['bk_property_id']}",
+                    'id': attr_id,
+                    'bk_obj_id': model_id,
+                    'bk_property_id': attr['bk_property_id'],
+                    'bk_property_name': attr['bk_property_name'],
+                    'bk_property_type': prop_type,
+                    'bk_property_group': attr['bk_property_group'],
+                    'isrequired': attr['isrequired'],
+                    'bk_ispassword': attr.get('bk_ispassword', False),
+                    'bk_ishidden': attr['bk_ishidden'],
+                    'isreadonly': attr['isreadonly'],
+                    'isonly': attr['isonly'],
+                    'bk_isapi': attr['bk_isapi'],
+                    'bk_issystem': attr['bk_issystem'],
+                    'option': option,
+                    'unit': attr.get('unit', ''),
+                    'placeholder': attr.get('placeholder', ''),
+                    'editable': attr['editable'],
+                    'ispre': attr['ispre'],
+                    'bk_property_index': attr['bk_property_index']
+                })
+                attr_id += 1
+                total_attrs += 1
+        
+        logger.info(f"迁移了 {total_attrs} 个内置模型属性")
     
     def process_option(self, prop_type, option):
         """
@@ -1352,8 +1587,14 @@ class DatabaseMigrator:
         # 步骤3: 迁移模型
         self.migrate_models()
 
+        # 步骤3.1: 迁移内置模型（biz/set/module）
+        self.migrate_builtin_models()
+
         # 步骤4: 迁移属性
         self.migrate_attributes()
+
+        # 步骤4.1: 迁移内置模型属性
+        self.migrate_builtin_model_attributes()
 
         # 步骤5: 迁移属性分组
         self.migrate_property_groups()
@@ -1361,10 +1602,12 @@ class DatabaseMigrator:
         # 步骤6: 更新属性分组
         self.update_attributes_group()
 
-        # 步骤7: 创建实例表
+        # 步骤7: 创建实例表（跳过内置模型，它们有专用表）
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        builtin_model_ids = {m["bk_obj_id"] for m in BUILTIN_MODELS}
         for model in models:
-            self.create_instance_table(model['bk_obj_id'])
+            if model['bk_obj_id'] not in builtin_model_ids:
+                self.create_instance_table(model['bk_obj_id'])
 
         # 步骤8: 迁移实例数据
         self.migrate_instances()

@@ -17,7 +17,16 @@ export default {
 
       console.log('[InstanceAPI] findOne response:', res)
 
-      if (res && typeof res === 'object' && res.id) {
+      const idFieldMap = {
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'host': 'bk_host_id',
+        'bk_host': 'bk_host_id'
+      }
+      const idField = idFieldMap[objId] || 'bk_inst_id'
+
+      if (res && typeof res === 'object' && (res.id || res[idField])) {
         return res
       }
 
@@ -39,7 +48,16 @@ export default {
 
       console.log('[InstanceAPI] getInstanceDetails response:', res)
 
-      if (res && typeof res === 'object' && res.id) {
+      const idFieldMap = {
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'host': 'bk_host_id',
+        'bk_host': 'bk_host_id'
+      }
+      const idField = idFieldMap[objId] || 'bk_inst_id'
+
+      if (res && typeof res === 'object' && (res.id || res[idField])) {
         return res
       }
 
