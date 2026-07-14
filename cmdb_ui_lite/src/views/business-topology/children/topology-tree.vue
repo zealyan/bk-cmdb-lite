@@ -35,11 +35,26 @@
         </div>
       </template>
     </bk-big-tree>
+
+    <!-- 新建集群对话框 -->
+    <bk-dialog class="bk-dialog-no-padding"
+      v-model="createDialog.visible"
+      :show-footer="false"
+      :mask-close="false"
+      :width="580"
+      @cancel="handleCancelCreate">
+      <create-set v-if="createDialog.visible"
+        :parent-node="createDialog.parentNode"
+        @submit="handleCreateSetSubmit"
+        @cancel="handleCancelCreate">
+      </create-set>
+    </bk-dialog>
   </section>
 </template>
 
 <script>
 import TopologyTreeNode from './topology-tree-node.vue'
+import CreateSet from './create-set.vue'
 import { topoAPI } from '@/api/topo'
 import RouterQuery from '@/utils/router-query'
 
@@ -52,7 +67,8 @@ const MODEL_INFO = {
 export default {
   name: 'TopologyTree',
   components: {
-    TopologyTreeNode
+    TopologyTreeNode,
+    CreateSet
   },
   props: {
     active: {
@@ -70,7 +86,11 @@ export default {
       loadedNodes: new Set(),
       initialized: false,
       bizId: null,
-      isRestoringExpanded: false
+      isRestoringExpanded: false,
+      createDialog: {
+        visible: false,
+        parentNode: null
+      }
     }
   },
   watch: {
@@ -460,13 +480,26 @@ export default {
       }
     },
 
-    // 点击新建按钮，弹出提示（后续可扩展为创建节点对话框）
+    // 点击新建按钮，打开新建对话框
     handleShowCreateDialog(node) {
-      this.$bkInfo({
-        title: '新建节点',
-        subTitle: `在「${node.name}」下新建节点功能待开发`,
-        confirmFn: () => {}
+      this.createDialog = {
+        visible: true,
+        parentNode: node
+      }
+    },
+    // 新建集群提交
+    handleCreateSetSubmit(data) {
+      console.log('[TopologyTree] handleCreateSetSubmit:', data)
+      this.$bkMessage({
+        theme: 'primary',
+        message: `创建集群：${data.names.join(', ')}`
       })
+      this.createDialog.visible = false
+    },
+    // 取消新建
+    handleCancelCreate() {
+      this.createDialog.visible = false
+      this.createDialog.parentNode = null
     }
   }
 }
