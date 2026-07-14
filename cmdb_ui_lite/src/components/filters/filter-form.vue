@@ -226,7 +226,7 @@ export default {
   },
   methods: {
     hasAddSelected(val, oldVal, addSelect) {
-      return val[0] && oldVal[0] && addSelect.length > 0
+      return val && val[0] && oldVal && oldVal[0] && addSelect && addSelect.length > 0
     },
     handleClearCondition() {
       this.clearCondition()

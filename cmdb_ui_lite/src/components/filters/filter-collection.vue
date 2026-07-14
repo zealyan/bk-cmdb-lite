@@ -70,7 +70,7 @@ export default {
       }
     },
     handleApply(value) {
-      const selectedId = value[value.length - 1]
+      const selectedId = Array.isArray(value) && value.length > 0 ? value[value.length - 1] : null
       this.storageCollection = this.collections.find(c => c.id === selectedId) || null
       this.$emit('apply', this.storageCollection)
     },

@@ -66,10 +66,10 @@ export default {
       let path = []
       let current = this.node
       while (current) {
-        path.unshift(current.data.bk_inst_name)
+        path.unshift(current.data?.bk_inst_name || current.name || '')
         current = current.parent
       }
-      return path
+      return path.filter(Boolean)
     }
   }
 }

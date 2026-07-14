@@ -22,7 +22,7 @@ const FilterStore = new Vue({
       handler(newVal, oldVal) {
         // 只在 selected 真正变化时才重建 condition
         // 避免在 handleSearch 中 updateSelected 后的 watch 覆盖 setCondition 的值
-        if (!oldVal || newVal.length !== oldVal.length ||
+        if (!oldVal || !newVal || newVal.length !== oldVal.length ||
             newVal.some((item, i) => item.bk_property_id !== (oldVal[i] && oldVal[i].bk_property_id))) {
           this.initCondition()
         }

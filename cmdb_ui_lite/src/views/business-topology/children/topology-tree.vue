@@ -151,10 +151,12 @@ export default {
       this.loading = true
       try {
         const topology = await this.getInstanceTopology()
-        console.log('[TopologyTree] initTopology: topology data loaded, length:', topology.length)
-        console.log('[TopologyTree] initTopology: first node:', topology[0] ? topology[0].bk_inst_name : 'null')
+        console.log('[TopologyTree] initTopology: topology data loaded:', topology)
+        console.log('[TopologyTree] initTopology: topology type:', typeof topology)
+        console.log('[TopologyTree] initTopology: topology length:', topology && topology.length)
+        console.log('[TopologyTree] initTopology: first node:', topology && topology[0] ? topology[0].bk_inst_name : 'null')
 
-        this.treeData = topology
+        this.treeData = topology || []
         this.$refs.tree.setData(this.treeData)
         console.log('[TopologyTree] initTopology: tree data set')
 
@@ -489,7 +491,7 @@ export default {
         return
       }
 
-      this.setNodeCount([node, ...node.children])
+      this.setNodeCount([node, ...(node.children || [])])
       this.saveExpandedState()
     },
 

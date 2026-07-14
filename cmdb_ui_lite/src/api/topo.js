@@ -1,4 +1,4 @@
-import axios from 'axios'
+import http from './client'
 
 const API_BASE = '/api/v1'
 
@@ -9,8 +9,8 @@ export const topoAPI = {
    * @returns {Promise<Array>} 业务列表
    */
   async getBizList() {
-    const response = await axios.get(`${API_BASE}/topo/biz`)
-    return response.data
+    const response = await http.get(`${API_BASE}/topo/biz`)
+    return response
   },
 
   /**
@@ -20,14 +20,14 @@ export const topoAPI = {
    * @returns {Promise<Object>} 拓扑树数据
    */
   async getInstanceTopo(bizId, params = {}) {
-    const response = await axios.get(`${API_BASE}/topo/instance/mainline`, {
+    const response = await http.get(`${API_BASE}/topo/instance/mainline`, {
       params: {
         bk_biz_id: bizId,
         with_statistics: params.with_statistics || true,
         ...params
       }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -37,11 +37,11 @@ export const topoAPI = {
    * @returns {Promise<Array>} 统计结果列表
    */
   async getTopoStatistics(bizId, params = {}) {
-    const response = await axios.post(`${API_BASE}/topo/statistics`, {
+    const response = await http.post(`${API_BASE}/topo/statistics`, {
       bk_biz_id: bizId,
       ...params
     })
-    return response.data
+    return response
   },
 
   /**
@@ -50,10 +50,10 @@ export const topoAPI = {
    * @returns {Promise<Array>} 集群列表
    */
   async getBizSetList(bizId) {
-    const response = await axios.get(`${API_BASE}/topo/biz/${bizId}/set`, {
+    const response = await http.get(`${API_BASE}/topo/biz/${bizId}/set`, {
       params: { with_statistics: true }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -63,10 +63,10 @@ export const topoAPI = {
    * @returns {Promise<Array>} 模块列表
    */
   async getSetModuleList(setId, bizId) {
-    const response = await axios.get(`${API_BASE}/topo/set/${setId}/module`, {
+    const response = await http.get(`${API_BASE}/topo/set/${setId}/module`, {
       params: { bk_biz_id: bizId, with_statistics: true }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -77,14 +77,14 @@ export const topoAPI = {
    * @returns {Promise<{data: {count: number}}>}
    */
   async getNodeCount(objId, instId, extra = {}) {
-    const response = await axios.get(`${API_BASE}/topo/count`, {
+    const response = await http.get(`${API_BASE}/topo/count`, {
       params: {
         bk_obj_id: objId,
         bk_inst_id: instId,
         ...extra
       }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -94,14 +94,14 @@ export const topoAPI = {
    * @returns {Promise<Object>} { info: [], count: number }
    */
   async getBizHostList(bizId, params = {}) {
-    const response = await axios.get(`${API_BASE}/topo/biz/${bizId}/host`, {
+    const response = await http.get(`${API_BASE}/topo/biz/${bizId}/host`, {
       params: {
         page: params.page || 1,
         page_size: params.page_size || 20,
         sort: params.sort || 'bk_host_id'
       }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -112,7 +112,7 @@ export const topoAPI = {
    * @returns {Promise<Object>} { info: [], count: number }
    */
   async getSetHostList(setId, bizId, params = {}) {
-    const response = await axios.get(`${API_BASE}/topo/set/${setId}/host`, {
+    const response = await http.get(`${API_BASE}/topo/set/${setId}/host`, {
       params: {
         bk_biz_id: bizId,
         page: params.page || 1,
@@ -120,7 +120,7 @@ export const topoAPI = {
         sort: params.sort || 'bk_host_id'
       }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -130,14 +130,14 @@ export const topoAPI = {
    * @returns {Promise<Object>} { info: [], count: number }
    */
   async getModuleHostList(moduleId, params = {}) {
-    const response = await axios.get(`${API_BASE}/topo/module/${moduleId}/host`, {
+    const response = await http.get(`${API_BASE}/topo/module/${moduleId}/host`, {
       params: {
         page: params.page || 1,
         page_size: params.page_size || 20,
         sort: params.sort || 'bk_host_id'
       }
     })
-    return response.data
+    return response
   },
 
   /**
@@ -145,8 +145,8 @@ export const topoAPI = {
    * @returns {Promise<Array>} 拓扑树节点列表
    */
   async getBizTopoTree() {
-    const response = await axios.get(`${API_BASE}/topo/tree`)
-    return response.data
+    const response = await http.get(`${API_BASE}/topo/tree`)
+    return response
   },
 
   /**
@@ -162,8 +162,8 @@ export const topoAPI = {
    * @returns {Promise<Object>} { result, data: { info: [], count: number }, code, message }
    */
   async searchHosts(payload = {}) {
-    const response = await axios.post(`${API_BASE}/topo/hosts/search`, payload)
-    return response.data
+    const response = await http.post(`${API_BASE}/topo/hosts/search`, payload)
+    return response
   },
 
   /**
@@ -173,8 +173,8 @@ export const topoAPI = {
    * @returns {Promise<Object>} { result: true, data: { created: [...] }, code: 0 }
    */
   async createSet(bizId, data) {
-    const response = await axios.post(`${API_BASE}/topo/biz/${bizId}/set`, data)
-    return response.data
+    const response = await http.post(`${API_BASE}/topo/biz/${bizId}/set`, data)
+    return response
   },
 
   /**
@@ -185,8 +185,8 @@ export const topoAPI = {
    * @returns {Promise<Object>} { result: true, data: { created: [...] }, code: 0 }
    */
   async createModule(bizId, setId, data) {
-    const response = await axios.post(`${API_BASE}/topo/set/${setId}/module`, data)
-    return response.data
+    const response = await http.post(`${API_BASE}/topo/set/${setId}/module`, data)
+    return response
   }
 }
 
