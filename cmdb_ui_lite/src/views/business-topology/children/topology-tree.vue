@@ -553,13 +553,21 @@ export default {
       try {
         const bizId = this.getCurrentBizId()
         const parentId = this.createModuleDialog.parentNode?.data?.bk_inst_id
+
+        // 兼容新旧数据结构
+        // 新结构: { bk_module_name: string[], service_category_id, service_template_id }
+        // 旧结构: { names: string[] }
+        const names = Array.isArray(data.bk_module_name) ? data.bk_module_name : data.names
+
         const result = await topoAPI.createModule(bizId, parentId, {
-          names: data.names
+          names: names,
+          service_category_id: data.service_category_id,
+          service_template_id: data.service_template_id || 0
         })
         console.log('[TopologyTree] createModule result:', result)
         this.$bkMessage({
           theme: 'success',
-          message: `创建模块成功：${data.names.join(', ')}`
+          message: `创建模块成功：${names.join(', ')}`
         })
         this.createModuleDialog.visible = false
         // 刷新拓扑树
