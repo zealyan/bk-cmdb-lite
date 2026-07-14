@@ -64,7 +64,7 @@
               <div class="placeholder-text">请选择拓扑节点</div>
               <div class="placeholder-desc">点击左侧拓扑树节点查看节点信息</div>
             </div>
-            <simple-node-info v-else :node="selectedNode"></simple-node-info>
+            <node-info v-else :node="selectedNode" @deleted="handleNodeDeleted"></node-info>
           </bk-tab-panel>
         </bk-tab>
       </div>
@@ -75,7 +75,7 @@
 <script>
 import TopologyTree from './children/topology-tree.vue'
 import HostList from './host/host-list.vue'
-import SimpleNodeInfo from './children/simple-node-info.vue'
+import NodeInfo from './children/node-info.vue'
 import RouterQuery from '@/utils/router-query'
 
 export default {
@@ -83,7 +83,7 @@ export default {
   components: {
     TopologyTree,
     HostList,
-    SimpleNodeInfo
+    NodeInfo
   },
   data() {
     return {
@@ -218,6 +218,11 @@ export default {
     },
     handleNodeSelect(node) {
       this.selectedNode = node
+    },
+    handleNodeDeleted() {
+      // 节点删除后刷新拓扑树
+      this.selectedNode = null
+      this.$refs.topologyTree.initTopology()
     }
   }
 }

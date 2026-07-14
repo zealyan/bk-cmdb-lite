@@ -1463,3 +1463,177 @@ def create_module(bk_set_id: int, names: List[str],
         'created': created,
         'error_names': error_names
     }
+
+
+def get_node_detail(bk_obj_id: str, bk_inst_id: int,
+                    bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
+    """
+    获取节点详情（biz/set/module）
+
+    Args:
+        bk_obj_id: 节点类型
+        bk_inst_id: 节点实例ID
+        bk_biz_id: 业务ID（set/module时必填）
+        supplier_account: 供应商账号
+
+    Returns:
+        节点详情字典
+    """
+    if bk_obj_id == 'biz':
+        result = query_one("""
+            SELECT bk_biz_id, bk_biz_name, "default", bk_supplier_account,
+                   create_time, last_time, creator, modifier
+            FROM cc_ApplicationBase
+            WHERE bk_biz_id = :biz_id AND bk_supplier_account = :supplier
+        """, {'biz_id': bk_inst_id, 'supplier': supplier_account})
+    elif bk_obj_id == 'set':
+        if not bk_biz_id:
+            raise ValueError('获取集群详情需要 bk_biz_id')
+        result = query_one("""
+            SELECT bk_set_id, bk_set_name, bk_parent_id, bk_biz_id,
+                   "default", bk_set_desc, bk_set_env, bk_service_status,
+                   bk_supplier_account, create_time, last_time, creator, modifier
+            FROM cc_SetBase
+            WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id AND bk_supplier_account = :supplier
+        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id, 'supplier': supplier_account})
+    elif bk_obj_id == 'module':
+        if not bk_biz_id:
+            raise ValueError('获取模块详情需要 bk_biz_id')
+        result = query_one("""
+            SELECT bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id,
+                   "default", bk_supplier_account, create_time, last_time, creator, modifier
+            FROM cc_ModuleBase
+            WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id AND bk_supplier_account = :supplier
+        """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id, 'supplier': supplier_account})
+    else:
+        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+
+    if not result:
+        raise ValueError(f'{bk_obj_id} 节点 {bk_inst_id} 不存在')
+
+    return dict(result)
+
+
+def update_node(bk_obj_id: str, bk_inst_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    更新节点信息（biz/set/module）
+
+    Args:
+        bk_obj_id: 节点类型
+        bk_inst_id: 节点实例ID
+        params: 更新参数
+
+    Returns:
+        更新后的节点信息
+    """
+    from app.db.executor import SQLExecutor
+    import time
+
+    executor = SQLExecutor()
+    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    if bk_obj_id == 'biz':
+        bk_biz_name = params.get('bk_biz_name')
+        if not bk_biz_name:
+            raise ValueError('业务名称不能为空')
+        executor.execute("""
+            UPDATE cc_ApplicationBase
+            SET bk_biz_name = :bk_biz_name, last_time = :last_time, modifier = :modifier
+            WHERE bk_biz_id = :bk_inst_id
+        """, {
+            'bk_biz_name': bk_biz_name,
+            'last_time': current_time,
+            'modifier': 'admin',
+            'bk_inst_id': bk_inst_id
+        })
+    elif bk_obj_id == 'set':
+        bk_set_name = params.get('bk_set_name')
+        if not bk_set_name:
+            raise ValueError('集群名称不能为空')
+        executor.execute("""
+            UPDATE cc_SetBase
+            SET bk_set_name = :bk_set_name,
+                bk_set_desc = :bk_set_desc,
+                bk_set_env = :bk_set_env,
+                bk_service_status = :bk_service_status,
+                last_time = :last_time,
+                modifier = :modifier
+            WHERE bk_set_id = :bk_inst_id
+        """, {
+            'bk_set_name': bk_set_name,
+            'bk_set_desc': params.get('bk_set_desc', ''),
+            'bk_set_env': params.get('bk_set_env', '3'),
+            'bk_service_status': params.get('bk_service_status', '1'),
+            'last_time': current_time,
+            'modifier': 'admin',
+            'bk_inst_id': bk_inst_id
+        })
+    elif bk_obj_id == 'module':
+        bk_module_name = params.get('bk_module_name')
+        if not bk_module_name:
+            raise ValueError('模块名称不能为空')
+        executor.execute("""
+            UPDATE cc_ModuleBase
+            SET bk_module_name = :bk_module_name,
+                last_time = :last_time,
+                modifier = :modifier
+            WHERE bk_module_id = :bk_inst_id
+        """, {
+            'bk_module_name': bk_module_name,
+            'last_time': current_time,
+            'modifier': 'admin',
+            'bk_inst_id': bk_inst_id
+        })
+    else:
+        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+
+    return {'bk_inst_id': bk_inst_id}
+
+
+def delete_node(bk_obj_id: str, bk_inst_id: int,
+                bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER) -> None:
+    """
+    删除节点（biz/set/module）
+
+    Args:
+        bk_obj_id: 节点类型
+        bk_inst_id: 节点实例ID
+        bk_biz_id: 业务ID（set/module时必填）
+        supplier_account: 供应商账号
+    """
+    from app.db.executor import SQLExecutor
+
+    executor = SQLExecutor()
+
+    if bk_obj_id == 'biz':
+        # 检查业务下是否有集群
+        set_count = query_one("""
+            SELECT COUNT(*) as count FROM cc_SetBase WHERE bk_biz_id = :biz_id
+        """, {'biz_id': bk_inst_id})
+        if set_count and set_count['count'] > 0:
+            raise ValueError('业务下存在集群，无法删除')
+
+        executor.execute("""
+            DELETE FROM cc_ApplicationBase WHERE bk_biz_id = :biz_id
+        """, {'biz_id': bk_inst_id})
+    elif bk_obj_id == 'set':
+        if not bk_biz_id:
+            raise ValueError('删除集群需要 bk_biz_id')
+        # 检查集群下是否有模块
+        module_count = query_one("""
+            SELECT COUNT(*) as count FROM cc_ModuleBase WHERE bk_set_id = :set_id
+        """, {'set_id': bk_inst_id})
+        if module_count and module_count['count'] > 0:
+            raise ValueError('集群下存在模块，无法删除')
+
+        executor.execute("""
+            DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
+        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+    elif bk_obj_id == 'module':
+        if not bk_biz_id:
+            raise ValueError('删除模块需要 bk_biz_id')
+        executor.execute("""
+            DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id
+        """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id})
+    else:
+        raise ValueError(f'不支持的节点类型: {bk_obj_id}')

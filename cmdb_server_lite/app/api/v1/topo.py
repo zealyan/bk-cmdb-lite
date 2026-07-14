@@ -725,3 +725,121 @@ def create_module(bk_set_id):
         raise
     except Exception as e:
         raise APIException(f'创建模块失败: {str(e)}', 500)
+
+
+@topo_bp.route('/node/<string:bk_obj_id>/<int:bk_inst_id>', methods=['GET'])
+def get_node_detail(bk_obj_id, bk_inst_id):
+    """
+    获取节点详情（biz/set/module）
+
+    Args:
+        bk_obj_id: 节点类型（biz/set/module）
+        bk_inst_id: 节点实例ID
+
+    QueryParams:
+        bk_biz_id: 业务ID（set/module时必填）
+        bk_supplier_account: 供应商账号，默认 '0'
+
+    Returns:
+        { result: true, data: { ... }, code: 0 }
+    """
+    bk_biz_id = request.args.get('bk_biz_id')
+    supplier_account = request.args.get('bk_supplier_account', '0')
+
+    try:
+        result = topo_service.get_node_detail(
+            bk_obj_id=bk_obj_id,
+            bk_inst_id=bk_inst_id,
+            bk_biz_id=int(bk_biz_id) if bk_biz_id else None,
+            supplier_account=supplier_account
+        )
+        return jsonify({
+            'result': True,
+            'data': result,
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'获取节点详情失败: {str(e)}', 500)
+
+
+@topo_bp.route('/node/<string:bk_obj_id>/<int:bk_inst_id>', methods=['PUT'])
+def update_node(bk_obj_id, bk_inst_id):
+    """
+    更新节点信息（biz/set/module）
+
+    Args:
+        bk_obj_id: 节点类型（biz/set/module）
+        bk_inst_id: 节点实例ID
+
+    RequestBody:
+        {
+            "bk_biz_id": 2,
+            "bk_set_name": "新名称",      // set节点
+            "bk_module_name": "新名称",    // module节点
+            "bk_biz_name": "新名称"       // biz节点
+        }
+
+    Returns:
+        { result: true, data: {}, code: 0 }
+    """
+    data = request.get_json()
+    if not data:
+        raise APIException('缺少请求参数', 400)
+
+    try:
+        result = topo_service.update_node(
+            bk_obj_id=bk_obj_id,
+            bk_inst_id=bk_inst_id,
+            params=data
+        )
+        return jsonify({
+            'result': True,
+            'data': result,
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'更新节点失败: {str(e)}', 500)
+
+
+@topo_bp.route('/node/<string:bk_obj_id>/<int:bk_inst_id>', methods=['DELETE'])
+def delete_node(bk_obj_id, bk_inst_id):
+    """
+    删除节点（biz/set/module）
+
+    Args:
+        bk_obj_id: 节点类型（biz/set/module）
+        bk_inst_id: 节点实例ID
+
+    QueryParams:
+        bk_biz_id: 业务ID（set/module时必填）
+        bk_supplier_account: 供应商账号，默认 '0'
+
+    Returns:
+        { result: true, data: {}, code: 0 }
+    """
+    bk_biz_id = request.args.get('bk_biz_id')
+    supplier_account = request.args.get('bk_supplier_account', '0')
+
+    try:
+        topo_service.delete_node(
+            bk_obj_id=bk_obj_id,
+            bk_inst_id=bk_inst_id,
+            bk_biz_id=int(bk_biz_id) if bk_biz_id else None,
+            supplier_account=supplier_account
+        )
+        return jsonify({
+            'result': True,
+            'data': {},
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'删除节点失败: {str(e)}', 500)
