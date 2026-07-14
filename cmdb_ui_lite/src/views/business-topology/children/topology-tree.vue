@@ -23,7 +23,8 @@
         <topology-tree-node
           :node="node"
           :data="data"
-          :node-count-type="nodeCountType">
+          :node-count-type="nodeCountType"
+          @create="handleShowCreateDialog">
         </topology-tree-node>
       </template>
       <template #empty>
@@ -457,6 +458,15 @@ export default {
       if (container) {
         this.treeHeight = container.clientHeight - 60
       }
+    },
+
+    // 点击新建按钮，弹出提示（后续可扩展为创建节点对话框）
+    handleShowCreateDialog(node) {
+      this.$bkInfo({
+        title: '新建节点',
+        subTitle: `在「${node.name}」下新建节点功能待开发`,
+        confirmFn: () => {}
+      })
     }
   }
 }

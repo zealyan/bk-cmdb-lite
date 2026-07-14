@@ -16,8 +16,18 @@
     <!-- 节点名称 -->
     <span class="node-name" :title="node.name">{{ node.name }}</span>
 
-    <!-- 节点额外信息（数量） - 使用loading组件包裹统计数据 -->
+    <!-- 节点额外信息 -->
     <div class="node-extra">
+      <!-- 新建按钮 - hover时显示，替代数量标签 -->
+      <span v-if="isShowCreate" class="node-create-trigger">
+        <bk-button class="node-button"
+          theme="primary"
+          @click.stop="handleCreate(node)">
+          新建
+        </bk-button>
+      </span>
+
+      <!-- 数量标签 - 默认显示，hover时隐藏 -->
       <cmdb-loading :class="['node-count', { 'is-selected': node.selected }]"
         :loading="['pending', undefined].includes(data.status)">
         {{ getNodeCount(data) }}
@@ -65,16 +75,28 @@ export default {
     // 是否是模板创建的节点
     isTemplate() {
       return this.data.service_template_id || this.data.set_template_id
+    },
+    // 是否显示新建按钮：业务(biz)和集群(set)节点显示，模块(module)和空闲机池不显示
+    isShowCreate() {
+      const objId = this.data.bk_obj_id
+      const isModule = objId === 'module'
+      const isIdleSet = this.data.is_idle_set
+      // 业务和集群都可以新建子节点，模块是最底层不可新建
+      return !isModule && !isIdleSet
     }
   },
   methods: {
-    // 获取节点数量（与原项目保持一致）
+    // 获取节点数量
     getNodeCount(data) {
       const count = data[this.nodeCountType]
       if (typeof count === 'number') {
         return count
       }
       return 0
+    },
+    // 点击新建按钮，向父组件传递 create 事件
+    handleCreate(node) {
+      this.$emit('create', node)
     }
   }
 }
@@ -86,9 +108,15 @@ export default {
   width: 100%;
   cursor: pointer;
 
+  // hover时：显示新建按钮，隐藏数量标签
   &:hover {
-    .node-count {
-      background-color: #e1ecff;
+    .node-extra {
+      .node-create-trigger {
+        display: inline-block;
+        & ~ .node-count {
+          display: none;
+        }
+      }
     }
   }
 
@@ -159,6 +187,22 @@ export default {
   .node-extra {
     margin-left: auto;
     display: flex;
+
+    // 新建按钮触发器 - 默认隐藏，hover时显示
+    .node-create-trigger {
+      display: none;
+      font-size: 0;
+
+      .node-button {
+        height: 24px;
+        padding: 0 6px;
+        margin: 0 20px 0 4px;
+        line-height: 22px;
+        border-radius: 4px;
+        font-size: 12px;
+        min-width: auto;
+      }
+    }
 
     .node-count {
       padding: 0 5px;
