@@ -1284,3 +1284,182 @@ def get_host_topology(bk_host_id: int, bk_biz_id: int = None,
         result.append(biz)
 
     return result
+
+
+def create_set(bk_biz_id: int, names: List[str],
+               supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
+    """
+    创建集群（批量）
+
+    Args:
+        bk_biz_id: 业务ID
+        names: 集群名称列表
+        supplier_account: 供应商账号
+
+    Returns:
+        { 'created': [...], 'error_names': [...] }
+    """
+    from app.db.executor import SQLExecutor
+    import time
+
+    executor = SQLExecutor()
+    created = []
+    error_names = []
+
+    # 验证业务是否存在
+    biz = query_one("""
+        SELECT bk_biz_id FROM cc_ApplicationBase
+        WHERE bk_biz_id = :biz_id AND bk_supplier_account = :supplier
+    """, {'biz_id': bk_biz_id, 'supplier': supplier_account})
+
+    if not biz:
+        raise ValueError(f'业务 {bk_biz_id} 不存在')
+
+    # 获取当前最大集群ID
+    max_id_row = query_one("""
+        SELECT MAX(bk_set_id) as max_id FROM cc_SetBase
+    """, {})
+    next_id = (max_id_row['max_id'] or 0) + 1
+
+    # 过滤空名称和去重
+    unique_names = []
+    for name in names:
+        name = name.strip()
+        if name and name not in unique_names:
+            unique_names.append(name)
+
+    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    for name in unique_names:
+        try:
+            # 插入集群数据
+            executor.execute("""
+                INSERT INTO cc_SetBase
+                (_id, bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default",
+                 bk_supplier_account, create_time, last_time, creator, modifier)
+                VALUES
+                (:_id, :bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default,
+                 :bk_supplier_account, :create_time, :last_time, :creator, :modifier)
+            """, {
+                '_id': f'set_{next_id}',
+                'bk_set_id': next_id,
+                'bk_set_name': name,
+                'bk_parent_id': bk_biz_id,
+                'bk_biz_id': bk_biz_id,
+                'default': 0,
+                'bk_supplier_account': supplier_account,
+                'create_time': current_time,
+                'last_time': current_time,
+                'creator': 'admin',
+                'modifier': 'admin'
+            })
+
+            created.append({
+                'bk_set_id': next_id,
+                'bk_set_name': name,
+                'bk_biz_id': bk_biz_id
+            })
+            next_id += 1
+        except Exception as e:
+            error_names.append({
+                'name': name,
+                'error': str(e)
+            })
+
+    return {
+        'created': created,
+        'error_names': error_names
+    }
+
+
+def create_module(bk_set_id: int, names: List[str],
+                  bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
+    """
+    创建模块（批量）
+
+    Args:
+        bk_set_id: 集群ID
+        names: 模块名称列表
+        bk_biz_id: 业务ID（可选，会从集群表查询）
+        supplier_account: 供应商账号
+
+    Returns:
+        { 'created': [...], 'error_names': [...] }
+    """
+    from app.db.executor import SQLExecutor
+    import time
+
+    executor = SQLExecutor()
+    created = []
+    error_names = []
+
+    # 查询集群信息
+    set_info = query_one("""
+        SELECT bk_set_id, bk_biz_id, bk_set_name FROM cc_SetBase
+        WHERE bk_set_id = :set_id AND bk_supplier_account = :supplier
+    """, {'set_id': bk_set_id, 'supplier': supplier_account})
+
+    if not set_info:
+        raise ValueError(f'集群 {bk_set_id} 不存在')
+
+    # 使用集群的业务ID
+    if not bk_biz_id:
+        bk_biz_id = set_info['bk_biz_id']
+
+    # 获取当前最大模块ID
+    max_id_row = query_one("""
+        SELECT MAX(bk_module_id) as max_id FROM cc_ModuleBase
+    """, {})
+    next_id = (max_id_row['max_id'] or 0) + 1
+
+    # 过滤空名称和去重
+    unique_names = []
+    for name in names:
+        name = name.strip()
+        if name and name not in unique_names:
+            unique_names.append(name)
+
+    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    for name in unique_names:
+        try:
+            # 插入模块数据
+            executor.execute("""
+                INSERT INTO cc_ModuleBase
+                (_id, bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id,
+                 "default", bk_supplier_account, create_time, last_time, creator, modifier)
+                VALUES
+                (:_id, :bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id,
+                 :default, :bk_supplier_account, :create_time, :last_time, :creator, :modifier)
+            """, {
+                '_id': f'module_{next_id}',
+                'bk_module_id': next_id,
+                'bk_module_name': name,
+                'bk_parent_id': bk_set_id,
+                'bk_set_id': bk_set_id,
+                'bk_biz_id': bk_biz_id,
+                'default': 0,
+                'bk_supplier_account': supplier_account,
+                'create_time': current_time,
+                'last_time': current_time,
+                'creator': 'admin',
+                'modifier': 'admin'
+            })
+
+            created.append({
+                'bk_module_id': next_id,
+                'bk_module_name': name,
+                'bk_set_id': bk_set_id,
+                'bk_biz_id': bk_biz_id
+            })
+            next_id += 1
+        except Exception as e:
+            error_names.append({
+                'name': name,
+                'error': str(e)
+            })
+
+    return {
+        'created': created,
+        'error_names': error_names
+    }

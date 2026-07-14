@@ -164,6 +164,29 @@ export const topoAPI = {
   async searchHosts(payload = {}) {
     const response = await axios.post(`${API_BASE}/topo/hosts/search`, payload)
     return response.data
+  },
+
+  /**
+   * 创建集群
+   * @param {number} bizId 业务ID
+   * @param {Object} data 创建数据 { names: string[] }
+   * @returns {Promise<Object>} { result: true, data: { created: [...] }, code: 0 }
+   */
+  async createSet(bizId, data) {
+    const response = await axios.post(`${API_BASE}/topo/biz/${bizId}/set`, data)
+    return response.data
+  },
+
+  /**
+   * 创建模块
+   * @param {number} bizId 业务ID
+   * @param {number} setId 集群ID
+   * @param {Object} data 创建数据 { names: string[] }
+   * @returns {Promise<Object>} { result: true, data: { created: [...] }, code: 0 }
+   */
+  async createModule(bizId, setId, data) {
+    const response = await axios.post(`${API_BASE}/topo/set/${setId}/module`, data)
+    return response.data
   }
 }
 

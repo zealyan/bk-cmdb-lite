@@ -625,3 +625,103 @@ def get_host_topology(bk_host_id):
         raise
     except Exception as e:
         raise APIException(f'获取主机拓扑失败: {str(e)}', 500)
+
+
+@topo_bp.route('/biz/<int:bk_biz_id>/set', methods=['POST'])
+def create_set(bk_biz_id):
+    """
+    创建集群（批量）
+
+    PathParams:
+        bk_biz_id: 业务ID
+
+    RequestBody:
+        {
+            "names": ["集群1", "集群2"]
+        }
+
+    Returns:
+        {
+            result: true,
+            data: { created: [...] },
+            code: 0,
+            message: ''
+        }
+    """
+    data = request.get_json()
+    if not data or not data.get('names'):
+        raise APIException('缺少 names 参数', 400)
+
+    names = data.get('names')
+    if not isinstance(names, list):
+        raise APIException('names 必须是数组', 400)
+
+    supplier_account = data.get('bk_supplier_account', '0')
+
+    try:
+        result = topo_service.create_set(
+            bk_biz_id=bk_biz_id,
+            names=names,
+            supplier_account=supplier_account
+        )
+        return jsonify({
+            'result': True,
+            'data': result,
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'创建集群失败: {str(e)}', 500)
+
+
+@topo_bp.route('/set/<int:bk_set_id>/module', methods=['POST'])
+def create_module(bk_set_id):
+    """
+    创建模块（批量）
+
+    PathParams:
+        bk_set_id: 集群ID
+
+    RequestBody:
+        {
+            "names": ["模块1", "模块2"]
+        }
+
+    Returns:
+        {
+            result: true,
+            data: { created: [...] },
+            code: 0,
+            message: ''
+        }
+    """
+    data = request.get_json()
+    if not data or not data.get('names'):
+        raise APIException('缺少 names 参数', 400)
+
+    names = data.get('names')
+    if not isinstance(names, list):
+        raise APIException('names 必须是数组', 400)
+
+    bk_biz_id = data.get('bk_biz_id')
+    supplier_account = data.get('bk_supplier_account', '0')
+
+    try:
+        result = topo_service.create_module(
+            bk_set_id=bk_set_id,
+            names=names,
+            bk_biz_id=bk_biz_id,
+            supplier_account=supplier_account
+        )
+        return jsonify({
+            'result': True,
+            'data': result,
+            'code': 0,
+            'message': ''
+        })
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f'创建模块失败: {str(e)}', 500)

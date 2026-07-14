@@ -36,18 +36,32 @@
       </template>
     </bk-big-tree>
 
-    <!-- 新建集群对话框 -->
+    <!-- 新建集群对话框 (在biz节点上新建) -->
     <bk-dialog class="bk-dialog-no-padding"
-      v-model="createDialog.visible"
+      v-model="createSetDialog.visible"
       :show-footer="false"
       :mask-close="false"
       :width="580"
       @cancel="handleCancelCreate">
-      <create-set v-if="createDialog.visible"
-        :parent-node="createDialog.parentNode"
+      <create-set v-if="createSetDialog.visible"
+        :parent-node="createSetDialog.parentNode"
         @submit="handleCreateSetSubmit"
         @cancel="handleCancelCreate">
       </create-set>
+    </bk-dialog>
+
+    <!-- 新建模块对话框 (在set节点上新建) -->
+    <bk-dialog class="bk-dialog-no-padding"
+      v-model="createModuleDialog.visible"
+      :show-footer="false"
+      :mask-close="false"
+      :width="580"
+      @cancel="handleCancelCreate">
+      <create-module v-if="createModuleDialog.visible"
+        :parent-node="createModuleDialog.parentNode"
+        @submit="handleCreateModuleSubmit"
+        @cancel="handleCancelCreate">
+      </create-module>
     </bk-dialog>
   </section>
 </template>
@@ -55,6 +69,7 @@
 <script>
 import TopologyTreeNode from './topology-tree-node.vue'
 import CreateSet from './create-set.vue'
+import CreateModule from './create-module.vue'
 import { topoAPI } from '@/api/topo'
 import RouterQuery from '@/utils/router-query'
 
@@ -68,7 +83,8 @@ export default {
   name: 'TopologyTree',
   components: {
     TopologyTreeNode,
-    CreateSet
+    CreateSet,
+    CreateModule
   },
   props: {
     active: {
@@ -87,7 +103,11 @@ export default {
       initialized: false,
       bizId: null,
       isRestoringExpanded: false,
-      createDialog: {
+      createSetDialog: {
+        visible: false,
+        parentNode: null
+      },
+      createModuleDialog: {
         visible: false,
         parentNode: null
       }
@@ -480,26 +500,83 @@ export default {
       }
     },
 
-    // 点击新建按钮，打开新建对话框
+    // 点击新建按钮，根据节点类型打开不同对话框
     handleShowCreateDialog(node) {
-      this.createDialog = {
-        visible: true,
-        parentNode: node
+      const objId = node.data?.bk_obj_id
+      console.log('[TopologyTree] handleShowCreateDialog:', { node, objId })
+
+      if (objId === 'biz') {
+        // 在业务节点上新建集群
+        this.createSetDialog = {
+          visible: true,
+          parentNode: node
+        }
+      } else if (objId === 'set') {
+        // 在集群节点上新建模块
+        this.createModuleDialog = {
+          visible: true,
+          parentNode: node
+        }
       }
     },
+
     // 新建集群提交
-    handleCreateSetSubmit(data) {
+    async handleCreateSetSubmit(data) {
       console.log('[TopologyTree] handleCreateSetSubmit:', data)
-      this.$bkMessage({
-        theme: 'primary',
-        message: `创建集群：${data.names.join(', ')}`
-      })
-      this.createDialog.visible = false
+      try {
+        const bizId = this.getCurrentBizId()
+        const result = await topoAPI.createSet(bizId, {
+          names: data.names
+        })
+        console.log('[TopologyTree] createSet result:', result)
+        this.$bkMessage({
+          theme: 'success',
+          message: `创建集群成功：${data.names.join(', ')}`
+        })
+        this.createSetDialog.visible = false
+        // 刷新拓扑树
+        this.initTopology()
+      } catch (error) {
+        console.error('[TopologyTree] createSet error:', error)
+        this.$bkMessage({
+          theme: 'error',
+          message: `创建集群失败：${error.message || '未知错误'}`
+        })
+      }
     },
+
+    // 新建模块提交
+    async handleCreateModuleSubmit(data) {
+      console.log('[TopologyTree] handleCreateModuleSubmit:', data)
+      try {
+        const bizId = this.getCurrentBizId()
+        const parentId = this.createModuleDialog.parentNode?.data?.bk_inst_id
+        const result = await topoAPI.createModule(bizId, parentId, {
+          names: data.names
+        })
+        console.log('[TopologyTree] createModule result:', result)
+        this.$bkMessage({
+          theme: 'success',
+          message: `创建模块成功：${data.names.join(', ')}`
+        })
+        this.createModuleDialog.visible = false
+        // 刷新拓扑树
+        this.initTopology()
+      } catch (error) {
+        console.error('[TopologyTree] createModule error:', error)
+        this.$bkMessage({
+          theme: 'error',
+          message: `创建模块失败：${error.message || '未知错误'}`
+        })
+      }
+    },
+
     // 取消新建
     handleCancelCreate() {
-      this.createDialog.visible = false
-      this.createDialog.parentNode = null
+      this.createSetDialog.visible = false
+      this.createSetDialog.parentNode = null
+      this.createModuleDialog.visible = false
+      this.createModuleDialog.parentNode = null
     }
   }
 }
