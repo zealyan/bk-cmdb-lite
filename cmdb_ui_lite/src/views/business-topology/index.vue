@@ -246,6 +246,7 @@ export default {
 }
 
 .left-panel {
+  position: relative;
   flex-shrink: 0;
   border-right: 1px solid $cmdbLayoutBorderColor;
   transition: width 0.2s ease;
