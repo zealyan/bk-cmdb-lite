@@ -13,7 +13,7 @@ const menus = [{
   menu: [{
     id: MENU_BUSINESS_TOPOLOGY,
     i18n: '业务拓扑',
-    icon: 'icon-cc-topology',
+    icon: 'icon-cc-host',
     route: {
       name: MENU_BUSINESS_TOPOLOGY,
       params: {
