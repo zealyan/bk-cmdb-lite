@@ -45,7 +45,7 @@
         :label="column.bk_property_name"
         :min-width="getColumnMinWidth(column)"
         :sortable="getColumnSortable(column)"
-        :fixed="column.bk_property_id === 'bk_host_id'"
+        :fixed="['bk_host_id', 'bk_host_innerip'].includes(column.bk_property_id)"
         :show-overflow-tooltip="true">
         <template slot-scope="{ row }">
           <span
@@ -144,7 +144,7 @@ export default {
       columnsConfig: {
         show: false,
         selected: [],
-        disabledColumns: ['bk_host_id', 'bk_host_name']
+        disabledColumns: ['bk_host_id', 'bk_host_innerip']
       },
       searchKeyword: '',
       filtersTagHeight: 0,
@@ -288,14 +288,14 @@ export default {
           .map(id => this.allProperties.find(p => p.bk_property_id === id))
           .filter(Boolean)
       } else {
-        // 默认列：固定列 + 默认显示的列
-        const defaultIds = ['bk_host_id', 'bk_host_name', 'bk_host_innerip', 'bk_host_outerip', 'bk_cloud_id']
+        // 默认列：固定列（ID、内网IP）+ 默认显示的列
+        const defaultIds = ['bk_host_id', 'bk_host_innerip', 'bk_host_name', 'bk_host_outerip', 'bk_cloud_id']
         headerProps = defaultIds
           .map(id => this.allProperties.find(p => p.bk_property_id === id))
           .filter(Boolean)
       }
 
-      // 确保固定列在最前面
+      // 确保固定列（ID、内网IP）在最前面
       const fixedProps = disabledIds
         .map(id => this.allProperties.find(p => p.bk_property_id === id))
         .filter(Boolean)
