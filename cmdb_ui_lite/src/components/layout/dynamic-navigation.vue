@@ -273,11 +273,11 @@ $color: #63656E;
 }
 
 .business-wrapper {
-  padding: 10px 16px;
   border-bottom: 1px solid #DCDEE5;
 
   .business-selector {
     width: 100%;
+    padding: 10px 16px;
 
     .bk-select {
       width: 100%;
@@ -287,11 +287,12 @@ $color: #63656E;
   .business-flag {
     display: block;
     width: 100%;
+    padding: 10px 0;
     text-align: center;
     font-size: 16px;
     color: #979BA5;
     cursor: pointer;
-    line-height: 40px;
+    line-height: 20px;
   }
 }
 
