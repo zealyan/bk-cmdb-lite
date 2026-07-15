@@ -2445,7 +2445,7 @@ export default {
     flex-shrink: 0;
     margin-right: -1px;
 
-    :deep(.bk-select) {
+    .bk-select {
       width: 100%;
       height: 32px;
       min-height: 32px;
@@ -2467,7 +2467,7 @@ export default {
     min-width: 0;
     border-radius: 0 2px 2px 0;
 
-    :deep(.bk-form-input) {
+    .bk-form-input {
       line-height: 32px;
     }
 
@@ -2707,7 +2707,7 @@ export default {
       min-width: unset;
       width: auto;
 
-      :deep(.bk-select) {
+      .bk-select {
         width: 100%;
       }
     }
