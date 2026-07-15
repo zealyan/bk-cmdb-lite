@@ -814,13 +814,14 @@ class InstanceService:
     def create_instance(model_id, data):
         """创建实例"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         instance_id = generate_id()
         data['id'] = instance_id
         data['_id'] = instance_id
-        data['bk_inst_id'] = instance_id
+        data[id_field] = instance_id
         data['bk_obj_id'] = model_id
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
@@ -883,6 +884,7 @@ class InstanceService:
     def update_instance(model_id, instance_id, data):
         """更新实例"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
 
         data['last_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -935,7 +937,7 @@ class InstanceService:
         if not update_fields:
             return InstanceService.get_instance(model_id, instance_id)
 
-        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id = :instance_id'
+        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE "{id_field}" = :instance_id'
         execute(sql, params)
 
         return InstanceService.get_instance(model_id, instance_id)
@@ -964,6 +966,7 @@ class InstanceService:
                 raise ValidationException('不允许批量更新唯一字段')
 
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
 
         # 构建属性ID到属性类型的映射
         attr_type_map = {}
@@ -1017,7 +1020,7 @@ class InstanceService:
             id_params.append(f':{param_name}')
             params[param_name] = inst_id
 
-        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id IN ({",".join(id_params)})'
+        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE "{id_field}" IN ({",".join(id_params)})'
         execute(sql, params)
 
         return len(ids)
@@ -1026,6 +1029,7 @@ class InstanceService:
     def delete_instances(model_id, ids):
         """删除实例（支持批量）"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
         
         if not ids:
             return 0
@@ -1043,7 +1047,7 @@ class InstanceService:
         
         # 删除实例表中的记录
         id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
-        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE bk_inst_id IN ({id_placeholders})'
+        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE "{id_field}" IN ({id_placeholders})'
         execute(delete_instance_sql, id_params)
         
         return len(ids)
@@ -1094,5 +1098,16 @@ SYSTEM_FIELDS = {
     'bk_created_at',
     'bk_updated_by',
     'bk_updated_at',
-    'modifier'
+    'modifier',
+    # 内置模型专用ID/名称字段
+    'bk_host_id',
+    'bk_host_name',
+    'bk_biz_id',
+    'bk_biz_name',
+    'bk_set_id',
+    'bk_set_name',
+    'bk_module_id',
+    'bk_module_name',
+    'bk_biz_set_id',
+    'bk_biz_set_name'
 }
