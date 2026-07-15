@@ -2446,6 +2446,7 @@ export default {
     margin-right: -1px;
 
     :deep(.bk-select) {
+      width: 100%;
       height: 32px;
       min-height: 32px;
       box-sizing: border-box;
