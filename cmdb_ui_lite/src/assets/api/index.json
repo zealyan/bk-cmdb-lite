@@ -6,7 +6,7 @@
       "bk_obj_icon": "icon-cc-switch2"
     },
     {
-      "bk_obj_id": "bk_host",
+      "bk_obj_id": "host",
       "bk_obj_name": "主机",
       "bk_obj_icon": "icon-cc-host"
     },

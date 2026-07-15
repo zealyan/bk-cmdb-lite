@@ -361,7 +361,7 @@ BUILTIN_MODEL_ATTRIBUTES = {
 # 模型分类映射
 MODEL_CLASSIFICATION_MAP = {
     "bk_switch": "bk_network",
-    "bk_host": "bk_host_manage",
+    "host": "bk_host_manage",
     "bk_slb": "bk_loadbalance",
     "bk_slb_server": "bk_loadbalance",
     "bk_slb_listener": "bk_loadbalance",
@@ -1251,8 +1251,8 @@ class DatabaseMigrator:
         for model in data["models"]:
             model_id = model.get("bk_obj_id")
             
-            if model_id == "bk_host":
-                logger.info(f"跳过 bk_host 模型实例迁移（由 migrate_mainline_topo 统一管理）")
+            if model_id == "host":
+                logger.info(f"跳过 host 模型实例迁移（由 migrate_mainline_topo 统一管理）")
                 continue
                 
             table_name = f"cc_ObjectBase_0_pub_{model_id}"
@@ -1458,11 +1458,11 @@ class DatabaseMigrator:
                 "on_delete": "none"
             },
             {
-                "bk_obj_id": "bk_host",
+                "bk_obj_id": "host",
                 "target_obj_id": "bk_slb",
                 "target_obj_name": "负载均衡",
                 "bk_asst_id": "install",
-                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_id": "host_install_slb",
                 "bk_obj_asst_name": "主机安装SLB",
                 "bk_supplier_account": "0",
                 "mapping": "1:1",
@@ -1534,26 +1534,26 @@ class DatabaseMigrator:
         else:
             logger.warning("未找到实例关联数据文件")
         
-        # 4. 添加模拟的 bk_host_install_slb 实例关联数据 (mapping: 1:1)
+        # 4. 添加模拟的 host_install_slb 实例关联数据 (mapping: 1:1)
         # 模拟主机 1 安装了 SLB 实例 1
         mock_host_slb_associations = [
             {
                 "id": 117,
-                "bk_obj_id": "bk_host",
+                "bk_obj_id": "host",
                 "bk_inst_id": 1,
                 "bk_asst_obj_id": "bk_slb",
                 "bk_asst_inst_id": 1,
-                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_id": "host_install_slb",
                 "bk_relation_type_id": "install",
                 "bk_supplier_account": "0"
             },
             {
                 "id": 118,
-                "bk_obj_id": "bk_host",
+                "bk_obj_id": "host",
                 "bk_inst_id": 2,
                 "bk_asst_obj_id": "bk_slb",
                 "bk_asst_inst_id": 2,
-                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_id": "host_install_slb",
                 "bk_relation_type_id": "install",
                 "bk_supplier_account": "0"
             }
@@ -1602,9 +1602,10 @@ class DatabaseMigrator:
         # 步骤6: 更新属性分组
         self.update_attributes_group()
 
-        # 步骤7: 创建实例表（跳过内置模型，它们有专用表）
+        # 步骤7: 创建实例表（跳过内置模型和 host 模型，它们有专用表）
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
         builtin_model_ids = {m["bk_obj_id"] for m in BUILTIN_MODELS}
+        builtin_model_ids.add("host")
         for model in models:
             if model['bk_obj_id'] not in builtin_model_ids:
                 self.create_instance_table(model['bk_obj_id'])
@@ -1692,7 +1693,7 @@ class DatabaseMigrator:
         # 为主机添加外网IP唯一约束
         host_outer_ip_result = self.execute_query("""
             SELECT id FROM cc_ObjAttDes 
-            WHERE bk_obj_id = 'bk_host' AND bk_property_id = 'bk_host_outerip'
+            WHERE bk_obj_id = 'host' AND bk_property_id = 'bk_host_outerip'
         """)
         
         if host_outer_ip_result:
@@ -1707,9 +1708,9 @@ class DatabaseMigrator:
                 (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
                 VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
             """, {
-                '_id': "bk_host_bk_host_outerip",
+                '_id': "host_bk_host_outerip",
                 'id': unique_id,
-                'bk_obj_id': 'bk_host',
+                'bk_obj_id': 'host',
                 'keys': outer_ip_keys,
                 'ispre': True
             })
@@ -1994,62 +1995,8 @@ class DatabaseMigrator:
                         :bk_state_name, :bk_province_name, :bk_isp_name, :bk_os_type, :bk_os_name, :bk_os_version, :bk_os_bit,
                         :bk_cpu, :bk_cpu_mhz, :bk_cpu_module, :bk_mem, :bk_disk, :bk_mac, :bk_outer_mac, :import_from)
             """, h | {"_id": f"host_{h['bk_host_id']}", "bk_host_inneripv6": "", "bk_host_outeripv6": "", "bk_cloud_inst_id": "", "bk_agent_id": ""})
-            
-            self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ObjectBase_0_pub_bk_host
-                (_id, id, bk_inst_id, bk_inst_name, bk_obj_id, bk_supplier_account,
-                 bk_host_id, bk_host_name, bk_host_innerip, bk_host_outerip, bk_host_inneripv6, bk_host_outeripv6,
-                 bk_cloud_id, bk_cloud_inst_id, bk_agent_id,
-                 operator, bk_bak_operator, bk_asset_id, bk_sn, bk_comment, bk_service_term, bk_sla,
-                 bk_state_name, bk_province_name, bk_isp_name, bk_os_type, bk_os_name, bk_os_version, bk_os_bit,
-                 bk_cpu, bk_cpu_mhz, bk_cpu_module, bk_mem, bk_disk, bk_mac, bk_outer_mac, import_from)
-                VALUES (:_id, :id, :bk_inst_id, :bk_inst_name, :bk_obj_id, :bk_supplier_account,
-                        :bk_host_id, :bk_host_name, :bk_host_innerip, :bk_host_outerip, :bk_host_inneripv6, :bk_host_outeripv6,
-                        :bk_cloud_id, :bk_cloud_inst_id, :bk_agent_id,
-                        :operator, :bk_bak_operator, :bk_asset_id, :bk_sn, :bk_comment, :bk_service_term, :bk_sla,
-                        :bk_state_name, :bk_province_name, :bk_isp_name, :bk_os_type, :bk_os_name, :bk_os_version, :bk_os_bit,
-                        :bk_cpu, :bk_cpu_mhz, :bk_cpu_module, :bk_mem, :bk_disk, :bk_mac, :bk_outer_mac, :import_from)
-            """, {
-                "_id": f"bk_host.{h['bk_host_id']}",
-                "id": h["bk_host_id"],
-                "bk_inst_id": h["bk_host_id"],
-                "bk_inst_name": h["bk_host_name"],
-                "bk_obj_id": "bk_host",
-                "bk_supplier_account": h["bk_supplier_account"],
-                "bk_host_id": h["bk_host_id"],
-                "bk_host_name": h["bk_host_name"],
-                "bk_host_innerip": h["bk_host_innerip"],
-                "bk_host_outerip": h["bk_host_outerip"],
-                "bk_host_inneripv6": "",
-                "bk_host_outeripv6": "",
-                "bk_cloud_id": h["bk_cloud_id"],
-                "bk_cloud_inst_id": "",
-                "bk_agent_id": "",
-                "operator": h["operator"],
-                "bk_bak_operator": h["bk_bak_operator"],
-                "bk_asset_id": h["bk_asset_id"],
-                "bk_sn": h["bk_sn"],
-                "bk_comment": h["bk_comment"],
-                "bk_service_term": h["bk_service_term"],
-                "bk_sla": h["bk_sla"],
-                "bk_state_name": h["bk_state_name"],
-                "bk_province_name": h["bk_province_name"],
-                "bk_isp_name": h["bk_isp_name"],
-                "bk_os_type": h["bk_os_type"],
-                "bk_os_name": h["bk_os_name"],
-                "bk_os_version": h["bk_os_version"],
-                "bk_os_bit": h["bk_os_bit"],
-                "bk_cpu": h["bk_cpu"],
-                "bk_cpu_mhz": h["bk_cpu_mhz"],
-                "bk_cpu_module": h["bk_cpu_module"],
-                "bk_mem": h["bk_mem"],
-                "bk_disk": h["bk_disk"],
-                "bk_mac": h["bk_mac"],
-                "bk_outer_mac": h["bk_outer_mac"],
-                "import_from": h["import_from"]
-            })
         
-        logger.info(f"创建了 {len(host_list)} 个主机实例（同时写入 cc_HostBase 和 cc_ObjectBase_0_pub_bk_host）")
+        logger.info(f"创建了 {len(host_list)} 个主机实例（存储在 cc_HostBase）")
         
         # 5. 创建主机-模块挂载关系
         # 主机挂载到模块
