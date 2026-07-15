@@ -17,7 +17,7 @@ const menus = [{
     route: {
       name: MENU_BUSINESS_TOPOLOGY,
       params: {
-        bizId: 2
+        bizId: 0
       }
     }
   }]

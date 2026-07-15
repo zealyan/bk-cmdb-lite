@@ -190,6 +190,16 @@ export const modelAPI = {
     return http.get(`/api/v1/topo/host/${hostId}/topology`, { params })
   },
 
+  // 获取业务列表
+  getBizList () {
+    return http.get('/api/v1/topo/biz')
+  },
+
+  // 获取业务下的集群列表
+  getBizSetList (bizId) {
+    return http.get(`/api/v1/topo/biz/${bizId}/set`)
+  },
+
   // 查询模型的唯一约束
   searchObjectUnique (modelId) {
     return http.post(`/find/objectunique/object/${modelId}`, [])

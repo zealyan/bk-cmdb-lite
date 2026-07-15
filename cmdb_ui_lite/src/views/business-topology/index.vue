@@ -114,6 +114,11 @@ export default {
         query.page = page
       }
       RouterQuery.setAll(query)
+    },
+    bizId() {
+      this.$nextTick(() => {
+        this.$refs.topologyTree?.initTopology()
+      })
     }
   },
   async beforeRouteLeave(to, from, next) {
