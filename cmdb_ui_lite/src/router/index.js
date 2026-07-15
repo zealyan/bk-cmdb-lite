@@ -111,6 +111,20 @@ const routes = [
             breadcrumbs: true
           }
         }
+      },
+      {
+        name: MENU_RESOURCE_HOST_DETAILS,
+        path: 'host/:id',
+        component: () => import('@/views/host-details/index.vue'),
+        meta: {
+          menu: {
+            i18n: '主机详情',
+            relative: MENU_RESOURCE_MANAGEMENT
+          },
+          layout: {
+            breadcrumbs: true
+          }
+        }
       }
     ]
   },

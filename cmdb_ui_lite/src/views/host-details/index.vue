@@ -87,7 +87,8 @@ import { modelAPI } from '@/api/client'
 import {
   MENU_BUSINESS_TOPOLOGY,
   MENU_BUSINESS_HOST_DETAILS,
-  MENU_RESOURCE_HOST_DETAILS
+  MENU_RESOURCE_HOST_DETAILS,
+  MENU_RESOURCE_MANAGEMENT
 } from '@/dictionary/menu-symbol'
 
 export default {
@@ -124,7 +125,8 @@ export default {
       displayType: 'double',
       MENU_BUSINESS_TOPOLOGY,
       MENU_BUSINESS_HOST_DETAILS,
-      MENU_RESOURCE_HOST_DETAILS
+      MENU_RESOURCE_HOST_DETAILS,
+      MENU_RESOURCE_MANAGEMENT
     }
   },
   computed: {
@@ -438,21 +440,21 @@ export default {
     },
 
     handleBack() {
-      console.log('[host-details] handleBack called', { 
-        query: this.$route.query, 
+      console.log('[host-details] handleBack called', {
+        query: this.$route.query,
         _f: this.$route.query._f,
         page: this.$route.query.page,
         node: this.$route.query.node,
         isBusinessHost: this.isBusinessHost,
         bizId: this.bizId
       })
-      
+
       if (this.isBusinessHost) {
         const page = this.$route.query._f ? parseInt(this.$route.query._f, 10) : (this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1)
         const node = this.$route.query.node || `biz-${this.bizId}`
-        
+
         console.log('[host-details] navigating back with', { page, node })
-        
+
         this.$router.replace({
           name: MENU_BUSINESS_TOPOLOGY,
           params: { bizId: this.bizId },
@@ -463,7 +465,12 @@ export default {
           }
         })
       } else {
-        this.$router.back()
+        // 资源目录入口：优先返回上一页，无历史时回退到资源目录
+        if (window.history.length > 1) {
+          this.$router.back()
+        } else {
+          this.$router.push({ name: MENU_RESOURCE_MANAGEMENT })
+        }
       }
     },
 

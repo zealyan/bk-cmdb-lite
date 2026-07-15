@@ -72,6 +72,7 @@ import IconButton from '@/components/ui/button/icon-button.vue'
 import FilterForm from '@/components/filters/filter-form.js'
 import FilterStore, { setupFilterStore } from '@/components/filters/store'
 import { modelAPI } from '@/api/client'
+import { MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'ResourceHost',
@@ -210,7 +211,7 @@ export default {
     },
     handleView (host) {
       this.$router.push({
-        name: 'ResourceHostDetails',
+        name: MENU_RESOURCE_HOST_DETAILS,
         params: {
           id: host.bk_host_id
         }

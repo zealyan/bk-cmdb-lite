@@ -141,7 +141,7 @@
         :max-height="tableContentHeight"
         :sort="tableSort"
         :selected-data.sync="selectedIds"
-        :row-key="row => row.bk_inst_id"
+        :row-key="row => row[instanceIdField]"
         @selection-change="handleSelectionChange"
         @page-change="handlePageChange"
         @page-limit-change="handleLimitChange"
@@ -154,7 +154,7 @@
             :label="column.name"
             :sortable="getColumnSortable(column.id)"
             :show-overflow-tooltip="true">
-            <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
+            <template v-if="column.id === instanceIdField" #default="{ row }">
               <span class="cell-id-link" @click="handleViewDetails(row)">
                 {{ row[column.id] }}
               </span>
@@ -183,7 +183,7 @@
           v-if="columnsConfig.show"
           :properties="allProperties"
           :selected="columnsConfig.selected"
-          :disabled-columns="columnsConfig.disabledColumns"
+          :disabled-columns="disabledColumns"
           :max="20"
           @on-apply="handleApplyColumns"
           @on-cancel="handleCancelColumns"
@@ -272,7 +272,7 @@ import routerQuery from '@/utils/router-query'
 import QS from 'qs'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
-import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
+import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
 import AppMixin from '@/mixins/app'
 
 export default {
@@ -343,16 +343,14 @@ export default {
       },
       columnsConfig: {
         show: false,
-        selected: [],
-        // 与原项目保持一致: 禁用 bk_inst_id、bk_inst_name 列，这些是系统字段不能移除
-        // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue disabledColumns: ['bk_inst_id', 'bk_inst_name']
-        disabledColumns: ['bk_inst_id', 'bk_inst_name']
+        selected: []
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null,
       filterTagHeight: 0,
       tableMaxHeight: 600,
       MENU_RESOURCE_INSTANCE_DETAILS,
+      MENU_RESOURCE_HOST_DETAILS,
       MENU_RESOURCE_MANAGEMENT
     }
   },
@@ -362,6 +360,32 @@ export default {
         return this.modelData.bk_obj_name
       }
       return this.objId
+    },
+    // 内置模型主键字段映射（与后端 BUILTIN_ID_FIELD_MAP 保持一致）
+    instanceIdField() {
+      const idFieldMap = {
+        'host': 'bk_host_id',
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'bk_biz_set_obj': 'bk_biz_set_id'
+      }
+      return idFieldMap[this.objId] || 'bk_inst_id'
+    },
+    // 内置模型名称字段映射
+    instanceNameField() {
+      const nameFieldMap = {
+        'host': 'bk_host_name',
+        'biz': 'bk_biz_name',
+        'set': 'bk_set_name',
+        'module': 'bk_module_name',
+        'bk_biz_set_obj': 'bk_biz_set_name'
+      }
+      return nameFieldMap[this.objId] || 'bk_inst_name'
+    },
+    // 禁用列：内置模型的 ID/名称字段为系统固定字段，不可移除
+    disabledColumns() {
+      return [this.instanceIdField, this.instanceNameField]
     },
     searchableProperties() {
       // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)
@@ -1105,12 +1129,12 @@ export default {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
       console.log('[Debug] customColumns:', this.customColumns)
-      console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
+      console.log('[Debug] disabledColumns:', this.disabledColumns)
 
       // 与原项目保持一致: 从存储状态 customColumns 读取，不从 UI 状态 columnsConfig.selected 读取
       // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue#L654-L667
       const customColumns = this.customColumns || []
-      const fixedPropertyIds = this.columnsConfig.disabledColumns || []
+      const fixedPropertyIds = this.disabledColumns || []
 
       // 调用与原项目一致的 getHeaderProperties 函数
       // - 有自定义列时: 按自定义列顺序生成（固定字段始终前置）
@@ -1796,10 +1820,10 @@ export default {
       this.hiddenUniqueProperties = properties || []
     },
     handleSelectionChange(selection) {
-      this.selectedIds = selection.map(row => row.bk_inst_id)
+      this.selectedIds = selection.map(row => row[this.instanceIdField])
     },
     handleDeleteSingle(row) {
-      this.handleDelete([row.bk_inst_id])
+      this.handleDelete([row[this.instanceIdField]])
     },
     handleBatchDelete() {
       if (this.selectedIds.length === 0) {
@@ -2042,15 +2066,24 @@ export default {
       
       const s = query.s || 'adv'
       
-      this.syncStateToUrl({ 
+      this.syncStateToUrl({
         filter_adv: filterAdv,
         s: filterAdv ? s : undefined
       })
-      this.prevInstanceId = instance.bk_inst_id
-      this.$router.push({
-        name: MENU_RESOURCE_INSTANCE_DETAILS,
-        params: { objId: this.objId, instId: instance.bk_inst_id }
-      })
+      const instanceId = instance[this.instanceIdField]
+      this.prevInstanceId = instanceId
+      // 内置 host 模型使用专门的主机详情页，其他模型使用通用实例详情页
+      if (this.objId === 'host') {
+        this.$router.push({
+          name: MENU_RESOURCE_HOST_DETAILS,
+          params: { id: instanceId }
+        })
+      } else {
+        this.$router.push({
+          name: MENU_RESOURCE_INSTANCE_DETAILS,
+          params: { objId: this.objId, instId: instanceId }
+        })
+      }
     },
     handlePageChange(page) {
       this.table.pagination.current = page

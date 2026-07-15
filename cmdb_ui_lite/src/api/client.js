@@ -114,12 +114,21 @@ export const modelAPI = {
   },
 
   // 按实例ID列表查询实例（使用搜索接口 + $in 条件）
+  // 内置模型使用专用主键字段（如 host 用 bk_host_id），自定义模型用 bk_inst_id
   getInstancesByIds (modelId, ids = []) {
+    const idFieldMap = {
+      'host': 'bk_host_id',
+      'biz': 'bk_biz_id',
+      'set': 'bk_set_id',
+      'module': 'bk_module_id',
+      'bk_biz_set_obj': 'bk_biz_set_id'
+    }
+    const idField = idFieldMap[modelId] || 'bk_inst_id'
     return http.post(`/api/v1/models/${modelId}/instances/search`, {
       conditions: {
         condition: 'AND',
         rules: [{
-          field: 'bk_inst_id',
+          field: idField,
           operator: '$in',
           value: ids
         }]
