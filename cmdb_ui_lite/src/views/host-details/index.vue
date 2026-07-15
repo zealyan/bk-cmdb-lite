@@ -67,7 +67,7 @@
               v-else
               ref="associationComponent"
               :key="associationKey"
-              :obj-id="'bk_host'"
+              :obj-id="'host'"
               :inst-id="instId"
               :associations="allAssociations"
               :relations="modelRelations"
@@ -99,7 +99,7 @@ export default {
   data() {
     return {
       activeTab: 'property',
-      objId: 'bk_host',
+      objId: 'host',
       instId: null,
       bizId: null,
       hostInfo: {
