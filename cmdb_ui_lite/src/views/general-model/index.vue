@@ -2477,7 +2477,7 @@ export default {
         padding: 0 10px;
         border: 1px solid #c4c6cc;
         border-radius: 2px;
-        font-size: 14px;
+        font-size: 12px;
         outline: none;
         min-width: 0;
         box-sizing: border-box;
@@ -2503,7 +2503,7 @@ export default {
             padding: 0 32px 0 10px;
             border: 1px solid #c4c6cc;
             border-radius: 2px;
-            font-size: 14px;
+            font-size: 12px;
             outline: none;
             cursor: pointer;
             background: #fff;
