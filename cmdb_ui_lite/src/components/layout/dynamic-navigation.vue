@@ -22,7 +22,7 @@
                 v-for="biz in bizList"
                 :key="biz.bk_biz_id"
                 :id="String(biz.bk_biz_id)"
-                :name="biz.bk_biz_name">
+                :name="`${biz.bk_biz_name}(${biz.bk_biz_id})`">
                 <div class="biz-option-item">
                   <span class="biz-name">{{ biz.bk_biz_name }}</span>
                   <span class="biz-id">({{ biz.bk_biz_id }})</span>
