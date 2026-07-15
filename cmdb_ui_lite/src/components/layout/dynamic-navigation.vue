@@ -278,6 +278,10 @@ $color: #63656E;
 
   .business-selector {
     width: 100%;
+
+    .bk-select {
+      width: 100%;
+    }
   }
 
   .business-flag {
