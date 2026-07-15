@@ -12,8 +12,8 @@ class InstanceService:
         'biz': 'cc_ApplicationBase',
         'set': 'cc_SetBase',
         'module': 'cc_ModuleBase',
-        'host': 'cc_ObjectBase_0_pub_bk_host',
-        'bk_host': 'cc_ObjectBase_0_pub_bk_host'
+        'host': 'cc_HostBase',
+        'bk_host': 'cc_HostBase'
     }
     
     # 内置模型主键字段映射
@@ -56,6 +56,7 @@ class InstanceService:
     def get_instances(model_id, page=1, page_size=20, conditions=None):
         """获取模型实例列表（分页）"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
         offset = (page - 1) * page_size
         
         sql_parts = [f'SELECT * FROM "{table_name}"']
@@ -69,7 +70,7 @@ class InstanceService:
             if where_clauses:
                 sql_parts.append('WHERE ' + ' AND '.join(where_clauses))
         
-        sql_parts.append('ORDER BY id')
+        sql_parts.append(f'ORDER BY "{id_field}"')
         sql_parts.append('LIMIT :limit OFFSET :offset')
         params['limit'] = page_size
         params['offset'] = offset

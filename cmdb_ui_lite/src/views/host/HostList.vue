@@ -51,6 +51,11 @@
 
     <el-table :data="tableData" stripe v-loading="loading" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="55" />
+      <el-table-column prop="bk_host_id" label="主机ID" width="100" align="right" fixed="left">
+        <template #default="{ row }">
+          {{ row.bk_host_id }}
+        </template>
+      </el-table-column>
       <el-table-column prop="bk_host_innerip" label="内网IP" width="150">
         <template #default="{ row }">
           <el-link type="primary" @click="handleViewHost(row)">{{ row.bk_host_innerip }}</el-link>
