@@ -2442,7 +2442,7 @@ export default {
 
   .filter-selector {
     width: 120px;
-    flex-shrink: 0;
+    border-radius: 2px 0 0 2px;
     margin-right: -1px;
 
     .bk-select {
@@ -2450,21 +2450,16 @@ export default {
       height: 32px;
       min-height: 32px;
       box-sizing: border-box;
-      border-radius: 2px 0 0 2px;
-      border-right: none;
 
       .bk-select-name {
         font-size: 12px;
-        height: 30px;
-        line-height: 30px;
-        padding: 0 36px 0 10px;
       }
     }
   }
 
   .filter-value {
     flex: 1;
-    min-width: 0;
+    width: 320px;
     border-radius: 0 2px 2px 0;
 
     .bk-form-input {
@@ -2481,8 +2476,7 @@ export default {
         height: 32px;
         padding: 0 10px;
         border: 1px solid #c4c6cc;
-        border-left: none;
-        border-radius: 0 2px 2px 0;
+        border-radius: 2px;
         font-size: 14px;
         outline: none;
         min-width: 0;
@@ -2508,8 +2502,7 @@ export default {
             height: 32px;
             padding: 0 32px 0 10px;
             border: 1px solid #c4c6cc;
-            border-left: none;
-            border-radius: 0 2px 2px 0;
+            border-radius: 2px;
             font-size: 14px;
             outline: none;
             cursor: pointer;
