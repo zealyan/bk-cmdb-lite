@@ -31,24 +31,24 @@
         @page-change="handlePageChange"
         @page-limit-change="handleLimitChange"
       >
-        <bk-table-column label="主机ID" prop="id" width="100">
+        <bk-table-column label="主机ID" prop="bk_host_id" width="100">
           <template #default="{ row }">
             <bk-button
               :text="true"
               :primary="true"
               @click="handleView(row)">
-              {{ row.id }}
+              {{ row.bk_host_id }}
             </bk-button>
           </template>
         </bk-table-column>
-        <bk-table-column label="内网IP" prop="inner_ip" />
-        <bk-table-column label="外网IP" prop="outer_ip">
+        <bk-table-column label="内网IP" prop="bk_host_innerip" />
+        <bk-table-column label="外网IP" prop="bk_host_outerip">
           <template #default="{ row }">
-            {{ row.outer_ip || '-' }}
+            {{ row.bk_host_outerip || '-' }}
           </template>
         </bk-table-column>
-        <bk-table-column label="管控区域" prop="cloud_area" />
-        <bk-table-column label="主机名称" prop="host_name" />
+        <bk-table-column label="管控区域" prop="bk_cloud_id" />
+        <bk-table-column label="主机名称" prop="bk_host_name" />
         <bk-table-column label="云服务商" prop="cloud_vendor" />
         <bk-table-column label="状态" prop="status">
           <template #default="{ row }">
@@ -105,8 +105,8 @@ export default {
       if (!this.searchKeyword) return this.hosts
       const keyword = this.searchKeyword.toLowerCase()
       return this.hosts.filter(host =>
-        host.inner_ip.includes(keyword) ||
-        host.host_name.toLowerCase().includes(keyword)
+        (host.bk_host_innerip || '').includes(keyword) ||
+        (host.bk_host_name || '').toLowerCase().includes(keyword)
       )
     }
   },
@@ -114,7 +114,7 @@ export default {
     async initFilterStore() {
       await setupFilterStore({
         bk_biz_id: 0,
-        modelIds: ['bk_host'],
+        modelIds: ['host'],
         searchHandler: this.searchHandler.bind(this)
       })
       this.unwatchFilter = this.$watch(
@@ -179,10 +179,10 @@ export default {
           })
         }
         
-        const result = await modelAPI.listInstances('bk_host', params)
-        if (result && result.data) {
-          this.hosts = result.data.info || []
-          this.paginationConfig.count = result.data.count || 0
+        const result = await modelAPI.listInstances('host', params)
+        if (result) {
+          this.hosts = result.instances || []
+          this.paginationConfig.count = result.total || 0
         }
       } catch (error) {
         console.error('加载主机列表失败:', error)
@@ -212,7 +212,7 @@ export default {
       this.$router.push({
         name: 'ResourceHostDetails',
         params: {
-          id: host.id
+          id: host.bk_host_id
         }
       })
     },
