@@ -106,6 +106,7 @@ class InstanceService:
     def get_instances_by_ids(model_id, instance_ids):
         """按实例ID列表批量查询实例"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
         
         if not instance_ids:
             return []
@@ -113,7 +114,7 @@ class InstanceService:
         placeholders = ','.join([':id_' + str(i) for i in range(len(instance_ids))])
         params = {'id_' + str(i): int(instance_ids[i]) for i in range(len(instance_ids))}
         
-        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id IN ({placeholders})'
+        sql = f'SELECT * FROM "{table_name}" WHERE "{id_field}" IN ({placeholders})'
         instances = query_all(sql, params)
         
         for i in range(len(instances)):
@@ -389,7 +390,8 @@ class InstanceService:
             if sort_field.replace('_', '').replace('-', '').isalnum():
                 sort_clause = f' ORDER BY "{sort_field}" {sort_dir}'
         else:
-            sort_clause = ' ORDER BY id'
+            id_field = InstanceService._get_id_field(model_id)
+            sort_clause = f' ORDER BY "{id_field}"'
         
         sql_parts.append(sort_clause)
         sql_parts.append(f' LIMIT :limit OFFSET :offset')
@@ -745,6 +747,7 @@ class InstanceService:
         if not unique_constraints:
             return []
 
+        id_field = InstanceService._get_id_field(model_id)
         duplicates = []
         for constraint in unique_constraints:
             constraint_attrs = constraint.get('keys', [])
@@ -780,7 +783,7 @@ class InstanceService:
             sql_parts.append(' AND '.join(where_clauses))
             
             if exclude_instance_id is not None:
-                sql_parts.append('AND bk_inst_id != :exclude_id')
+                sql_parts.append(f'AND "{id_field}" != :exclude_id')
                 params['exclude_id'] = exclude_instance_id
 
             sql = ' '.join(sql_parts)
