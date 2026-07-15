@@ -340,7 +340,7 @@ export default {
         'bk_slb': '负载均衡',
         'bk_slb_server': '后端服务器',
         'bk_slb_listener': '监听器',
-        'bk_host': '主机',
+        'host': '主机',
         'biz': '业务'
       }
       return modelNames[objId] || objId
