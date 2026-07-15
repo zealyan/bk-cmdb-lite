@@ -816,11 +816,27 @@ export default {
      * 3. 支持点击跳转到实例详情
      */
     createIdProperty(objId) {
+      const idFieldMap = {
+        'host': 'bk_host_id',
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'bk_biz_set_obj': 'bk_biz_set_id'
+      }
+      const idField = idFieldMap[objId] || 'bk_inst_id'
+      const nameMap = {
+        'host': '主机ID',
+        'biz': '业务ID',
+        'set': '集群ID',
+        'module': '模块ID',
+        'bk_biz_set_obj': '业务集ID'
+      }
+      const name = nameMap[objId] || '实例ID'
       return {
         id: Date.now(),
         bk_obj_id: objId,
-        bk_property_id: 'bk_inst_id',
-        bk_property_name: '实例ID',
+        bk_property_id: idField,
+        bk_property_name: name,
         bk_property_index: -1,
         bk_property_type: 'int',
         isonly: true,
