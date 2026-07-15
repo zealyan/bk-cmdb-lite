@@ -2475,8 +2475,6 @@ export default {
       display: flex;
       align-items: center;
       width: 100%;
-      overflow: hidden;
-      border-radius: 0 2px 2px 0;
 
       .search-input {
         flex: 1;
