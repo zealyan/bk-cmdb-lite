@@ -45,7 +45,7 @@
         :label="column.bk_property_name"
         :min-width="getColumnMinWidth(column)"
         :sortable="getColumnSortable(column)"
-        :fixed="['bk_host_id', 'bk_host_innerip'].includes(column.bk_property_id)"
+        :fixed="column.bk_property_id === 'bk_host_id'"
         :show-overflow-tooltip="true">
         <template slot-scope="{ row }">
           <span
@@ -84,25 +84,40 @@ import RouterQuery from '@/utils/router-query'
 import { MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
 
 // 默认表头列定义（简化版，与原项目 host 属性对应）
+// 与原项目 model-constants.js BUILTIN_MODEL_PROPERTY_KEYS 一致：
+//   BUILTIN_MODELS.HOST = 'host'
+//   BUILTIN_MODEL_PROPERTY_KEYS.host = { ID: 'bk_host_id', NAME: 'bk_host_name' }
+// 注意：bk_host_id 是前端注入属性（bk_issystem=true，后端API不返回）
+// 参考：/workspace/bk-cmdb/src/ui/src/components/filters/store.js L641-648
+const HOST_ID_PROPERTY = {
+  bk_property_id: 'bk_host_id',
+  bk_property_name: 'ID',
+  bk_property_type: 'int',
+  bk_obj_id: 'host',
+  bk_issystem: true,
+  bk_isapi: false,
+  bk_property_index: -Infinity
+}
+
 const DEFAULT_TABLE_HEADER = [
-  { bk_property_id: 'bk_host_id', bk_property_name: '主机ID', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_host_name', bk_property_name: '主机名称', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_host_outerip', bk_property_name: '外网IP', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_cloud_id', bk_property_name: '云区域', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_name', bk_property_name: '操作系统名称', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_version', bk_property_name: '操作系统版本', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_cpu', bk_property_name: 'CPU核数', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_mem', bk_property_name: '内存容量', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_disk', bk_property_name: '磁盘容量', bk_property_type: 'int', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_mac', bk_property_name: 'MAC地址', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_sn', bk_property_name: '设备序列号', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_asset_id', bk_property_name: '资产编号', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'operator', bk_property_name: '运维人员', bk_property_type: 'singlechar', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_comment', bk_property_name: '备注', bk_property_type: 'text', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'create_time', bk_property_name: '创建时间', bk_property_type: 'datetime', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'last_time', bk_property_name: '最后修改时间', bk_property_type: 'datetime', bk_obj_id: 'bk_host', bk_issystem: false, bk_isapi: false }
+  { bk_property_id: 'bk_host_id', bk_property_name: 'ID', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: true, bk_isapi: false },
+  { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_name', bk_property_name: '主机名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_host_outerip', bk_property_name: '外网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_cloud_id', bk_property_name: '云区域', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_name', bk_property_name: '操作系统名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_version', bk_property_name: '操作系统版本', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_cpu', bk_property_name: 'CPU核数', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_mem', bk_property_name: '内存容量', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_disk', bk_property_name: '磁盘容量', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_mac', bk_property_name: 'MAC地址', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_sn', bk_property_name: '设备序列号', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_asset_id', bk_property_name: '资产编号', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'operator', bk_property_name: '运维人员', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_comment', bk_property_name: '备注', bk_property_type: 'text', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'create_time', bk_property_name: '创建时间', bk_property_type: 'datetime', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'last_time', bk_property_name: '最后修改时间', bk_property_type: 'datetime', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false }
 ]
 
 export default {
@@ -144,7 +159,10 @@ export default {
       columnsConfig: {
         show: false,
         selected: [],
-        disabledColumns: ['bk_host_id', 'bk_host_innerip']
+        // 与原项目 FilterStore.fixedPropertyIds 一致：
+        // /workspace/bk-cmdb/src/ui/src/components/filters/store.js L57
+        // fixedPropertyIds: ['bk_host_id', 'bk_host_innerip', 'bk_host_innerip_v6', 'bk_cloud_id']
+        disabledColumns: ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id']
       },
       searchKeyword: '',
       filtersTagHeight: 0,
@@ -235,14 +253,21 @@ export default {
 
     /**
      * 加载主机模型属性列表
+     * 与原项目一致：bk_host_id 因 bk_issystem=true 被后端过滤，
+     * 需要前端注入。参考：/workspace/bk-cmdb/src/ui/src/components/filters/store.js L641-648
      */
     async loadHostAttributes() {
       try {
         const result = await modelAPI.getModelAttributes('host')
         const attrs = result.data?.attributes || result.attributes || result.data || result || []
-        // 过滤掉 bk_isapi 为 true 的属性
-        const filteredAttrs = Array.isArray(attrs) ? attrs.filter(p => !p.bk_isapi) : []
+        // 过滤掉 bk_isapi 为 true 的属性（与后端 for_web 逻辑一致）
+        let filteredAttrs = Array.isArray(attrs) ? attrs.filter(p => !p.bk_isapi) : []
         if (filteredAttrs.length) {
+          // 注入 bk_host_id 属性（后端因 bk_issystem=true 不返回）
+          const hasHostId = filteredAttrs.some(p => p.bk_property_id === 'bk_host_id')
+          if (!hasHostId) {
+            filteredAttrs = [HOST_ID_PROPERTY, ...filteredAttrs]
+          }
           this.allProperties = filteredAttrs
         } else {
           // 内置模型 host 无属性配置时，使用默认属性列表
@@ -288,14 +313,16 @@ export default {
           .map(id => this.allProperties.find(p => p.bk_property_id === id))
           .filter(Boolean)
       } else {
-        // 默认列：固定列（ID、内网IP）+ 默认显示的列
-        const defaultIds = ['bk_host_id', 'bk_host_innerip', 'bk_host_name', 'bk_host_outerip', 'bk_cloud_id']
+        // 默认列：与原项目 presetHeader 一致，取前6个属性
+        // 参考：/workspace/bk-cmdb/src/ui/src/components/filters/store.js L176-200
+        const defaultIds = ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id', 'bk_host_name', 'bk_host_outerip', 'bk_os_name']
         headerProps = defaultIds
           .map(id => this.allProperties.find(p => p.bk_property_id === id))
           .filter(Boolean)
+          .slice(0, 6)
       }
 
-      // 确保固定列（ID、内网IP）在最前面
+      // 确保固定列（ID、内网IP、云区域）在最前面（与原项目 defaultHeader 一致）
       const fixedProps = disabledIds
         .map(id => this.allProperties.find(p => p.bk_property_id === id))
         .filter(Boolean)
@@ -414,7 +441,7 @@ export default {
         // 添加搜索关键词条件（主机名称模糊搜索）
         if (this.searchKeyword) {
           payload.condition.push({
-            bk_obj_id: 'bk_host',
+            bk_obj_id: 'host',
             fields: [],
             condition: [
               { field: 'bk_host_name', operator: 'contains', value: this.searchKeyword }

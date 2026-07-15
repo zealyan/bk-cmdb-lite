@@ -147,7 +147,7 @@ export default {
             if (val === null || val === undefined || val === '') return
             
             const property = filterSelected.find(p => p.bk_property_id === key)
-            const modelId = property ? property.bk_obj_id : 'bk_host'
+            const modelId = property ? property.bk_obj_id : 'host'
             
             let submitValue = val
             if (['$in', '$nin'].includes(cond.operator)) {
