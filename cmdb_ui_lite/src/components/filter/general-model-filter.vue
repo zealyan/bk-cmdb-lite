@@ -142,7 +142,7 @@ import DateSearch from '../search/date.vue'
 import TimeSearch from '../search/time.vue'
 import BoolSearch from '../search/bool.vue'
 import { transformGeneralModelCondition, getOperatorSideEffect } from './utils'
-import { setSearchQueryByCondition, buildSearchParams } from '@/utils/query-builder'
+import { buildSearchParams } from '@/utils/query-builder'
 
 const { EQ, NE, IN, NIN, GT, LT, GTE, LTE, RANGE, LIKE } = QUERY_OPERATOR
 
@@ -684,8 +684,6 @@ export default {
         pageSize: 20,
         sort: '-id'
       })
-
-      setSearchQueryByCondition(conditionMap, this.properties)
 
       this.$emit('search', {
         conditionMap,

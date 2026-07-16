@@ -1239,18 +1239,11 @@ export default {
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
       
-      // 获取 hash 路由中的参数（Vue Router）- 这是主要来源
+      // 获取 Vue Router hash 路由中的参数 — 唯一数据源
       const routeQuery = this.$route.query
       
-      // 获取主 URL 中的参数（通过 URLSearchParams）- 作为补充
-      const urlParams = new URLSearchParams(window.location.search)
-      const mainQuery = {}
-      urlParams.forEach((value, key) => {
-        mainQuery[key] = value
-      })
-      
-      // 合并参数：hash路由参数优先，缺失时从主URL补充
-      const query = { ...mainQuery, ...routeQuery }
+      // 只使用路由查询（window.location.search 可能含有 query-builder 遗留的双重编码值，忽略之）
+      const query = { ...routeQuery }
       
       console.log('[restoreStateFromUrl] 合并后的URL query:', query)
 
@@ -1526,8 +1519,10 @@ export default {
         query.s = 'adv'
       }
 
+      // 使用 replaceQuery 完整替换 query（而非 setAll 的合并），
+      // 确保被省略的参数（如清除筛选时的 filter_adv/s）被真正移除，不会因合并残留
       this.isUrlUpdateTriggered = true
-      routerQuery.setAll(query)
+      routerQuery.replaceQuery(query)
     },
     handleSearch() {
       this.table.pagination.current = 1

@@ -164,6 +164,7 @@ export default {
         // fixedPropertyIds: ['bk_host_id', 'bk_host_innerip', 'bk_host_innerip_v6', 'bk_cloud_id']
         disabledColumns: ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id']
       },
+      allProperties: [],
       searchKeyword: '',
       filtersTagHeight: 0,
       lastNodeId: null,

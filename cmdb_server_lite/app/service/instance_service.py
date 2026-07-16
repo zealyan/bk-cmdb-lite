@@ -951,6 +951,10 @@ class InstanceService:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data['last_time'] = now
 
+        # 获取模型属性（与 update_instance 一致）
+        from app.service.model_service import ModelService
+        attributes = ModelService.get_model_attributes(model_id)
+
         # 检查是否更新了唯一字段（与原项目保持一致，禁止批量更新唯一字段）
         unique_constraints = InstanceService.get_object_unique_constraints(model_id)
         unique_property_ids = set()

@@ -297,10 +297,7 @@ export default {
           enable: true,
           title: title,
           backward: () => {
-            this.$router.push({
-              name: MENU_RESOURCE_INSTANCE,
-              params: { objId }
-            })
+            this.$router.go(-1)
           }
         })
       })
