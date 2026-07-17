@@ -284,14 +284,10 @@ export default {
         // 重新加载数据
         await this.loadData()
 
-        // 更新节点的展示名称
-        const nameField = this.getNameField()
-        if (nameField && data[nameField]) {
-          this.node.data.bk_inst_name = data[nameField]
-          this.node.name = data[nameField]
-        }
-
-        // 通知父组件刷新拓扑树
+        // 通知父组件刷新拓扑树（父组件会通过 initTopology 重新拉取拓扑，
+        // 树节点标签自动同步为服务端的新名称）。
+        // 注意：node 为只读 prop（bk-big-tree 节点对象，data 已被冻结），
+        // 不可在此直接修改其属性，否则会抛出 Attempted to assign to readonly property。
         this.$emit('updated', this.node)
       } catch (error) {
         console.error('[NodeInfo] 更新失败:', error)

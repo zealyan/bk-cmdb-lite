@@ -113,6 +113,7 @@ import { modelAPI } from '@/api/client'
 import { userCustom } from '@/api/client'
 import RouterQuery from '@/utils/router-query'
 import { MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
+import { isPropertySortable, getSort } from '@/utils/property-sort'
 
 // 默认表头列定义（简化版，与原项目 host 属性对应）
 // 与原项目 model-constants.js BUILTIN_MODEL_PROPERTY_KEYS 一致：
@@ -267,6 +268,12 @@ export default {
           const nodeId = node.id
           const page = this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1
           this.table.pagination.current = page
+          // 恢复 URL 中的排序状态（从主机详情返回时，路径从 /host/:id 回到 /index，
+          // node watcher 重新触发，读取 query.sort 恢复 table.sort）
+          const sortQuery = this.$route.query.sort
+          if (sortQuery) {
+            this.table.sort = sortQuery
+          }
           
           if (nodeId === this.lastNodeId) {
             this.scheduleLoadHostList()
@@ -771,27 +778,29 @@ export default {
     },
 
     /**
-     * 获取列排序属性
+     * 获取列是否可排序（按属性类型规则，复刻原项目 isPropertySortable）
+     * - 主机属性：排除 foreignkey / topology / inner_table
+     * - 非主机属性：排除 inner_table
+     * 其余类型（int / singlechar / enum / datetime / bool ...）均可排序
      */
     getColumnSortable(column) {
-      return ['int', 'long', 'float', 'date', 'time'].includes(column.bk_property_type) ? 'custom' : false
+      return isPropertySortable(column) ? 'custom' : false
     },
 
     /**
      * 分页变更
      */
+    /**
+     * 分页变更
+     */
     handlePageChange(current = 1) {
       this.table.pagination.current = current
-      if (!this.isTableReady) {
-        this.loadHostList()
-        return
-      }
+      this.loadHostList()
       RouterQuery.set({
         page: current,
         node: RouterQuery.get('node'),
         _t: Date.now()
       })
-      // 由 RouterQuery.watch('*') 触发 loadHostList，避免重复加载
     },
 
     /**
@@ -800,19 +809,28 @@ export default {
     handleLimitChange(limit) {
       this.table.pagination.limit = limit
       this.table.pagination.current = 1
+      this.loadHostList()
       RouterQuery.set({
         page: 1,
         _t: Date.now()
       })
-      // 由 RouterQuery.watch('*') 触发 loadHostList，避免重复加载
     },
 
     /**
-     * 排序变更
+     * 排序变更（复刻原项目 handleSortChange：通过 getSort 转换后下发 page.sort，
+     * 同时重置页码到第 1 页，确保排序后显示排序后的第 1 页数据；
+     * 排序状态同步到 URL 参数 sort，使返回主机列表时能恢复；
+     * 恢复默认排序时显式传递 sort=null 以从 URL 中清除旧排序参数）
      */
     handleSortChange(sort) {
-      this.table.sort = sort.prop ? `${sort.order === 'descending' ? '-' : ''}${sort.prop}` : 'bk_host_id'
+      this.table.sort = getSort(sort) || 'bk_host_id'
+      this.table.pagination.current = 1
       this.loadHostList()
+      // 持久化排序状态到 URL；默认值时传 null 以清除 URL 中的 sort 参数
+      RouterQuery.set({
+        sort: this.table.sort !== 'bk_host_id' ? this.table.sort : null,
+        _t: Date.now()
+      })
     },
 
     /**

@@ -743,6 +743,20 @@ def get_module_host_list(bk_module_id: int, page: int = 1, page_size: int = 20,
     return {'info': rows, 'count': total}
 
 
+# 缓存 cc_HostBase 表真实列名（动态 PRAGMA 获取，支持自定义属性）
+_HOST_BASE_COLUMNS = None
+
+def _get_host_base_columns():
+    global _HOST_BASE_COLUMNS
+    if _HOST_BASE_COLUMNS is None:
+        try:
+            rows = query_all('PRAGMA table_info("cc_HostBase")')
+            _HOST_BASE_COLUMNS = {row['name'] for row in rows}
+        except Exception:
+            _HOST_BASE_COLUMNS = {'bk_host_id'}
+    return _HOST_BASE_COLUMNS
+
+
 def search_hosts(params: Dict[str, Any],
                  supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
     """
@@ -948,11 +962,19 @@ def search_hosts(params: Dict[str, Any],
 
     where_sql = ' AND '.join(where_clauses)
 
-    # 排序字段安全处理（白名单）
-    allowed_sort_fields = {'bk_host_id', 'bk_host_name', 'bk_host_innerip',
-                           'bk_host_outerip', 'bk_cloud_id', 'create_time', 'last_time'}
-    if sort_field not in allowed_sort_fields:
+    # 排序字段安全处理（动态校验，替代硬编码白名单）
+    # 校验规则：
+    #   1. 字段名必须是合法小写标识符（^[a-z][a-z0-9_]*$，防注入）
+    #   2. 字段必须是 cc_HostBase 真实存在的列（从 PRAGMA table_info 动态获取，支持自定义属性）
+    # 不满足任一条件即回退到 bk_host_id ASC
+    if not isinstance(sort_field, str) or not __import__('re').fullmatch(r'[a-z][a-z0-9_]*', sort_field):
         sort_field = 'bk_host_id'
+        sort_order = 'ASC'
+    else:
+        host_columns = _get_host_base_columns()
+        if sort_field not in host_columns:
+            sort_field = 'bk_host_id'
+            sort_order = 'ASC'
 
     # 查询总数
     count_sql = f"""
