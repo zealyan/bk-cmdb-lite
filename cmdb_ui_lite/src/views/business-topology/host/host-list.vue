@@ -73,10 +73,12 @@
            导致弹框外壳弹出但内部 module-selector 内容缺失。 -->
       <!-- 使用原项目自定义 cmdb-dialog 组件（components/ui/dialog/dialog.vue，已移植进 lite 并全局注册），
            定位逻辑与原项目一致：.dialog-body{margin:0 auto; margin-top: calc((100vh - var(--height))/3)}，
-           并经 :height="600" 把 --height 设成 600px 驱动内层布局。 -->
+           并经 :height="600" 把 --height 设成 600px 驱动内层布局。
+           注意：与原项目一致，cmdb-dialog 不渲染可见的标题栏（其 dialog-header 为空、0 高度），
+           标题由 module-selector-with-tab 的 tab 标签（"转移到空闲模块"/"转移到业务模块"）呈现，
+           因此内层 .module-selector-layout{height: var(--height)=600px} 恰好填满 600px 弹框主体，避免产生纵向滚动条。 -->
       <cmdb-dialog
         v-model="transferDialog.visible"
-        :title="transferDialogTitle"
         :width="1100"
         :height="600"
         :show-footer="false"
@@ -239,16 +241,6 @@ export default {
     // 节点数据
     nodeData() {
       return this.node?.data || {}
-    },
-    // 转移对话框标题
-    transferDialogTitle() {
-      const map = {
-        idle: '转移到空闲模块',
-        business: '转移到业务模块',
-        resource: '转移到主机池',
-        acrossBusiness: '转移到其他业务模块'
-      }
-      return map[this.transferDialog.type] || '转移主机'
     },
     // 节点类型
     objId() {

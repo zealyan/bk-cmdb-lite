@@ -15,8 +15,9 @@
     <div class="selected-info">
       <div class="selected-title">结果预览</div>
       <div class="selected-count">
-        已选择 <em class="count">{{checked.length}}</em> 个模块
+        <span class="count-text">已选择 <em class="count">{{checked.length}}</em> 个模块</span>
         <bk-button text theme="primary"
+          class="clear-btn"
           v-show="checked.length"
           @click="handleClearModule">
           清空
@@ -78,9 +79,17 @@
             .selected-count {
                 display: flex;
                 justify-content: space-between;
+                align-items: center;
                 font-size: 12px;
                 line-height: 20px;
                 color: $textColor;
+                .count-text {
+                    flex: 1;
+                    text-align: left;
+                }
+                .clear-btn {
+                    flex: none;
+                }
                 .count {
                     padding: 0 4px;
                     font-weight: bold;

@@ -65,7 +65,7 @@
               <div class="placeholder-text">请选择拓扑节点</div>
               <div class="placeholder-desc">点击左侧拓扑树节点查看节点信息</div>
             </div>
-            <node-info v-else :node="selectedNode" @deleted="handleNodeDeleted"></node-info>
+            <node-info v-else :node="selectedNode" @deleted="handleNodeDeleted" @updated="handleNodeUpdated"></node-info>
           </bk-tab-panel>
         </bk-tab>
       </div>
@@ -228,6 +228,11 @@ export default {
     handleNodeDeleted() {
       // 节点删除后刷新拓扑树
       this.selectedNode = null
+      this.$refs.topologyTree.initTopology()
+    },
+    handleNodeUpdated() {
+      // 节点属性更新后刷新拓扑树（同步节点展示名称 bk_inst_name）
+      // 与原项目一致：编辑成功后重新拉取拓扑，避免树节点标签滞留旧值
       this.$refs.topologyTree.initTopology()
     },
     handleTransferComplete(payload) {

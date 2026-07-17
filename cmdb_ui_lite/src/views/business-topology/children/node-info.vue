@@ -7,8 +7,10 @@
     <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
     </div>
+
+    <!-- 展示态：与原项目 cmdb-details 一致，纯展示 + 触发 on-edit/on-delete -->
     <cmdb-details
-      v-else
+      v-else-if="!isEditing"
       :inst="instanceData"
       :properties="properties"
       :property-groups="propertyGroups"
@@ -20,27 +22,27 @@
       @on-delete="handleDelete">
     </cmdb-details>
 
-    <!-- 编辑弹窗 -->
-    <bk-dialog
-      v-model="editDialog.visible"
-      :title="editDialog.title"
-      width="600"
-      :loading="editDialog.loading"
-      @confirm="handleEditSubmit"
-      @cancel="handleEditCancel">
-      <bk-form :model="editDialog.form" :rules="editDialog.rules" ref="editForm" label-width="100">
-        <bk-form-item v-for="property in editableProperties" :key="property.bk_property_id"
+    <!-- 编辑态：内联表单（无弹出框，与原项目详情行内编辑一致） -->
+    <div v-else class="inline-edit-panel">
+      <bk-form :model="editForm" :rules="editRules" ref="editForm">
+        <bk-form-item
+          v-for="property in editableProperties"
+          :key="property.bk_property_id"
           :label="property.bk_property_name"
           :property="property.bk_property_id"
           :required="property.isrequired">
           <component
             :is="getFormComponent(property.bk_property_type)"
-            v-model="editDialog.form[property.bk_property_id]"
+            v-model="editForm[property.bk_property_id]"
             :property="property">
           </component>
         </bk-form-item>
       </bk-form>
-    </bk-dialog>
+      <div class="inline-edit-actions">
+        <bk-button theme="primary" :loading="editLoading" @click="handleEditSubmit">保存</bk-button>
+        <bk-button @click="handleEditCancel">取消</bk-button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -93,13 +95,11 @@ export default {
       properties: [],
       propertyGroups: [],
       invisibleProperties: [],
-      editDialog: {
-        visible: false,
-        title: '',
-        loading: false,
-        form: {},
-        rules: {}
-      }
+      // 内联编辑态（替代原 bk-dialog 弹出框，与原项目详情行内编辑一致）
+      isEditing: false,
+      editForm: {},
+      editRules: {},
+      editLoading: false
     }
   },
   computed: {
@@ -214,6 +214,8 @@ export default {
       this.instanceData = {}
       this.properties = []
       this.propertyGroups = []
+      this.isEditing = false
+      this.editForm = {}
     },
 
     getFormComponent(propertyType) {
@@ -236,18 +238,19 @@ export default {
       return map[propertyType] || 'FormSinglechar'
     },
 
+    // 进入内联编辑态（替代原弹出框）
     handleEdit() {
-      this.editDialog.title = `编辑${this.node.data.bk_obj_name || '节点'}`
-      this.editDialog.form = { ...this.instanceData }
-      this.editDialog.visible = true
+      this.editForm = { ...this.instanceData }
+      this.editLoading = false
+      this.isEditing = true
       this.$nextTick(() => {
         this.$refs.editForm && this.$refs.editForm.clearValidate()
       })
     },
 
     handleEditCancel() {
-      this.editDialog.visible = false
-      this.editDialog.form = {}
+      this.isEditing = false
+      this.editForm = {}
     },
 
     async handleEditSubmit() {
@@ -255,7 +258,7 @@ export default {
         const valid = await this.$refs.editForm.validate()
         if (!valid) return
 
-        this.editDialog.loading = true
+        this.editLoading = true
         const objId = this.node.data.bk_obj_id
         const instId = this.node.data.bk_inst_id
 
@@ -263,7 +266,7 @@ export default {
         const data = {}
         for (const property of this.editableProperties) {
           const field = property.bk_property_id
-          const value = this.editDialog.form[field]
+          const value = this.editForm[field]
           // 简化处理：始终提交可编辑字段
           data[field] = value
         }
@@ -275,8 +278,8 @@ export default {
           message: '修改成功'
         })
 
-        this.editDialog.visible = false
-        this.editDialog.form = {}
+        this.isEditing = false
+        this.editForm = {}
 
         // 重新加载数据
         await this.loadData()
@@ -297,7 +300,7 @@ export default {
           message: error.message || '更新失败'
         })
       } finally {
-        this.editDialog.loading = false
+        this.editLoading = false
       }
     },
 
@@ -374,5 +377,69 @@ export default {
   color: #ff4d4f;
   padding: 20px;
   text-align: center;
+}
+
+/* 内联编辑面板：无弹出框，与原项目 cmdb-form 两栏布局一致（标签在上、控件在下） */
+.inline-edit-panel {
+  height: 100%;
+  padding: 24px 0 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+
+  /* 与原项目 .form-groups / .property-list 一致：两栏 + 54px 列间距 */
+  ::v-deep .bk-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 54px;
+    padding: 0 24px;
+  }
+
+  /* 与原项目 .property-item 一致：每栏 50% 减去半列间距 */
+  ::v-deep .bk-form-item {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 calc(50% - 27px);
+    width: calc(50% - 27px);
+    max-width: 50%;
+    margin: 12px 0 0;
+
+    /* 覆盖 bk-magic-vue 默认 label 左浮动，改为标签在上 */
+    .bk-label {
+      float: none;
+      width: auto !important;
+      text-align: left;
+      margin: 2px 0 6px;
+      line-height: 24px;
+
+      .bk-label-text {
+        font-size: 14px;
+        color: #63656e;
+      }
+    }
+
+    /* 覆盖 bk-magic-vue 默认 content 左浮动，使控件拉伸填满整栏 */
+    .bk-form-content {
+      float: none;
+      margin-left: 0 !important;
+      display: flex;
+      min-height: 32px;
+
+      > * {
+        flex: 1;
+      }
+    }
+  }
+
+  .inline-edit-actions {
+    padding: 10px 24px;
+    text-align: right;
+    border-top: 1px solid #dcdee5;
+    margin-top: 12px;
+
+    .bk-button {
+      min-width: 76px;
+      margin-left: 8px;
+    }
+  }
 }
 </style>

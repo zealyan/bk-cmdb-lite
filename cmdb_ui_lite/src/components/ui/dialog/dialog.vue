@@ -27,7 +27,6 @@
           :class="{ 'is-scrollable': bodyScroll }"
           :style="bodyStyle">
           <div class="dialog-header" v-if="showHeader" ref="header">
-            <span class="dialog-title" v-if="title">{{ title }}</span>
             <slot name="header"></slot>
           </div>
           <div class="dialog-content">
@@ -59,10 +58,6 @@
       showCloseIcon: {
         type: Boolean,
         default: true
-      },
-      title: {
-        type: String,
-        default: ''
       },
       width: {
         type: Number,
@@ -155,18 +150,6 @@
             overflow: hidden;
             &.is-scrollable {
                 @include scrollbar;
-            }
-            .dialog-header {
-                padding: 0 20px;
-                height: 50px;
-                line-height: 50px;
-                font-size: 16px;
-                color: #313238;
-                border-bottom: 1px solid #dcdee5;
-                @include scrollbar;
-                .dialog-title {
-                    font-weight: normal;
-                }
             }
             .icon-close {
                 position: absolute;
