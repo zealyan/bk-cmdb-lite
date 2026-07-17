@@ -65,13 +65,38 @@
           <div>{{ searchKeyword ? '未找到匹配的主机' : '暂无主机数据' }}</div>
         </bk-exception>
       </div>
-    </bk-table>
+      </bk-table>
+
+      <!-- 转移至模块对话框（业务模块 / 空闲模块）
+           必须放在 bk-table 之外、与表格平级。
+           原先误置于 bk-table 默认 slot 内，被 el-table 的渲染机制丢弃，
+           导致弹框外壳弹出但内部 module-selector 内容缺失。 -->
+      <bk-dialog
+        v-model="transferDialog.visible"
+        :title="transferDialogTitle"
+        :width="1100"
+        :height="600"
+        :show-footer="false"
+        @cancel="handleTransferCancel">
+        <div class="transfer-dialog-body" style="--height: 100%; height: 100%;">
+          <module-selector-with-tab
+            v-if="transferDialog.visible"
+            :active="transferDialog.type"
+            :business="transferDialog.business"
+            :modules="transferDialog.modules"
+            :confirm-loading="transferDialog.confirmLoading"
+            @confirm="handleTransferConfirm"
+            @cancel="handleTransferCancel">
+          </module-selector-with-tab>
+        </div>
+      </bk-dialog>
   </div>
 </template>
 
 <script>
 import HostListOptions from './host-list-options.vue'
 import HostFilterTag from '@/components/filters/filter-tag.vue'
+import ModuleSelectorWithTab from './module-selector-with-tab.vue'
 import ColumnsConfig from '@/components/columns-config/columns-config.js'
 import FilterForm from '@/components/filters/filter-form.js'
 import FilterStore, { setupFilterStore } from '@/components/filters/store'
@@ -148,7 +173,8 @@ export default {
   mixins: [tableMixin],
   components: {
     HostListOptions,
-    HostFilterTag
+    HostFilterTag,
+    ModuleSelectorWithTab
   },
   props: {
     // 当前选中的拓扑节点
@@ -194,13 +220,31 @@ export default {
       searchKeyword: '',
       filtersTagHeight: 0,
       lastNodeId: null,
-      isTableReady: false
+      isTableReady: false,
+      // 转移至模块对话框状态
+      transferDialog: {
+        visible: false,
+        type: '',
+        business: { bk_biz_id: 0, bk_biz_name: '' },
+        modules: [],
+        confirmLoading: false
+      }
     }
   },
   computed: {
     // 节点数据
     nodeData() {
       return this.node?.data || {}
+    },
+    // 转移对话框标题
+    transferDialogTitle() {
+      const map = {
+        idle: '转移到空闲模块',
+        business: '转移到业务模块',
+        resource: '转移到主机池',
+        acrossBusiness: '转移到其他业务模块'
+      }
+      return map[this.transferDialog.type] || '转移主机'
     },
     // 节点类型
     objId() {
@@ -857,11 +901,119 @@ export default {
     },
 
     /**
-     * 转移主机
+     * 转移主机：打开"转移至模块"对话框
+     * Phase 1：弹出对话框并加载/返回 API 数据（业务拓扑树 / 空闲机池 / 主机模块绑定），
+     * 暂不执行写操作。
      */
-    handleTransfer(type) {
-      // 预留：转移主机弹窗
-      console.log('转移主机:', type, this.table.selection)
+    async handleTransfer(type) {
+      // Phase 1 聚焦"业务模块"与"空闲模块"；主机池/跨业务转移留待后续阶段
+      if (!['idle', 'business'].includes(type)) {
+        this.$bkMessage({
+          message: `「${type}」转移为 Phase 1 范围外，暂未实现`,
+          theme: 'warning'
+        })
+        return
+      }
+
+      const bkBizId = this.objId === 'biz'
+        ? this.nodeData.bk_inst_id
+        : (this.nodeData.bk_biz_id || 0)
+      if (!bkBizId) {
+        this.$bkMessage({ message: '无法确定业务，无法执行转移', theme: 'warning' })
+        return
+      }
+
+      // 解析业务名称（用于对话框展示）
+      let bizName = ''
+      try {
+        const res = await topoAPI.getBizList()
+        const list = res.data || res || []
+        const biz = (Array.isArray(list) ? list : []).find(b => b.bk_biz_id === bkBizId)
+        bizName = biz ? biz.bk_biz_name : ''
+      } catch (e) {
+        console.warn('获取业务名称失败:', e)
+      }
+
+      // 预选：查询选中主机当前所属模块（来自 cc_ModuleHostConfig 绑定）
+      const hostIds = this.table.selection
+        .map(h => h.bk_host_id || (h.host && h.host.bk_host_id))
+        .filter(id => id != null)
+      let modules = []
+      if (hostIds.length) {
+        try {
+          const cfgRes = await topoAPI.getHostModuleConfig(bkBizId, hostIds)
+          const rows = cfgRes.data || cfgRes || []
+          const moduleIds = [...new Set(rows.map(r => r.bk_module_id))]
+          modules = moduleIds.map(mid => ({ bk_module_id: mid }))
+        } catch (e) {
+          console.warn('查询主机模块绑定失败:', e)
+        }
+      }
+
+      this.transferDialog = {
+        visible: true,
+        type,
+        business: { bk_biz_id: bkBizId, bk_biz_name: bizName },
+        modules,
+        confirmLoading: false
+      }
+    },
+
+    /**
+     * 转移确认（对话框 下一步/确定 触发）
+     * Phase 2：调用后端写操作，修改 cc_ModuleHostConfig 绑定，成功后刷新列表。
+     */
+    async handleTransferConfirm(tab, checked) {
+      const targetModuleIds = (checked || [])
+        .filter(node => node.data && node.data.bk_obj_id === 'module')
+        .map(node => node.data.bk_inst_id)
+      if (!targetModuleIds.length) {
+        this.$bkMessage({ message: '请选择目标模块', theme: 'warning' })
+        return
+      }
+      const hostIds = this.table.selection
+        .map(h => h.bk_host_id || (h.host && h.host.bk_host_id))
+        .filter(id => id != null)
+      if (!hostIds.length) {
+        this.$bkMessage({ message: '未获取到选中主机', theme: 'warning' })
+        return
+      }
+
+      this.transferDialog.confirmLoading = true
+      try {
+        const result = await topoAPI.transferModules({
+          bk_biz_id: this.transferDialog.business.bk_biz_id,
+          bk_host_id: hostIds,
+          module_id: targetModuleIds,
+          transfer_type: tab.moduleType,
+          bk_supplier_account: '0'
+        })
+        this.$bkMessage({
+          message: `已转移 ${hostIds.length} 台主机到 ${targetModuleIds.length} 个模块`,
+          theme: 'success'
+        })
+        this.transferDialog.visible = false
+        this.loadHostList()
+        this.$emit('transfer-complete', {
+          bizId: this.transferDialog.business.bk_biz_id,
+          hostIds,
+          moduleIds: targetModuleIds,
+          transferType: tab.moduleType
+        })
+      } catch (e) {
+        console.error('[HostList] 转移失败:', e)
+        const msg = (e && e.message) ? e.message : String(e)
+        this.$bkMessage({ message: `转移失败: ${msg}`, theme: 'error' })
+      } finally {
+        this.transferDialog.confirmLoading = false
+      }
+    },
+
+    /**
+     * 转移取消
+     */
+    handleTransferCancel() {
+      this.transferDialog.visible = false
     },
 
     /**

@@ -1,62 +1,52 @@
 <!--
- * Tencent is pleased to support the open source community by making 蓝鲸 available.
- * Copyright (C) 2017 Tencent. All rights reserved.
- * Licensed under the MIT License (the "License"); you may not use this file except
- * in compliance with the License. You may obtain a copy of the License at
- * http://opensource.org/licenses/MIT
- * Unless required by applicable law or agreed to in writing, software distributed under
- * the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
- * either express or implied. See the License for the specific language governing permissions and
- * limitations under the License.
+ * 转移至模块选择器（lite 适配版）
+ * 原项目: src/ui/src/views/business-topology/host/module-selector.vue
+ *
+ * lite 适配说明：
+ * - 去掉 Vuex store（objectMainLineModule/getInstTopo、getInternalTopo），
+ *   改为直接调用 REST 客户端 topoAPI。
+ * - 去掉 cmdb-resize-layout / cmdb-table-empty 等原项目自定义组件，
+ *   改用 bk-magic-vue 内置布局与 bk-exception。
+ * - 去掉 mapGetters('objectModelClassify')，改用内联 OBJ_NAME_MAP 常量。
 -->
 
 <template>
   <div class="module-selector-layout"
-    v-bkloading="{ isLoading: $loading(Object.values(request)) }">
+    v-bkloading="{ isLoading: loading }">
     <div class="wrapper">
-      <cmdb-resize-layout class="topo-resize-layout"
-        direction="right"
-        :handler-offset="3"
-        :min="281"
-        :max="508">
-        <div :class="['wrapper-column wrapper-left', { 'has-title': hasTitle }]">
-          <template v-if="hasTitle">
-            <h2 class="title">{{title}}</h2>
+      <div :class="['wrapper-column wrapper-left', { 'has-title': hasTitle }]">
+        <template v-if="hasTitle">
+          <h2 class="title">{{title}}</h2>
+        </template>
+        <bk-input class="tree-filter" clearable right-icon="icon-search"
+          v-model="filter" :placeholder="'请输入关键词'">
+        </bk-input>
+        <bk-big-tree ref="tree" class="topology-tree"
+          display-matched-node-descendants
+          :default-expand-all="moduleType === 'idle'"
+          :options="{
+            idKey: getNodeId,
+            nameKey: 'bk_inst_name',
+            childrenKey: 'child'
+          }"
+          :node-height="36"
+          :show-checkbox="isShowCheckbox"
+          @node-click="handleNodeClick"
+          @check-change="handleNodeCheck">
+          <template slot-scope="{ node, data }">
+            <span :class="['node-checkbox fl', { 'is-checked': checked.includes(node) }]"
+              v-if="moduleType === 'idle' && data.bk_obj_id === 'module'">
+            </span>
+            <i class="internal-node-icon fl"
+              v-if="data.default !== 0"
+              :class="getInternalNodeClass(node, data)">
+            </i>
+            <i v-else :class="['node-icon fl', { 'is-template': isTemplate(data) }]">{{data.bk_obj_name[0]}}</i>
+            <span class="node-name" :title="node.name">{{node.name}}</span>
           </template>
-          <bk-input class="tree-filter" clearable right-icon="icon-search"
-            v-model="filter" :placeholder="$t('请输入关键词')">
-          </bk-input>
-          <bk-big-tree ref="tree" class="topology-tree"
-            display-matched-node-descendants
-            :default-expand-all="moduleType === 'idle'"
-            :options="{
-              idKey: getNodeId,
-              nameKey: 'bk_inst_name',
-              childrenKey: 'child'
-            }"
-            :node-height="36"
-            :show-checkbox="isShowCheckbox"
-            @node-click="handleNodeClick"
-            @check-change="handleNodeCheck">
-            <template slot-scope="{ node, data }">
-              <span :class="['node-checkbox fl', { 'is-checked': checked.includes(node) }]"
-                v-if="moduleType === 'idle' && data.bk_obj_id === 'module'">
-              </span>
-              <i class="internal-node-icon fl"
-                v-if="data.default !== 0"
-                :class="getInternalNodeClass(node, data)">
-              </i>
-              <i v-else :class="['node-icon fl', { 'is-template': isTemplate(data) }]">{{data.bk_obj_name[0]}}</i>
-              <span class="node-name" :title="node.name">{{node.name}}</span>
-            </template>
-            <cmdb-table-empty
-              slot="empty"
-              :stuff="dataEmpty"
-              @clear="handleClearFilter">
-            </cmdb-table-empty>
-          </bk-big-tree>
-        </div>
-      </cmdb-resize-layout>
+          <bk-exception slot="empty" type="empty" scene="part" />
+        </bk-big-tree>
+      </div>
       <div class="wrapper-column wrapper-right">
         <module-checked-list :checked="checked" @delete="handleDeleteModule" @clear="handleClearModule" />
       </div>
@@ -67,18 +57,26 @@
           :disabled="!checked.length || !hasDifference"
           :loading="confirmLoading"
           @click="handleNextStep">
-          {{confirmText || $t('下一步')}}
+          {{confirmText || '下一步'}}
         </bk-button>
       </span>
-      <bk-button theme="default" @click="handleCancel">{{$t('取消')}}</bk-button>
+      <bk-button theme="default" @click="handleCancel">取消</bk-button>
     </div>
   </div>
 </template>
 
 <script>
-  import { mapGetters } from 'vuex'
   import debounce from 'lodash.debounce'
   import ModuleCheckedList from './module-checked-list.vue'
+  import { topoAPI } from '@/api/topo'
+
+  // 主线模型中文名映射（替代原项目 getModelById 的 bk_obj_name）
+  const OBJ_NAME_MAP = {
+    biz: '业务',
+    set: '集群',
+    module: '模块'
+  }
+
   export default {
     name: 'cmdb-module-selector',
     components: {
@@ -123,10 +121,7 @@
         filter: '',
         handlerFilter: null,
         checked: [],
-        request: {
-          internal: Symbol('internal'),
-          business: Symbol('business')
-        },
+        loading: false,
         nodeIconMap: {
           1: 'icon-cc-host-free-pool',
           2: 'icon-cc-host-breakdown',
@@ -135,13 +130,12 @@
         dataEmpty: {
           type: 'search',
           payload: {
-            defaultText: this.$t('暂无数据')
+            defaultText: '暂无数据'
           }
         }
       }
     },
     computed: {
-      ...mapGetters('objectModelClassify', ['getModelById']),
       bizId() {
         return this.business.bk_biz_id
       },
@@ -158,10 +152,10 @@
       confirmTooltips() {
         const tooltips = { disabled: true }
         if (!this.checked.length) {
-          tooltips.content = this.$t('请先选择业务模块')
+          tooltips.content = '请先选择业务模块'
           tooltips.disabled = false
         } else if (!this.hasDifference) {
-          tooltips.content = this.$t('模块相同提示')
+          tooltips.content = '目标模块与当前模块相同，无需重复转移'
           tooltips.disabled = false
         }
         return tooltips
@@ -180,6 +174,7 @@
     },
     methods: {
       async getModules() {
+        this.loading = true
         try {
           let data
           if (this.moduleType === 'idle') {
@@ -193,6 +188,8 @@
         } catch (e) {
           this.$refs.tree.setData([])
           console.error(e)
+        } finally {
+          this.loading = false
         }
       },
       setDefaultChecked() {
@@ -211,39 +208,51 @@
         })
       },
       getInternalModules() {
-        return this.$store.dispatch('objectMainLineModule/getInternalTopo', {
-          bizId: this.bizId,
-          config: {
-            requestId: this.request.internal
-          }
-        }).then(data => [{
-          bk_inst_id: this.bizId,
-          bk_inst_name: this.bizName,
-          bk_obj_id: 'biz',
-          bk_obj_name: this.getModelById('biz').bk_obj_name,
-          default: 0,
-          child: [{
-            bk_inst_id: data.bk_set_id,
-            bk_inst_name: data.bk_set_name,
-            bk_obj_id: 'set',
-            bk_obj_name: this.getModelById('set').bk_obj_name,
+        // 空闲机池：GET /host/transfer/internal/{supplier}/{bizId}
+        return topoAPI.getInternalTopo('0', this.bizId).then((response) => {
+          const data = response.data || response
+          return [{
+            bk_inst_id: this.bizId,
+            bk_inst_name: this.bizName,
+            bk_obj_id: 'biz',
+            bk_obj_name: OBJ_NAME_MAP.biz,
             default: 0,
-            child: data.module.map(module => ({
-              bk_inst_id: module.bk_module_id,
-              bk_inst_name: module.bk_module_name,
-              bk_obj_id: 'module',
-              bk_obj_name: this.getModelById('module').bk_obj_name,
-              default: module.default
-            }))
+            child: [{
+              bk_inst_id: data.bk_set_id,
+              bk_inst_name: data.bk_set_name,
+              bk_obj_id: 'set',
+              bk_obj_name: OBJ_NAME_MAP.set,
+              default: 0,
+              child: (data.module || []).map(module => ({
+                bk_inst_id: module.bk_module_id,
+                bk_inst_name: module.bk_module_name,
+                bk_obj_id: 'module',
+                bk_obj_name: OBJ_NAME_MAP.module,
+                default: module.default
+              }))
+            }]
           }]
-        }])
+        })
       },
       getBusinessModules() {
-        return this.$store.dispatch('objectMainLineModule/getInstTopo', {
-          bizId: this.bizId,
-          config: {
-            requestId: this.request.business
+        // 业务拓扑树：POST /host/transfer/topology/biz/{bizId}
+        return topoAPI.getInstTopo(this.bizId).then((response) => {
+          const data = response.data || response
+          // 业务模块转移：仅保留普通业务模块（default=0），
+          // 过滤掉空闲机池(set default=1)及其内部模块(空闲机/故障机/待回收)，
+          // 避免把内部模块当作业务模块提交，触发后端类型校验失败。
+          if (this.moduleType !== 'business') {
+            return data
           }
+          return (data || []).map(biz => ({
+            ...biz,
+            child: (biz.child || [])
+              .filter(set => set.default === 0)
+              .map(set => ({
+                ...set,
+                child: (set.child || []).filter(mod => mod.default === 0)
+              }))
+          }))
         })
       },
       getNodeId(data) {
@@ -289,7 +298,7 @@
       },
       handleNextStep() {
         if (!this.checked.length) {
-          this.$warn('请选择模块')
+          this.$bkMessage({ message: '请选择模块', theme: 'warning' })
           return false
         }
         this.$emit('confirm', this.checked)
@@ -311,9 +320,6 @@
 </script>
 
 <style lang="scss" scoped>
-    :deep(.bk-big-tree-empty) {
-        position: static;
-    }
     .module-selector-layout {
         height: var(--height, 600px);
         min-height: 300px;

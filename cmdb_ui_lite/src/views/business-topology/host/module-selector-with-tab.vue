@@ -1,13 +1,11 @@
 <!--
- * Tencent is pleased to support the open source community by making 蓝鲸 available.
- * Copyright (C) 2017 Tencent. All rights reserved.
- * Licensed under the MIT License (the "License"); you may not use this file except
- * in compliance with the License. You may obtain a copy of the License at
- * http://opensource.org/licenses/MIT
- * Unless required by applicable law or agreed to in writing, software distributed under
- * the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
- * either express or implied. See the License for the specific language governing permissions and
- * limitations under the License.
+ * 转移至模块选择器（含 tab：空闲模块 / 业务模块）
+ * 原项目: src/ui/src/views/business-topology/host/module-selector-with-tab.vue
+ *
+ * lite 适配说明：
+ * - 去掉原项目的权限校验（cmdb-auth / no-permission / translateAuth / $OPERATION）
+ *   与跨业务转移（acrossBusiness）tab，聚焦"空闲模块"与"业务模块"两个核心场景。
+ * - 跨业务转移依赖独立业务的拓扑数据，留待后续阶段实现。
 -->
 
 <template>
@@ -19,20 +17,14 @@
         render-directive="if"
         :key="index">
         <div class="tab-content">
-          <div class="content-container" v-bkloading="{ isLoading: $loading(Object.values(request)) }">
-            <cmdb-auth class="auth-component" v-if="['idle', 'business'].includes(panel.props.name)"
-              :ignore="Object.keys(authorized).includes(panel.props.name)"
-              :auth="auth"
-              @update-auth="handleUpdateAuth(...arguments, panel.props.name)">
-            </cmdb-auth>
-            <component v-if="authorized[panel.props.name] !== false"
+          <div class="content-container" v-bkloading="{ isLoading: loading }">
+            <component
               class="selector-component"
               :is="panel.component.name"
               v-bind="panel.component.props"
               @cancel="handleCancel"
               @confirm="handleConfirm">
             </component>
-            <no-permission class="no-permission-container" v-else :permission="permission" @cancel="handleCancel" />
           </div>
         </div>
       </bk-tab-panel>
@@ -41,20 +33,12 @@
 </template>
 
 <script>
-  import { translateAuth } from '@/setup/permission'
-  import { AuthRequestId } from '@/components/ui/auth/auth-queue.js'
   import ModuleSelector from './module-selector.vue'
-  import AcrossBusinessModuleSelector from './across-business-module-selector.vue'
-  import NoPermission from './no-permission.vue'
-  import has from 'has'
-  import { ONE_TO_ONE } from '@/dictionary/host-transfer-type.js'
 
   export default {
     name: 'module-selector-with-tab',
     components: {
-      NoPermission,
-      [ModuleSelector.name]: ModuleSelector,
-      [AcrossBusinessModuleSelector.name]: AcrossBusinessModuleSelector
+      [ModuleSelector.name]: ModuleSelector
     },
     props: {
       modules: {
@@ -72,16 +56,21 @@
       confirmLoading: {
         type: Boolean,
         default: false
+      },
+      active: {
+        type: String,
+        default: 'idle'
       }
     },
     data() {
       return {
+        loading: false,
         tab: {
           list: [
             {
               props: {
                 name: 'idle',
-                label: this.$t('转移到空闲模块', { idleSet: this.$store.state.globalConfig.config.set }),
+                label: '转移到空闲模块',
                 visible: true
               },
               component: {
@@ -97,7 +86,7 @@
             {
               props: {
                 name: 'business',
-                label: this.$t('转移到业务模块'),
+                label: '转移到业务模块',
                 visible: true
               },
               component: {
@@ -108,28 +97,9 @@
                   confirmLoading: false
                 }
               }
-            },
-            {
-              props: {
-                name: 'acrossBusiness',
-                label: this.$t('转移到其他业务模块'),
-                visible: true
-              },
-              component: {
-                name: AcrossBusinessModuleSelector.name,
-                props: {
-                  type: ONE_TO_ONE,
-                  business: {},
-                  confirmLoading: false
-                }
-              }
             }
           ],
-          active: 'idle'
-        },
-        authorized: {},
-        request: {
-          auth: AuthRequestId
+          active: this.active
         }
       }
     },
@@ -144,31 +114,17 @@
         const availableTabList = []
         this.tab.list.forEach((tab) => {
           tab.component.props.business = this.business
-          if (tab.props.name !== 'acrossBusiness') {
-            const defaultChecked = this.modules.map(module => module.bk_module_id)
-            const firstSelectionModules = this.modules.map(module => module.bk_module_id).sort()
-            tab.component.props.previousModules = firstSelectionModules
-            tab.component.props.defaultChecked = defaultChecked
-            tab.component.props.confirmText = tab.props.name === 'idle' && this.isIdleSetModules ? this.$t('确定') : ''
-            availableTabList.push(tab)
-          } else if (this.isIdleSetModules) {
-            availableTabList.push(tab)
-          }
+          const defaultChecked = this.modules.map(module => module.bk_module_id)
+          const firstSelectionModules = this.modules.map(module => module.bk_module_id).sort()
+          tab.component.props.previousModules = firstSelectionModules
+          tab.component.props.defaultChecked = defaultChecked
+          tab.component.props.confirmText = tab.props.name === 'idle' && this.isIdleSetModules ? '确定' : ''
+          availableTabList.push(tab)
         })
         return availableTabList
       },
       activeTab() {
         return this.availableTabList.find(tab => tab.props.name === this.tab.active)
-      },
-      auth() {
-        return [
-          { type: this.$OPERATION.C_SERVICE_INSTANCE, relation: [this.bizId] },
-          { type: this.$OPERATION.U_SERVICE_INSTANCE, relation: [this.bizId] },
-          { type: this.$OPERATION.D_SERVICE_INSTANCE, relation: [this.bizId] }
-        ]
-      },
-      permission() {
-        return translateAuth(this.auth)
       }
     },
     watch: {
@@ -185,12 +141,6 @@
         const tab = { tabName: currentTab.props.name, moduleType: currentTab.component.props.moduleType }
         // eslint-disable-next-line prefer-rest-params
         this.$emit('confirm', tab, ...arguments)
-      },
-      handleUpdateAuth(isAuthorized, panel) {
-        // 已鉴权则不再更新，配合auth组件ignore，在切换tab时不重复鉴权
-        if (!has(this.authorized, panel)) {
-          this.$set(this.authorized, panel, isAuthorized)
-        }
       }
     }
   }
@@ -198,20 +148,15 @@
 
 <style lang="scss" scoped>
     .module-selector-with-tab {
-        height: var(--height); // defined in dialog el
+        height: var(--height);
 
         .tab-content,
         .selector-component,
-        .content-container,
-        .no-permission-container {
+        .content-container {
             height: 100%;
         }
 
-        .auth-component {
-            display: none;
-        }
-
-        /deep/ .bk-tab {
+        ::v-deep .bk-tab {
             height: 100%;
             .bk-tab-header {
                 padding: 0;

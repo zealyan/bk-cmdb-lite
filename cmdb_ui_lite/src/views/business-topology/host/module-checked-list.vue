@@ -13,7 +13,7 @@
 <template>
   <div class="module-checked-list">
     <div class="selected-info">
-      <div class="selected-title">{{$t('结果预览')}}</div>
+      <div class="selected-title">结果预览</div>
       <div class="selected-count">
         <i18n path="已选择N个模块">
           <template #count><em class="count">{{checked.length}}</em></template>
@@ -21,7 +21,7 @@
         <bk-button text theme="primary"
           v-show="checked.length"
           @click="handleClearModule">
-          {{$t('清空')}}
+          清空
         </bk-button>
       </div>
     </div>
@@ -91,7 +91,7 @@
                 }
             }
 
-            /deep/ .bk-button-text {
+            ::v-deep .bk-button-text {
                 font-size: 12px;
             }
         }

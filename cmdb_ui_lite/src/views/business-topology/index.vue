@@ -39,7 +39,8 @@
               v-else
               :active="activeTab === 'hostList'"
               :node="selectedNode"
-              ref="hostList">
+              ref="hostList"
+              @transfer-complete="handleTransferComplete">
             </host-list>
           </bk-tab-panel>
 
@@ -227,6 +228,11 @@ export default {
     handleNodeDeleted() {
       // 节点删除后刷新拓扑树
       this.selectedNode = null
+      this.$refs.topologyTree.initTopology()
+    },
+    handleTransferComplete(payload) {
+      // 主机转移完成后刷新拓扑树统计数据（host_count 等）
+      console.log('[BusinessTopology] 主机转移完成，刷新拓扑树:', payload)
       this.$refs.topologyTree.initTopology()
     }
   }

@@ -533,7 +533,7 @@
                 color: #c4c6cc;
             }
             .check-all {
-                /deep/ .bk-checkbox-text {
+                ::v-deep .bk-checkbox-text {
                     font-size: 12px;
                 }
             }

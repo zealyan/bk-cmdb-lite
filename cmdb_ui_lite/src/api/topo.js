@@ -167,6 +167,76 @@ export const topoAPI = {
   },
 
   /**
+   * 获取转移"业务模块"所需的业务拓扑树（集群分类 + 模块分类，含 default 标识）
+   *
+   * 对应原项目: POST find/topoinst/biz/{bizId}
+   * 返回结构区分集群(set)与模块(module)分类，default 字段标识空闲机池/内部模块：
+   *   0 普通 / 1 空闲机 / 2 故障机 / 3 待回收（set 级 default=1 即空闲机池）
+   *
+   * @param {number} bizId 业务ID
+   * @param {Object} params 额外参数（bk_supplier_account 等）
+   * @returns {Promise<Array>} 业务拓扑树（单根节点数组）
+   */
+  async getInstTopo(bizId, params = {}) {
+    const response = await http.post(`${API_BASE}/host/transfer/topology/biz/${bizId}`, params)
+    return response
+  },
+
+  /**
+   * 获取空闲机池（转移到空闲模块使用）
+   *
+   * 对应原项目: GET topo/internal/{supplierAccount}/{bizId}/with_statistics
+   *
+   * @param {string} supplierAccount 供应商账号，默认 '0'
+   * @param {number} bizId 业务ID
+   * @returns {Promise<Object>} { bk_set_id, bk_set_name, module: [{ bk_module_id, bk_module_name, default }] }
+   */
+  async getInternalTopo(supplierAccount, bizId) {
+    const response = await http.get(`${API_BASE}/host/transfer/internal/${supplierAccount}/${bizId}`)
+    return response
+  },
+
+  /**
+   * 查询指定主机的模块绑定关系（cc_ModuleHostConfig）
+   * 用于转移前预选主机当前所属模块，作为写操作的上下文依据。
+   *
+   * @param {number} bizId 业务ID
+   * @param {Array<number>} hostIds 主机ID列表（为空则返回该业务全部绑定）
+   * @param {Object} params 额外参数（bk_supplier_account 等）
+   * @returns {Promise<Array>} 绑定关系列表
+   */
+  async getHostModuleConfig(bizId, hostIds = [], params = {}) {
+    const response = await http.get(`${API_BASE}/host/transfer/host/modules`, {
+      params: {
+        bk_biz_id: bizId,
+        bk_host_id: Array.isArray(hostIds) ? hostIds.join(',') : (hostIds || ''),
+        ...params
+      }
+    })
+    return response
+  },
+
+  /**
+   * 执行主机转移写操作（修改 cc_ModuleHostConfig 绑定）
+   *
+   * 对应原项目: src/source_controller/coreservice/core/host/transfer/
+   * 语义：先删除该主机在当前业务内的所有模块绑定，再写入新选的目标模块绑定；
+   *       若转移后主机无任何模块绑定，自动挂到空闲机(default=1)模块。
+   *
+   * @param {Object} payload 转移请求
+   * @param {number} payload.bk_biz_id 业务ID
+   * @param {Array<number>} payload.bk_host_id 待转移主机ID列表
+   * @param {Array<number>} payload.module_id 目标模块ID列表
+   * @param {string} payload.transfer_type 'business' | 'idle'
+   * @param {string} [payload.bk_supplier_account] 供应商账号，默认 '0'
+   * @returns {Promise<Object>} { result, code, message, data: { transferred_hosts, target_modules, transfer_type } }
+   */
+  async transferModules(payload = {}) {
+    const response = await http.post(`${API_BASE}/host/transfer/modules`, payload)
+    return response
+  },
+
+  /**
    * 创建集群
    * @param {number} bizId 业务ID
    * @param {Object} data 创建数据 { names: string[] }

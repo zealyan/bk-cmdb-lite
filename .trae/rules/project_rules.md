@@ -23,7 +23,7 @@ $PROJECT_ROOT/                          # 项目根目录
 │   │   ├── common/      # 公共模块
 │   │   └── ui/          # 原项目 UI
 ├── cmdb_ui_lite/         # 前端子项目 (Vue 2 + bk-magic-vue + Vue CLI)
-└── cmdb_server_lite/    # 后端子项目 (Python 3.14.4 + Flask 2.3.3 + SQLAlchemy)
+└── cmdb_server_lite/    # 后端子项目 (Python 3.11 ~ 3.14 + Flask 2.3.3 + SQLAlchemy)
 ```
 
 ---
@@ -43,7 +43,7 @@ $PROJECT_ROOT/                          # 项目根目录
 
 | 项目 | 说明 |
 |------|------|
-| 技术栈 | Python 3.14.4 + Flask 2.3.3 + SQLAlchemy >=2.0.35 |
+| 技术栈 | Python 3.11 ~ 3.14 + Flask 2.3.3 + SQLAlchemy >=2.0.35 |
 | 数据库 | SQLite (开发) / PostgreSQL (生产) / MySQL (可选) / DuckDB (兼容) |
 | 方言处理 | sqlglot 19.8.0 |
 | 端口 | 5000 |
@@ -58,7 +58,7 @@ $PROJECT_ROOT/                          # 项目根目录
 
 | 组件 | 技术 | 版本 | 说明 |
 |------|------|------|------|
-| **Python** | Python | 3.14.4（`.python-version` 固定） | Python 版本 |
+| **Python** | Python | 3.11 ~ 3.14（可选范围，已移除 `.python-version` 硬编码） | Python 版本 |
 | **Web 框架** | Flask | 2.3.3 | 轻量级 Web 框架 |
 | **数据库连接池** | SQLAlchemy | >=2.0.35 | 仅使用连接池与原生 SQL 执行，**禁用 ORM Model** |
 | **方言转换** | sqlglot | 19.8.0 | 多数据库 SQL 方言处理 |
@@ -143,7 +143,7 @@ cmdb_server_lite/
 │   └── logs/                    # 运行日志（app.log）
 ├── tests/                       # 单元测试
 ├── .env / .env.prod / .env.test # 环境变量
-├── .python-version              # 3.14.4（关键！必须匹配）
+# Python 版本：3.11 ~ 3.14（可选范围，已移除 .python-version 硬性约束）
 ├── requirements.txt             # Python 依赖清单
 ├── run.py                       # 后端启动入口（重要！不是 main.py）
 └── cmdb_dev.db                  # 开发数据库文件（运行 migrate 后生成）
@@ -687,7 +687,7 @@ curl -s http://localhost:5000/api/v1/common/health
 ## 十七、注意事项
 
 1. **后端启动**：必须使用 `python3 run.py`，不要使用 `python3 main.py`
-2. **Python 版本**：`.python-version` 固定为 `3.14.4`，SQLAlchemy 需 `>=2.0.35` 才支持
+2. **Python 版本**：支持 `3.11` ~ `3.14`（可选范围，已移除 `.python-version` 硬性约束），SQLAlchemy 需 `>=2.0.35` 才支持
 3. **数据库迁移**：`python3 -m app.migrate.migrate`；变更数据模型后，删除旧 `cmdb_dev.db` 重新迁移更干净
 4. **前端构建**：预览前必须先执行 `npm run build`，否则 `dist/` 为空，预览全 404
 5. **API 端口**：后端 5000，前端代理 3000，Vue CLI dev 模式 8080；所有 API 最终都发往后端 5000

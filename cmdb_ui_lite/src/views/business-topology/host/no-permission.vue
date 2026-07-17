@@ -53,12 +53,12 @@
         height: var(--height, 600px);
         padding: 0 0 50px;
         position: relative;
-        /deep/ .permission-content {
+        ::v-deep .permission-content {
             padding: 16px 24px 0;
             margin: 0;
             height: 100%;
         }
-        /deep/ .permission-footer {
+        ::v-deep .permission-footer {
             position: sticky;
             bottom: 0;
             left: 0;

@@ -285,7 +285,7 @@
                     height: calc(100% - 42px);
                     @include scrollbar;
 
-                    /deep/ .bk-collapse-item .bk-collapse-item-header {
+                    ::v-deep .bk-collapse-item .bk-collapse-item-header {
                         padding: 0;
                         height: 24px;
                         line-height: 24px;
@@ -392,7 +392,7 @@
             }
         }
 
-        /deep/ .bk-tab {
+        ::v-deep .bk-tab {
             height: 100%;
             .bk-tab-header {
                 padding: 0;
