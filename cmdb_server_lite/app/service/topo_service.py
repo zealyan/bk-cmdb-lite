@@ -1038,11 +1038,18 @@ def _build_condition_sql(field: str, operator: str, value: Any,
     """
     将 ConditionItem 转换为 SQL WHERE 子句
 
-    对应原项目 paraparse/host.go 的 ParseHostParams
+    对应原项目 paraparse/host.go 的 ParseHostParams 与 pkg/filter 的 operator 实现，
+    模糊匹配的大小写语义与原项目严格保持一致：
+
+    操作符          原项目路径                          MongoDB 表达                          大小写
+    $regex          ParseHostParams(BKDBLIKE)        {field: {$regex: value}}              敏感
+    $contains_s     filter.ContainsSensitiveOp       {field: {$regex: value}}              敏感
+    contains        ParseHostParams(filter.Contains) {field: {$regex: value, $options:"i"}} 不敏感
+    $contains       filter.ContainsOp(前端别名)       {field: {$regex: value, $options:"i"}} 不敏感
 
     Args:
         field: 字段名
-        operator: 操作符（$eq/$ne/$in/$nin/$regex/contains）
+        operator: 操作符（$eq/$ne/$in/$nin/$regex/$contains/$contains_s/contains ...）
         value: 比较值
         param_idx: 参数索引（避免重名）
 
@@ -1076,9 +1083,16 @@ def _build_condition_sql(field: str, operator: str, value: Any,
         params = {f'{p_name}_{i}': v for i, v in enumerate(value)}
         return (f'{field} NOT IN ({placeholders})', params)
 
-    if operator in ('$regex', 'contains'):
-        like_value = f'%{value}%'
-        return (f'{field} LIKE :{p_name}', {p_name: like_value})
+    # 模糊匹配（子串包含），大小写语义严格对齐原项目 bk-cmdb
+    #   $regex / $contains_s -> 大小写敏感（MongoDB 默认 $regex 不带 $options:"i"）
+    #   contains / $contains -> 大小写不敏感（MongoDB $regex 带 $options:"i"）
+    if operator in ('$regex', '$contains_s'):
+        # 大小写敏感子串匹配：INSTR 在 SQLite 中为大小写敏感
+        return (f'INSTR({field}, :{p_name}) > 0', {p_name: value})
+
+    if operator in ('$contains', 'contains'):
+        # 大小写不敏感子串匹配：LOWER 两侧保证与 MongoDB $options:"i" 等价
+        return (f'LOWER({field}) LIKE LOWER(:{p_name})', {p_name: f'%{value}%'})
 
     if operator in ('$gt', '$lt', '$gte', '$lte'):
         op_map = {'$gt': '>', '$lt': '<', '$gte': '>=', '$lte': '<='}

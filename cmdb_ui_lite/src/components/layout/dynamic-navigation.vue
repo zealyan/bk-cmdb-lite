@@ -78,6 +78,7 @@ import {
   MENU_BUSINESS_TOPOLOGY
 } from '@/dictionary/menu-symbol'
 import { modelAPI } from '@/api/client'
+import { getCachedBizId } from '@/utils/biz-cache'
 
 export default {
   name: 'DynamicNavigation',
@@ -133,13 +134,20 @@ export default {
       let menus = [...((target && target.menu) || [])]
       if (this.owner === MENU_BUSINESS) {
         menus = menus.map(menu => {
-          if (menu.id === MENU_BUSINESS_TOPOLOGY && this.currentBizId) {
+          if (menu.id === MENU_BUSINESS_TOPOLOGY) {
+            // 对齐原项目 getMenuLink：菜单链接的 bizId 取自 store 的 objectBiz/bizId
+            // （由路由守卫在进入业务时绑定），缺失时回退到全局默认缓存的业务 ID，
+            // 保证菜单链接本身指向一个合法业务，而非 /business/0/index
+            const storeBizId = this.$store.getters['objectBiz/bizId']
+            const effectiveBizId = (storeBizId && String(storeBizId) !== '0')
+              ? String(storeBizId)
+              : getCachedBizId()
             return {
               ...menu,
               route: {
                 name: MENU_BUSINESS_TOPOLOGY,
                 params: {
-                  bizId: this.currentBizId
+                  bizId: effectiveBizId
                 }
               }
             }
@@ -189,6 +197,8 @@ export default {
     handleBizChange(value) {
       if (!value) return
       const targetBizId = value
+      // 保存与数据绑定由路由守卫（beforeEach）在进入目标业务路由时统一处理，
+      // 这里仅负责导航到目标业务（守卫会写入 localStorage['selectedBusiness'] 并提交 store）
       const currentPath = this.$route.path
       const bizIdPattern = /^\/business\/(\d+)(\/.*)?$/
       if (bizIdPattern.test(currentPath)) {
@@ -202,8 +212,13 @@ export default {
       }
     },
     syncSelectedBiz() {
-      if (this.isBusinessView && this.currentBizId) {
-        this.selectedBizId = this.currentBizId
+      if (this.isBusinessView && this.currentBizId && this.currentBizId !== '0') {
+        // 选择器默认选中当前业务：优先取 store 中由守卫绑定的 objectBiz/bizId，
+        // 与导航栏菜单链接、业务内容保持一致（原项目的数据绑定方式）
+        const storeBizId = this.$store.getters['objectBiz/bizId']
+        this.selectedBizId = (storeBizId && String(storeBizId) !== '0')
+          ? String(storeBizId)
+          : this.currentBizId
       }
     }
   },
@@ -221,6 +236,11 @@ export default {
       handler() {
         this.syncSelectedBiz()
       }
+    },
+    // 业务列表异步加载完成后，重新同步选择器默认选中，
+    // 避免「路由已就绪但选项尚未渲染」导致下拉框显示为空
+    bizList() {
+      this.syncSelectedBiz()
     }
   },
   async mounted() {

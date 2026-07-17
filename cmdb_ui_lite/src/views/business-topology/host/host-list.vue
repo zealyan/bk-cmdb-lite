@@ -99,6 +99,29 @@ const HOST_ID_PROPERTY = {
   bk_property_index: -Infinity
 }
 
+// 主线拓扑模型“名称”属性（前端注入，确保即使后端未配置属性也存在）。
+// 与原项目 filters/store.js defaultConditionProperties.NORMAL 一致，
+// 高级筛选“添加其他条件”除主机属性外，还包含集群(set)/模块(module)的名称属性。
+// 参考：/workspace/bk-cmdb/src/ui/src/components/filters/store.js L58-81
+const SET_NAME_PROPERTY = {
+  bk_property_id: 'bk_set_name',
+  bk_property_name: '集群名称',
+  bk_property_type: 'singlechar',
+  bk_obj_id: 'set',
+  bk_issystem: false,
+  bk_isapi: false,
+  bk_property_index: 1
+}
+const MODULE_NAME_PROPERTY = {
+  bk_property_id: 'bk_module_name',
+  bk_property_name: '模块名称',
+  bk_property_type: 'singlechar',
+  bk_obj_id: 'module',
+  bk_issystem: false,
+  bk_isapi: false,
+  bk_property_index: 1
+}
+
 const DEFAULT_TABLE_HEADER = [
   { bk_property_id: 'bk_host_id', bk_property_name: 'ID', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: true, bk_isapi: false },
   { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
@@ -165,6 +188,9 @@ export default {
         disabledColumns: ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id']
       },
       allProperties: [],
+      // 集群(set)/模块(module)模型属性，用于高级筛选“添加其他条件”的拓扑属性目录
+      setProperties: [],
+      moduleProperties: [],
       searchKeyword: '',
       filtersTagHeight: 0,
       lastNodeId: null,
@@ -179,6 +205,17 @@ export default {
     // 节点类型
     objId() {
       return this.nodeData.bk_obj_id
+    },
+    // 高级筛选可用的全部属性（host + set + module 合并，按 bk_property_id 去重）
+    // 用于从 URL 还原条件时（restoreFromUrl）能正确识别 set/module 属性并绑定 bk_obj_id
+    filterProperties() {
+      const merged = {}
+      ;[...this.allProperties, ...this.setProperties, ...this.moduleProperties].forEach((p) => {
+        if (p && p.bk_property_id) {
+          merged[p.bk_property_id] = p
+        }
+      })
+      return Object.values(merged)
     }
   },
   watch: {
@@ -192,13 +229,14 @@ export default {
           this.table.pagination.current = page
           
           if (nodeId === this.lastNodeId) {
-            this.loadHostList()
+            this.scheduleLoadHostList()
             return
           }
-          
+
           this.lastNodeId = nodeId
-          this.loadHostAttributes()
-          this.loadHostList()
+          // 属性加载与筛选条件恢复已在 created() 的 initFilterData() 中完成，
+          // 节点切换时仅触发列表重载（避免重复 restore 清空已恢复的条件）
+          this.scheduleLoadHostList()
         }
       }
     },
@@ -210,7 +248,10 @@ export default {
     }
   },
   created() {
-    this.initFilterStore()
+    this.initFilterData().then(() => {
+      this.registerFilterRouteWatch()
+      this.registerFilterStoreWatch()
+    })
   },
   mounted() {
     this.disabledTableSettingDefaultBehavior()
@@ -232,24 +273,125 @@ export default {
   },
   beforeDestroy() {
     this.unwatchFilter && this.unwatchFilter()
+    this.unwatchRouter && this.unwatchRouter()
+    this.unwatchFilterStore && this.unwatchFilterStore()
   },
   methods: {
     /**
+     * 初始化筛选数据：先并行加载 host/set/module 三类模型属性，
+     * 再初始化 FilterStore（注入 set/module 属性映射），最后从 URL 还原筛选条件。
+     * 与原项目一致：高级筛选“添加其他条件”除主机属性外，还包含主线拓扑
+     * 模型（集群 set / 模块 module）的属性。
+     * 参考：/workspace/bk-cmdb/src/ui/src/components/filters/store.js L58-81
+     */
+    async initFilterData() {
+      await Promise.all([
+        this.loadHostAttributes(),
+        this.loadSetAttributes(),
+        this.loadModuleAttributes()
+      ])
+      await this.initFilterStore()
+      // 属性映射已就绪，使用合并后的属性列表正确还原 set/module 条件
+      FilterStore.restoreFromUrl(this.filterProperties)
+      this.scheduleLoadHostList()
+    },
+
+    /**
+     * 加载集群（set）模型属性，用于高级筛选“添加其他条件”的集群属性目录
+     */
+    async loadSetAttributes() {
+      try {
+        const result = await modelAPI.getModelAttributes('set')
+        const attrs = result.data?.attributes || result.attributes || result.data || result || []
+        this.setProperties = Array.isArray(attrs) ? attrs.filter(p => !p.bk_isapi) : []
+      } catch (e) {
+        console.error('加载集群属性失败:', e)
+        this.setProperties = []
+      }
+    },
+
+    /**
+     * 加载模块（module）模型属性，用于高级筛选“添加其他条件”的模块属性目录
+     */
+    async loadModuleAttributes() {
+      try {
+        const result = await modelAPI.getModelAttributes('module')
+        const attrs = result.data?.attributes || result.attributes || result.data || result || []
+        this.moduleProperties = Array.isArray(attrs) ? attrs.filter(p => !p.bk_isapi) : []
+      } catch (e) {
+        console.error('加载模块属性失败:', e)
+        this.moduleProperties = []
+      }
+    },
+
+    /**
      * 初始化 FilterStore
+     * modelPropertyMap 同时注入 host / set / module 三类属性，
+     * 使高级筛选的“添加其他条件”可选取集群、模块模型属性（如 集群名称、模块名称）。
      */
     async initFilterStore() {
       const bizId = this.node?.data?.bk_biz_id || this.$route.params.bizId || 1
       await setupFilterStore({
         bk_biz_id: bizId,
-        modelIds: ['host', 'module', 'set', 'biz'],
-        searchHandler: () => {
-          this.table.pagination.current = 1
-          this.loadHostList()
-        },
+        modelIds: ['host', 'module', 'set'],
+        urlSync: true,
         modelPropertyMap: {
-          host: this.allProperties.length ? this.allProperties : DEFAULT_TABLE_HEADER
+          host: this.allProperties.length ? this.allProperties : DEFAULT_TABLE_HEADER,
+          set: this.setProperties.length ? this.setProperties : [SET_NAME_PROPERTY],
+          module: this.moduleProperties.length ? this.moduleProperties : [MODULE_NAME_PROPERTY]
         }
       })
+    },
+
+    /**
+     * 注册路由查询监听：仅处理分页（page/limit）变化触发的列表刷新。
+     * 筛选条件 / IP 的变更改由 registerFilterStoreWatch 直接监听 FilterStore
+     * 来触发重载，避免依赖 URL 深监听在“移除条件”场景下不触发的问题。
+     */
+    registerFilterRouteWatch() {
+      this.unwatchRouter = RouterQuery.watch('*', (query, oldQuery = {}) => {
+        // 仅分页变化触发重载，筛选条件 / IP 交给 FilterStore 监听
+        const reloadKeys = ['page', 'limit']
+        const changed = reloadKeys.some(key => query[key] !== (oldQuery || {})[key])
+        if (!changed) return
+        if (query.page) {
+          this.table.pagination.current = parseInt(query.page, 10)
+        }
+        if (query.limit) {
+          this.table.pagination.limit = parseInt(query.limit, 10)
+        }
+        this.loadHostList()
+      }, { throttle: 16 })
+    },
+
+    /**
+     * 直接监听 FilterStore 的 condition / IP 变化来触发列表重载。
+     * 这是修复“关闭筛选 tag 后列表不联动重新查询”的关键：
+     * 关闭 tag 时 FilterStore.resetValue 会将条件值置空（属于 condition 的响应式变更），
+     * 此处 deep watch 必然触发，从而在当前拓扑节点下重新查询。
+     */
+    registerFilterStoreWatch() {
+      this.unwatchFilterStore = this.$watch(
+        () => [FilterStore.condition, FilterStore.IP],
+        () => {
+          this.scheduleLoadHostList()
+        },
+        { deep: true }
+      )
+    },
+
+    /**
+     * 防抖触发列表重载：多个同步的响应式变更（如 restoreFromUrl 同时改 condition 与 IP）
+     * 会合并为一次请求，避免重复加载。
+     */
+    scheduleLoadHostList() {
+      if (this._filterReloadTimer) {
+        clearTimeout(this._filterReloadTimer)
+      }
+      this._filterReloadTimer = setTimeout(() => {
+        this._filterReloadTimer = null
+        this.loadHostList()
+      }, 30)
     },
 
     /**
@@ -609,7 +751,7 @@ export default {
         node: RouterQuery.get('node'),
         _t: Date.now()
       })
-      this.loadHostList()
+      // 由 RouterQuery.watch('*') 触发 loadHostList，避免重复加载
     },
 
     /**
@@ -622,7 +764,7 @@ export default {
         page: 1,
         _t: Date.now()
       })
-      this.loadHostList()
+      // 由 RouterQuery.watch('*') 触发 loadHostList，避免重复加载
     },
 
     /**
@@ -679,20 +821,28 @@ export default {
       const bizId = this.$route.params.bizId
       const page = this.table.pagination.current
       const node = RouterQuery.get('node')
-      
-      console.log('[HostList] navigating to host details:', { bizId, hostId, page, node })
-      
+
+      // 携带当前高级筛选条件（filter / ip）进入详情，
+      // 否则返回列表时 URL 中无筛选参数，FilterStore 被重置后条件即丢失
+      const query = {
+        _f: page,
+        node: node,
+        _t: Date.now()
+      }
+      const currentFilter = RouterQuery.get('filter')
+      const currentIp = RouterQuery.get('ip')
+      if (currentFilter) query.filter = currentFilter
+      if (currentIp) query.ip = currentIp
+
+      console.log('[HostList] navigating to host details:', { bizId, hostId, page, node, filter: currentFilter, ip: currentIp })
+
       this.$router.push({
         name: MENU_BUSINESS_HOST_DETAILS,
         params: {
           bizId: bizId,
           id: hostId
         },
-        query: {
-          _f: page,
-          node: node,
-          _t: Date.now()
-        }
+        query
       })
     },
 

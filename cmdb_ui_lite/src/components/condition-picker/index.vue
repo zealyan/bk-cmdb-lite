@@ -85,9 +85,15 @@ export default {
       }).sort((groupA, groupB) => sequence.indexOf(groupA.id) - sequence.indexOf(groupB.id))
     },
     models() {
+      const modelNameMap = {
+        host: '主机',
+        module: '模块',
+        set: '集群',
+        biz: '业务'
+      }
       return this.groups.map(group => ({
         id: group.id,
-        bk_obj_name: group.name,
+        bk_obj_name: modelNameMap[group.id] || group.name,
         bk_obj_id: group.id
       }))
     },

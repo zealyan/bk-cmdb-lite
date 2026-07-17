@@ -154,7 +154,7 @@ export default {
     }
   },
   data() {
-    const { IN, NIN, LIKE, CONTAINS, EQ, NE, GTE, LTE, RANGE } = QUERY_OPERATOR
+      const { IN, NIN, CONTAINS, CONTAINS_CS, EQ, NE, GTE, LTE, RANGE } = QUERY_OPERATOR
     return {
       scrollToBottom: false,
       isShow: false,
@@ -167,12 +167,12 @@ export default {
       customOperatorTypeMap: {
         float: [EQ, NE, GTE, LTE, RANGE, IN],
         int: [EQ, NE, GTE, LTE, RANGE, IN],
-        longchar: [IN, NIN, CONTAINS, LIKE],
-        singlechar: [IN, NIN, CONTAINS, LIKE],
-        shortchar: [IN, NIN, CONTAINS, LIKE],
-        text: [IN, NIN, CONTAINS, LIKE],
-        array: [IN, NIN, CONTAINS, LIKE],
-        object: [IN, NIN, CONTAINS, LIKE]
+        longchar: [IN, NIN, CONTAINS, CONTAINS_CS],
+        singlechar: [IN, NIN, CONTAINS, CONTAINS_CS],
+        shortchar: [IN, NIN, CONTAINS, CONTAINS_CS],
+        text: [IN, NIN, CONTAINS, CONTAINS_CS],
+        array: [IN, NIN, CONTAINS, CONTAINS_CS],
+        object: [IN, NIN, CONTAINS, CONTAINS_CS]
       },
       operatorSymbolMap: QUERY_OPERATOR_SYMBOL,
       operatorDescMap: QUERY_OPERATOR_DESC
@@ -411,12 +411,12 @@ export default {
       const operatorsMap = {
         float: ['$eq', '$ne', '$gte', '$lte', '$range', '$in'],
         int: ['$eq', '$ne', '$gte', '$lte', '$range', '$in'],
-        longchar: ['$in', '$nin', '$contains', '$regex'],
-        singlechar: ['$in', '$nin', '$contains', '$regex'],
-        shortchar: ['$in', '$nin', '$contains', '$regex'],
-        text: ['$in', '$nin', '$contains', '$regex'],
-        array: ['$in', '$nin', '$contains', '$regex'],
-        object: ['$in', '$nin', '$contains', '$regex'],
+        longchar: ['$in', '$nin', '$contains', '$contains_s'],
+        singlechar: ['$in', '$nin', '$contains', '$contains_s'],
+        shortchar: ['$in', '$nin', '$contains', '$contains_s'],
+        text: ['$in', '$nin', '$contains', '$contains_s'],
+        array: ['$in', '$nin', '$contains', '$contains_s'],
+        object: ['$in', '$nin', '$contains', '$contains_s'],
         enum: ['$in', '$nin', '$eq'],
         enummulti: ['$in', '$nin'],
         list: ['$in', '$nin'],

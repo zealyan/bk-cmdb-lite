@@ -132,7 +132,9 @@ const getOperatorSymbol = (operator, symbolMap) => {
 const splitIP = (raw) => {
   const list = []
   if (!raw) return list
-  raw.trim().split(/\n|;|；|,|，/)
+  // 支持多种分隔符：换行、分号（中英文）、逗号（中英文）、竖线“|”以及空白字符
+  // 覆盖界面中 “内网IP | 外网IP:192.168.1.10 | 192.168.1.12” 这类用“|”或空格分隔的多 IP 场景
+  raw.trim().split(/\n|;|；|,|，|\||\s+/)
     .forEach((text) => {
       const ip = text.trim()
       ip.length && list.push(ip)

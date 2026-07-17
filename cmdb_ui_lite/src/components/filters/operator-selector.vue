@@ -54,7 +54,7 @@ export default {
       return listeners
     },
     options() {
-      const { EQ, NE, IN, NIN, LT, GT, LTE, GTE, RANGE, LIKE } = QUERY_OPERATOR
+      const { EQ, NE, IN, NIN, LT, GT, LTE, GTE, RANGE, CONTAINS_CS } = QUERY_OPERATOR
       const defaultTypeMap = {
         bool: [EQ, NE],
         date: [GTE, LTE],
@@ -63,20 +63,20 @@ export default {
         float: [EQ, NE, GT, LT, RANGE],
         int: [EQ, NE, GT, LT, RANGE],
         list: [IN, NIN],
-        longchar: [IN, NIN, LIKE],
+        longchar: [IN, NIN, CONTAINS_CS],
         objuser: [IN, NIN],
         organization: [IN, NIN],
-        singlechar: [IN, NIN, LIKE],
+        singlechar: [IN, NIN, CONTAINS_CS],
         time: [GTE, LTE],
         timezone: [IN, NIN],
         foreignkey: [IN, NIN],
         table: [IN, NIN],
-        array: [IN, NIN, LIKE],
-        object: [IN, NIN, LIKE],
+        array: [IN, NIN, CONTAINS_CS],
+        object: [IN, NIN, CONTAINS_CS],
         map: [IN, NIN],
-        shortchar: [IN, NIN, LIKE],
-        text: [IN, NIN, LIKE],
-        char: [IN, NIN, LIKE],
+        shortchar: [IN, NIN, CONTAINS_CS],
+        text: [IN, NIN, CONTAINS_CS],
+        char: [IN, NIN, CONTAINS_CS],
         long: [EQ, NE, GT, LT, RANGE]
       }
       const typeMap = { ...defaultTypeMap, ...this.customTypeMap }

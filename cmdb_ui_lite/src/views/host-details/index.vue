@@ -453,16 +453,21 @@ export default {
         const page = this.$route.query._f ? parseInt(this.$route.query._f, 10) : (this.$route.query.page ? parseInt(this.$route.query.page, 10) : 1)
         const node = this.$route.query.node || `biz-${this.bizId}`
 
-        console.log('[host-details] navigating back with', { page, node })
+        // 返回列表时把 filter / ip 一并带回，保证高级筛选条件（条件状态 / tag UI / 后端结果）不丢失
+        const query = {
+          page: page,
+          node: node,
+          _t: Date.now()
+        }
+        if (this.$route.query.filter) query.filter = this.$route.query.filter
+        if (this.$route.query.ip) query.ip = this.$route.query.ip
+
+        console.log('[host-details] navigating back with', { page, node, filter: this.$route.query.filter, ip: this.$route.query.ip })
 
         this.$router.replace({
           name: MENU_BUSINESS_TOPOLOGY,
           params: { bizId: this.bizId },
-          query: {
-            page: page,
-            node: node,
-            _t: Date.now()
-          }
+          query
         })
       } else {
         // 资源目录入口：优先返回上一页，无历史时回退到资源目录

@@ -6,6 +6,7 @@ import {
   MENU_RESOURCE_MANAGEMENT,
   MENU_MODEL_MANAGEMENT
 } from './menu-symbol'
+import { DEFAULT_BIZ_ID } from '@/utils/biz-cache'
 
 const menus = [{
   id: MENU_BUSINESS,
@@ -17,7 +18,7 @@ const menus = [{
     route: {
       name: MENU_BUSINESS_TOPOLOGY,
       params: {
-        bizId: 0
+        bizId: DEFAULT_BIZ_ID
       }
     }
   }]
@@ -32,17 +33,20 @@ const menus = [{
       name: MENU_RESOURCE_MANAGEMENT
     }
   }]
-}, {
-  id: MENU_MODEL,
-  i18n: '模型',
-  menu: [{
-    id: MENU_MODEL_MANAGEMENT,
-    i18n: '模型管理',
-    icon: 'icon-cc-nav-model-02',
-    route: {
-      name: MENU_MODEL_MANAGEMENT
-    }
-  }]
 }]
+
+// 暂时未开发：模型（MENU_MODEL）入口暂不展示于头部导航菜单栏
+// , {
+//   id: MENU_MODEL,
+//   i18n: '模型',
+//   menu: [{
+//     id: MENU_MODEL_MANAGEMENT,
+//     i18n: '模型管理',
+//     icon: 'icon-cc-nav-model-02',
+//     route: {
+//       name: MENU_MODEL_MANAGEMENT
+//     }
+//   }]
+// }
 
 export default menus
