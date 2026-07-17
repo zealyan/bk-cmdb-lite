@@ -71,14 +71,18 @@
            必须放在 bk-table 之外、与表格平级。
            原先误置于 bk-table 默认 slot 内，被 el-table 的渲染机制丢弃，
            导致弹框外壳弹出但内部 module-selector 内容缺失。 -->
-      <bk-dialog
+      <!-- 使用原项目自定义 cmdb-dialog 组件（components/ui/dialog/dialog.vue，已移植进 lite 并全局注册），
+           定位逻辑与原项目一致：.dialog-body{margin:0 auto; margin-top: calc((100vh - var(--height))/3)}，
+           并经 :height="600" 把 --height 设成 600px 驱动内层布局。 -->
+      <cmdb-dialog
         v-model="transferDialog.visible"
         :title="transferDialogTitle"
         :width="1100"
         :height="600"
         :show-footer="false"
+        @close="handleTransferCancel"
         @cancel="handleTransferCancel">
-        <div class="transfer-dialog-body" style="--height: 100%; height: 100%;">
+        <div class="transfer-dialog-body" style="height: 100%;">
           <module-selector-with-tab
             v-if="transferDialog.visible"
             :active="transferDialog.type"
@@ -89,7 +93,7 @@
             @cancel="handleTransferCancel">
           </module-selector-with-tab>
         </div>
-      </bk-dialog>
+      </cmdb-dialog>
   </div>
 </template>
 

@@ -12,12 +12,27 @@ import '@/assets/scss/magicbox.scss'
 import { initRouterQuery } from '@/utils/router-query'
 import SearchComponents from '@/components/search'
 import CmdbFormComponents from '@/components/ui/form'
+import ResizeLayout from '@/components/ui/other/resize.vue'
+import CmdDialog from '@/components/ui/dialog/dialog.vue'
 import userCustom from '@/api/user-custom'
 import cmdbAppMixin from './mixins/app.js'
 
 Vue.use(bkMagic)
 Vue.use(SearchComponents)
 Vue.use(CmdbFormComponents)
+Vue.component('cmdb-resize-layout', ResizeLayout)
+Vue.component('cmdb-dialog', CmdDialog)
+// 移植自原项目：v-transfer-dom，把弹框挂到 body，
+// 避免祖先元素的 transform 破坏 .dialog-wrapper 的 position: fixed 视口定位。
+Vue.directive('transfer-dom', {
+  inserted(el, binding) {
+    const target = binding.value ? document.querySelector(binding.value) : document.body
+    if (target) target.appendChild(el)
+  },
+  unbind(el) {
+    if (el && el.parentNode) el.parentNode.removeChild(el)
+  }
+})
 Vue.mixin(cmdbAppMixin)
 
 Vue.config.productionTip = false

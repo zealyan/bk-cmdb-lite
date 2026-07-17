@@ -15,9 +15,7 @@
     <div class="selected-info">
       <div class="selected-title">结果预览</div>
       <div class="selected-count">
-        <i18n path="已选择N个模块">
-          <template #count><em class="count">{{checked.length}}</em></template>
-        </i18n>
+        已选择 <em class="count">{{checked.length}}</em> 个模块
         <bk-button text theme="primary"
           v-show="checked.length"
           @click="handleClearModule">

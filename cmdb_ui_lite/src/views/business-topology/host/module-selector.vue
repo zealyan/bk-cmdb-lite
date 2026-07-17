@@ -14,6 +14,11 @@
   <div class="module-selector-layout"
     v-bkloading="{ isLoading: loading }">
     <div class="wrapper">
+      <cmdb-resize-layout class="topo-resize-layout"
+        direction="right"
+        :handler-offset="3"
+        :min="281"
+        :max="508">
       <div :class="['wrapper-column wrapper-left', { 'has-title': hasTitle }]">
         <template v-if="hasTitle">
           <h2 class="title">{{title}}</h2>
@@ -47,6 +52,7 @@
           <bk-exception slot="empty" type="empty" scene="part" />
         </bk-big-tree>
       </div>
+      </cmdb-resize-layout>
       <div class="wrapper-column wrapper-right">
         <module-checked-list :checked="checked" @delete="handleDeleteModule" @clear="handleClearModule" />
       </div>
@@ -320,6 +326,9 @@
 </script>
 
 <style lang="scss" scoped>
+    :deep(.bk-big-tree-empty) {
+        position: static;
+    }
     .module-selector-layout {
         height: var(--height, 600px);
         min-height: 300px;
