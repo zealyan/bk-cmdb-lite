@@ -998,7 +998,147 @@ def search_hosts(params: Dict[str, Any],
 
     rows = query_all(list_sql, query_params)
 
+    # 复刻原项目 logics/hostsearch.go 的 fillHostSetInfo / fillHostModuleInfo：
+    # 搜索主机后，按 cc_ModuleHostConfig 查出每个主机所属的集群(set)/模块(module)，
+    # 批量拉取 set/module 名称，内嵌 set[]/module[] 到每个 host，
+    # 供前端业务拓扑主机列表的“集群名称/模块名称”列聚合展示。
+    # 对应原项目 SearchHost 第 6 步：获取主机拓扑(set/module)信息并填充。
+    _enrich_hosts_with_topo(rows, bk_biz_id, supplier_account)
+
     return {'info': rows, 'count': total}
+
+
+def _enrich_hosts_with_topo(rows: List[Dict[str, Any]],
+                            bk_biz_id: Optional[int],
+                            supplier_account: str = DEFAULT_SUPPLIER) -> None:
+    """
+    给主机列表结果中的每个主机内嵌其所属集群(set)/模块(module) 聚合信息。
+
+    对齐原项目 src/scene_server/host_server/logics/hostsearch.go：
+      - fillHostSetInfo:   host["set"]    = [{bk_set_id, bk_set_name, TopoModuleName, ...}]
+      - fillHostModuleInfo: host["module"] = [{bk_module_id, bk_module_name, TopoModuleName, ...}]
+      - TopoModuleName 路径分隔符与原项目一致为 "##"（common.SplitFlag / host.go SplitFlag="##"）
+
+    数据来源（lite 对应表）：
+      - cc_ModuleHostConfig: 主机-模块绑定（bk_host_id, bk_set_id, bk_module_id）
+      - cc_SetBase:          集群名称等属性
+      - cc_ModuleBase:       模块名称等属性
+      - cc_ApplicationBase:  业务名称（拓扑路径前缀）
+
+    Args:
+        rows: search_hosts 查询出的主机实例列表（原地修改，附加 set/module 字段）
+        bk_biz_id: 业务ID（拓扑路径前缀 + 绑定过滤）
+        supplier_account: 供应商账号
+    """
+    # 空结果直接返回，避免无谓查询
+    if not rows:
+        return
+
+    host_ids = [r.get('bk_host_id') for r in rows if r.get('bk_host_id') is not None]
+    if not host_ids:
+        for r in rows:
+            r['set'] = []
+            r['module'] = []
+        return
+
+    # ========== 1. 查 cc_ModuleHostConfig 获取每个主机的 set/module 绑定 ==========
+    rel_params = {'supplier': supplier_account, 'biz': bk_biz_id}
+    rel_ph = ', '.join([f':hid_{i}' for i in range(len(host_ids))])
+    for i, hid in enumerate(host_ids):
+        rel_params[f'hid_{i}'] = hid
+
+    rel_sql = f"""
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = :supplier
+          AND bk_biz_id = :biz
+          AND bk_host_id IN ({rel_ph})
+    """
+    rel_rows = query_all(rel_sql, rel_params)
+
+    host_bindings: Dict[int, List[tuple]] = {hid: [] for hid in host_ids}
+    set_ids: set = set()
+    module_ids: set = set()
+    for rel in rel_rows:
+        hid = rel['bk_host_id']
+        sid = rel['bk_set_id']
+        mid = rel['bk_module_id']
+        host_bindings[hid].append((sid, mid))
+        if sid:
+            set_ids.add(sid)
+        if mid:
+            module_ids.add(mid)
+
+    # ========== 2. 批量拉取 set / module 详情 ==========
+    set_info_map: Dict[int, Dict[str, Any]] = {}
+    if set_ids:
+        s_params = {'supplier': supplier_account}
+        s_ph = ', '.join([f':sid_{i}' for i in range(len(set_ids))])
+        for i, sid in enumerate(set_ids):
+            s_params[f'sid_{i}'] = sid
+        set_rows = query_all(
+            f"SELECT * FROM cc_SetBase "
+            f"WHERE bk_supplier_account = :supplier AND bk_set_id IN ({s_ph})",
+            s_params
+        )
+        for s in set_rows:
+            set_info_map[s['bk_set_id']] = dict(s)
+
+    module_info_map: Dict[int, Dict[str, Any]] = {}
+    if module_ids:
+        m_params = {'supplier': supplier_account}
+        m_ph = ', '.join([f':mid_{i}' for i in range(len(module_ids))])
+        for i, mid in enumerate(module_ids):
+            m_params[f'mid_{i}'] = mid
+        module_rows = query_all(
+            f"SELECT * FROM cc_ModuleBase "
+            f"WHERE bk_supplier_account = :supplier AND bk_module_id IN ({m_ph})",
+            m_params
+        )
+        for m in module_rows:
+            module_info_map[m['bk_module_id']] = dict(m)
+
+    # ========== 3. 业务名称（拓扑路径前缀） ==========
+    biz_name = ''
+    if bk_biz_id:
+        biz_row = query_one(
+            "SELECT bk_biz_name FROM cc_ApplicationBase "
+            "WHERE bk_supplier_account = :supplier AND bk_biz_id = :biz",
+            {'supplier': supplier_account, 'biz': bk_biz_id}
+        )
+        biz_name = biz_row['bk_biz_name'] if biz_row else ''
+
+    SPLIT = '##'  # 对齐原项目 common.SplitFlag / host.go SplitFlag = "##"
+
+    # ========== 4. 组装：去重后内嵌到每个主机 ==========
+    for r in rows:
+        hid = r.get('bk_host_id')
+        bindings = host_bindings.get(hid, [])
+        set_arr: List[Dict[str, Any]] = []
+        module_arr: List[Dict[str, Any]] = []
+        seen_sets: set = set()
+        seen_modules: set = set()
+
+        for (sid, mid) in bindings:
+            # 集群信息
+            if sid and sid not in seen_sets and sid in set_info_map:
+                seen_sets.add(sid)
+                s_info = dict(set_info_map[sid])
+                s_name = s_info.get('bk_set_name', '')
+                s_info['TopoModuleName'] = f"{biz_name}{SPLIT}{s_name}"
+                set_arr.append(s_info)
+
+            # 模块信息（拓扑路径需带上其所属集群名称）
+            if mid and mid not in seen_modules and mid in module_info_map:
+                seen_modules.add(mid)
+                m_info = dict(module_info_map[mid])
+                m_name = m_info.get('bk_module_name', '')
+                s_name_for_path = set_info_map.get(sid, {}).get('bk_set_name', '') if sid else ''
+                m_info['TopoModuleName'] = f"{biz_name}{SPLIT}{s_name_for_path}{SPLIT}{m_name}"
+                module_arr.append(m_info)
+
+        r['set'] = set_arr
+        r['module'] = module_arr
 
 
 def _filter_topo_ids(model_id: str, cond_items: list, bk_biz_id: int,

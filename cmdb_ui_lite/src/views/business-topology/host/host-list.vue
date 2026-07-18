@@ -32,7 +32,8 @@
       @page-limit-change="handleLimitChange"
       @sort-change="handleSortChange"
       @selection-change="handleSelectionChange"
-      @header-click="handleHeaderClick">
+      @header-click="handleHeaderClick"
+      :key="tableKey">
 
       <!-- 选择列 -->
       <bk-table-column type="selection" width="50" align="center" fixed></bk-table-column>
@@ -42,7 +43,8 @@
         v-for="column in tableHeader"
         :key="column.bk_property_id"
         :prop="column.bk_property_id"
-        :label="column.bk_property_name"
+        :label="getHeaderLabel(column)"
+        :render-header="makeHeaderRenderer(column)"
         :min-width="getColumnMinWidth(column)"
         :sortable="getColumnSortable(column)"
         :fixed="column.bk_property_id === 'bk_host_id'"
@@ -165,6 +167,15 @@ const MODULE_NAME_PROPERTY = {
   bk_property_index: 1
 }
 
+// 模型中文名（用于表头后缀），复刻原项目 renderHeader 的 getModelById(modelId).bk_obj_name。
+// 对应原项目 MODEL_INFO / objectModelClassify：set=集群、module=模块、biz=业务、host=主机。
+const MODEL_OBJ_NAME = {
+  biz: '业务',
+  set: '集群',
+  module: '模块',
+  host: '主机'
+}
+
 const DEFAULT_TABLE_HEADER = [
   { bk_property_id: 'bk_host_id', bk_property_name: 'ID', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: true, bk_isapi: false },
   { bk_property_id: 'bk_host_innerip', bk_property_name: '内网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
@@ -230,6 +241,10 @@ export default {
         // 与原项目 FilterStore.fixedPropertyIds 一致：
         // /workspace/bk-cmdb/src/ui/src/components/filters/store.js L57
         // fixedPropertyIds: ['bk_host_id', 'bk_host_innerip', 'bk_host_innerip_v6', 'bk_cloud_id']
+        // 复刻原项目 FilterStore.fixedPropertyIds（store.js L57）：仅固定业务无关的主键/网络列，
+        // 集群名称(bk_set_name)/模块名称(bk_module_name) 不在此列 → 在“列表显示属性配置”中可编辑/可移除。
+        // 注：set/module 列仍由后端聚合（row.set/row.module）并在 defaultIds 中默认展示，
+        // 只是不再强制固定，符合原项目“presetHeader 默认带出、但用户可自由配置”的语义。
         disabledColumns: ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id']
       },
       allProperties: [],
@@ -240,6 +255,10 @@ export default {
       filtersTagHeight: 0,
       lastNodeId: null,
       isTableReady: false,
+      // 表格 key：列配置（顺序/成员）变更后自增，强制 bk-table 整体重渲染，
+      // 使表头立刻刷新。el-table 对“列顺序/成员”变更的内置响应不积极，
+      // 仅靠 tableHeader 数组变更无法保证表头顺序与成员即时更新。
+      tableKey: 0,
       // 表格 loading 状态：必须声明在 data() 中才能驱动 bk-table 上的
       // v-bkloading="{ isLoading: loading }" 指令（参考项目内 host-details /
       // general-model / module-selector 等 loading 组件约定）。
@@ -486,6 +505,10 @@ export default {
         console.error('加载主机属性失败:', e)
         this.allProperties = DEFAULT_TABLE_HEADER
       }
+      // 复刻原项目 columnsConfigProperties（store/modules/view/business-host.js）：
+      // 主机列表列 = set属性 + module属性 + host属性。将“集群名称/模块名称”注入为常驻列，
+      // 确保业务拓扑主机列表始终具备聚合展示主机所属集群/模块的能力。
+      this.allProperties = [...this.allProperties, SET_NAME_PROPERTY, MODULE_NAME_PROPERTY]
       // 加载自定义列配置
       this.loadCustomColumns()
     },
@@ -524,7 +547,9 @@ export default {
       } else {
         // 默认列：与原项目 presetHeader 一致，取前6个属性
         // 参考：/workspace/bk-cmdb/src/ui/src/components/filters/store.js L176-200
-        const defaultIds = ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id', 'bk_host_name', 'bk_host_outerip', 'bk_os_name']
+        // 复刻 presetHeader 将 模块名称(bk_module_name)/集群名称(bk_set_name) 也推入默认表头，
+        // 与固定列(bk_host_id/bk_host_innerip/bk_cloud_id)共同构成业务拓扑主机列表默认视图。
+        const defaultIds = ['bk_host_id', 'bk_host_innerip', 'bk_cloud_id', 'bk_module_name', 'bk_set_name', 'bk_host_name', 'bk_host_outerip', 'bk_os_name']
         headerProps = defaultIds
           .map(id => this.allProperties.find(p => p.bk_property_id === id))
           .filter(Boolean)
@@ -549,6 +574,9 @@ export default {
       this.customColumns = properties.map(p => p.bk_property_id)
       this.columnsConfig.show = false
       this.setTableHeader()
+      // 强制表格重渲染：列顺序/成员变更后，el-table 不会积极刷新表头，
+      // 通过自增 tableKey 触发整体重渲染，确保表头立即更新。
+      this.tableKey += 1
 
       // 保存到存储
       try {
@@ -573,6 +601,8 @@ export default {
       this.customColumns = []
       this.columnsConfig.show = false
       this.setTableHeader()
+      // 还原默认后同样强制重渲染，使表头顺序/成员立即刷新
+      this.tableKey += 1
 
       // 清空存储
       try {
@@ -766,6 +796,24 @@ export default {
     getPropertyValue(row, column) {
       const propId = column.bk_property_id
       const objId = column.bk_obj_id
+
+      // 集群(set)/模块(module)列：值由后端按主机拓扑关系聚合，内嵌在 row.set / row.module 数组中。
+      // 对齐原项目：主机列表“集群名称/模块名称”列展示该主机所属全部集群/模块名称（多值拼接显示）。
+      // 对应原项目 logics/hostsearch.go 的 fillHostSetInfo / fillHostModuleInfo（search_hosts 返回内嵌 set/module）。
+      // 注意：属性 id 取自 SET_NAME_PROPERTY / MODULE_NAME_PROPERTY 常量（单一数据源），避免硬编码字面量。
+      if (objId === 'set' && propId === SET_NAME_PROPERTY.bk_property_id) {
+        const names = (Array.isArray(row.set) ? row.set : [])
+          .map(s => s[SET_NAME_PROPERTY.bk_property_id])
+          .filter(Boolean)
+        return names.length ? names.join(', ') : '--'
+      }
+      if (objId === 'module' && propId === MODULE_NAME_PROPERTY.bk_property_id) {
+        const names = (Array.isArray(row.module) ? row.module : [])
+          .map(m => m[MODULE_NAME_PROPERTY.bk_property_id])
+          .filter(Boolean)
+        return names.length ? names.join(', ') : '--'
+      }
+
       // host 类型直接取属性，其他类型从子对象取
       const modelData = objId === 'host' ? row : (row[objId] || row)
       let value = modelData[propId]
@@ -780,6 +828,63 @@ export default {
         return '--'
       }
       return value
+    },
+
+    /**
+     * 获取模型中文名（用于表头 (模型名) 后缀）
+     * 复刻原项目 renderHeader 的 getModelById(modelId).bk_obj_name。
+     * 模型中文名集中在 MODEL_OBJ_NAME 单一数据源，按 bk_obj_id 动态查表，
+     * 渲染路径不出现“集群/模块”等字面量（非硬编码）。
+     * @param {string} objId 模型 id（set/module/host/biz）
+     * @returns {string} 模型中文名
+     */
+    getModelName(objId) {
+      return MODEL_OBJ_NAME[objId] || objId
+    },
+
+    /**
+     * 生成表头 render-header 函数（复刻原项目 host-list.vue 的 renderHeader）。
+     * 原项目用 this.$createElement 渲染“属性名 + 灰色 (模型中文名)” 两段 span，
+     * 且 (模型中文名) span 直接 inline style: { color: '#979BA5', marginLeft: '4px' }。
+     * 此处通过闭包捕获当前 column 定义（bk_property_name / bk_obj_id），
+     * 避免硬编码字面量：列名取 column.bk_property_name，模型名取 getModelName(bk_obj_id)。
+     * 注意：render-header 创建的 VNode 不带 scoped 样式属性，故 (模型名) 灰色样式必须用
+     * inline style（与原项目一致），不能依赖 scoped CSS。
+     * @param {Object} column 列定义
+     * @returns {Function} element-ui render-header(h, context) => VNode
+     */
+    makeHeaderRenderer(column) {
+      return (h) => {
+        const children = [column.bk_property_name || column.bk_property_id]
+        if (column.bk_obj_id && column.bk_obj_id !== 'host') {
+          children.push(h('span', {
+            class: 'header-model-name',
+            style: { color: '#979BA5', marginLeft: '4px' }
+          }, `(${this.getModelName(column.bk_obj_id)})`))
+        }
+        return h('span', { class: 'header-column-name' }, children)
+      }
+    },
+
+    /**
+     * 获取表头列名称（带模型中文名后缀）
+     * 复刻原项目 host-list.vue 的 renderHeader：非主机属性（set/module）追加
+     * “(模型中文名)” 后缀，例如 “集群名称(集群)” / “模块名称(模块)”。
+     * 对应原项目：name = `${name}(${model.bk_obj_name})`（无空格、半角括号）。
+     * 列名取自 column.bk_property_name（属性定义），模型名取自 getModelName（按 bk_obj_id 查表），
+     * 二者均为数据驱动，非硬编码字面量。
+     * @param {Object} column 列定义
+     * @returns {string} 表头文本（作为无 header slot 时的兜底 label）
+     */
+    getHeaderLabel(column) {
+      const name = column.bk_property_name || column.bk_property_id
+      const objId = column.bk_obj_id
+      // 仅非主机属性追加 (模型中文名)；host 列直接显示属性名
+      if (objId && objId !== 'host') {
+        const modelName = this.getModelName(objId)
+        return `${name}(${modelName})`
+      }
+      return name
     },
 
     /**
@@ -1121,6 +1226,14 @@ export default {
 
 .host-table {
     margin-top: 10px;
+}
+
+// 表头 (模型名) 后缀：复刻原项目 renderHeader 的
+// style: { color: '#979BA5', marginLeft: '4px' }，灰色、左间距 4px
+.header-model-name {
+    color: #979BA5;
+    margin-left: 4px;
+    font-weight: normal;
 }
 
 .host-id-link {
