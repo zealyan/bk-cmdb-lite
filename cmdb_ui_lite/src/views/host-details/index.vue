@@ -462,6 +462,11 @@ export default {
         if (this.$route.query.filter) query.filter = this.$route.query.filter
         if (this.$route.query.ip) query.ip = this.$route.query.ip
 
+        // 复刻原项目：返回业务拓扑时把拓扑树的关系词/关键词 keyword 一并带回，
+        // 否则返回后 topology-tree 挂载时从 URL 取不到 keyword，已输入的搜索词即丢失。
+        // 对齐 host-list.handleValueClick 将 keyword 带入详情的逻辑，形成往返闭环。
+        if (this.$route.query.keyword) query.keyword = this.$route.query.keyword
+
         console.log('[host-details] navigating back with', { page, node, filter: this.$route.query.filter, ip: this.$route.query.ip })
 
         this.$router.replace({

@@ -18,12 +18,12 @@
     :width="800"
     :before-close="handleSliderBeforeClose">
     <div class="form-content" slot="content" style="height: 100%"
-      v-bkloading="{ isLoading: $loading(Object.values(request)) }">
+      v-bkloading="{ isLoading: loading }">
       <component :is="slider.component"
         ref="multipleForm"
         v-bind="slider.props"
-        @on-submit="handleMultipleSave"
-        @on-cancel="handleSliderBeforeClose">
+        @submit="handleMultipleSave"
+        @cancel="handleSliderBeforeClose">
       </component>
     </div>
   </bk-sideslider>

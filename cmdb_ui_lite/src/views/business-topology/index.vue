@@ -44,7 +44,8 @@
             </host-list>
           </bk-tab-panel>
 
-          <bk-tab-panel name="serviceInstance" label="服务实例">
+          <!-- 服务实例 tab：暂未开发实现，先注释隐藏 -->
+          <!-- <bk-tab-panel name="serviceInstance" label="服务实例">
             <div v-if="!selectedNode" class="empty-state">
               <div class="placeholder-text">请选择拓扑节点</div>
               <div class="placeholder-desc">点击左侧拓扑树节点查看服务实例</div>
@@ -58,7 +59,7 @@
               <div class="placeholder-desc">服务实例数量: {{ selectedNode.data.host_count || 0 }}</div>
               <div class="placeholder-desc">待开发：服务实例列表数据表格</div>
             </div>
-          </bk-tab-panel>
+          </bk-tab-panel> -->
 
           <bk-tab-panel name="nodeInfo" label="节点信息" render-directive="if">
             <div v-if="!selectedNode" class="empty-state">

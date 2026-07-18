@@ -87,10 +87,14 @@ export default {
   },
   methods: {
     // 获取节点数量
+    // 注：「数量大于 999 显示为 999+」的逻辑已撤销，以下为原始实现（原始数字直接返回），
+    // 999+ 截断逻辑保留注释以备参考：
+    //   return count > 999 ? '999+' : count
     getNodeCount(data) {
       const count = data[this.nodeCountType]
       if (typeof count === 'number') {
         return count
+        // return count > 999 ? '999+' : count
       }
       return 0
     },

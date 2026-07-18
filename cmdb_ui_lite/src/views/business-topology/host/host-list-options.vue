@@ -58,7 +58,7 @@
         </ul>
       </bk-dropdown-menu>
 
-      <bk-button class="option ml10" icon="bk-icon icon-refresh"
+      <bk-button class="option ml10 refresh-btn" icon="bk-icon icon-refresh"
         @click="handleRefresh">
       </bk-button>
     </div>
@@ -236,6 +236,20 @@ export default {
   .dropdown-icon {
     &.open {
       transform: rotate(180deg);
+    }
+  }
+
+  // 刷新按钮（仅图标、无文字）：bk-button 默认图标字号偏大且偏下，
+  // 1) 字号收敛到 14px，与同栏「高级筛选」漏斗图标保持一致；
+  // 2) 按钮改为 flex 居中，让图标在水平/垂直方向均居中（修复略微偏下）
+  .refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    ::v-deep .bk-icon {
+      font-size: 14px;
+      line-height: 30;
     }
   }
 }

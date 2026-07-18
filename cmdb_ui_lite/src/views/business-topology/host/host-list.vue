@@ -96,6 +96,16 @@
           </module-selector-with-tab>
         </div>
       </cmdb-dialog>
+
+      <!-- 批量编辑主机抽屉：复用原项目 edit-multiple-host 外壳 + cmdb-form-multiple 组件，
+           与 general-model「批量更新」走同一套 modelAPI.batchUpdateInstancesWithSameData 调用。 -->
+      <edit-multiple-host
+        ref="editMultipleHost"
+        :properties="allProperties"
+        :selection="table.selection"
+        :biz-id="nodeData.bk_biz_id || nodeData.bk_inst_id || 0"
+        @refresh="loadHostList">
+      </edit-multiple-host>
   </div>
 </template>
 
@@ -103,6 +113,7 @@
 import HostListOptions from './host-list-options.vue'
 import HostFilterTag from '@/components/filters/filter-tag.vue'
 import ModuleSelectorWithTab from './module-selector-with-tab.vue'
+import EditMultipleHost from './edit-multiple-host.vue'
 import ColumnsConfig from '@/components/columns-config/columns-config.js'
 import FilterForm from '@/components/filters/filter-form.js'
 import FilterStore, { setupFilterStore } from '@/components/filters/store'
@@ -181,7 +192,8 @@ export default {
   components: {
     HostListOptions,
     HostFilterTag,
-    ModuleSelectorWithTab
+    ModuleSelectorWithTab,
+    EditMultipleHost
   },
   props: {
     // 当前选中的拓扑节点
@@ -228,6 +240,13 @@ export default {
       filtersTagHeight: 0,
       lastNodeId: null,
       isTableReady: false,
+      // 表格 loading 状态：必须声明在 data() 中才能驱动 bk-table 上的
+      // v-bkloading="{ isLoading: loading }" 指令（参考项目内 host-details /
+      // general-model / module-selector 等 loading 组件约定）。
+      // 生命周期：loadHostList() 在发起 searchHosts 请求前置 true，
+      // 请求结束（finally）置 false，覆盖节点切换 / 分页 / 搜索 / 排序 /
+      // 高级筛选变更 / 刷新等全部触发列表重载的 API 调用。
+      loading: false,
       // 转移至模块对话框状态
       transferDialog: {
         visible: false,
@@ -892,6 +911,13 @@ export default {
       if (currentFilter) query.filter = currentFilter
       if (currentIp) query.ip = currentIp
 
+      // 复刻原项目：原项目 handleValueClick 用 $routerActions.redirect 且不传 query，
+      // vue-router 会自动保留当前 URL 的全部 query（含 topology-tree 的 keyword）。
+      // lite 这里显式构造 query 会抹掉 keyword，导致从主机详情返回后拓扑树搜索词丢失。
+      // 因此此处必须把拓扑树的 keyword 一并带入，保证往返过程中关键词不丢失。
+      const currentKeyword = RouterQuery.get('keyword')
+      if (currentKeyword) query.keyword = currentKeyword
+
       console.log('[HostList] navigating to host details:', { bizId, hostId, page, node, filter: currentFilter, ip: currentIp })
 
       this.$router.push({
@@ -1039,11 +1065,12 @@ export default {
     },
 
     /**
-     * 批量编辑
+     * 批量编辑：打开编辑主机抽屉
+     * 通过 ref 调用 edit-multiple-host 组件内的 mixin 方法，
+     * 由 mixin 负责加载属性分组、挂载表单、提交更新。
      */
     handleMultipleEdit() {
-      // 预留：批量编辑弹窗
-      console.log('批量编辑:', this.table.selection)
+      this.$refs.editMultipleHost.handleMultipleEdit()
     },
 
     /**

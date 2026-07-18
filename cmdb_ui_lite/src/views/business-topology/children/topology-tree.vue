@@ -94,7 +94,10 @@ export default {
   },
   data() {
     return {
-      filterKeyword: '',
+      // 复刻原项目：filterKeyword 初始化时从 URL 的 keyword 参数恢复，
+      // 保证从其他子路由（如主机详情）返回业务拓扑后，输入的“关系词/关键词”
+      // 不丢失。对应原项目 src/ui/.../topology-tree.vue: filter: RouterQuery.get('keyword', '')
+      filterKeyword: RouterQuery.get('keyword', ''),
       nodeCountType: 'host_count',
       treeHeight: 600,
       treeData: [],
@@ -287,6 +290,14 @@ export default {
           this.initialized = true
         }
       }
+
+      // 复刻原项目：从其他子路由（如主机详情）返回业务拓扑后，
+      // filterKeyword 已从 URL 的 keyword 参数恢复，此处重新对拓扑树执行搜索过滤，
+      // 保证输入的“关系词/关键词”不丢失且搜索结果被还原。
+      // 对应原项目 src/ui/.../topology-tree.vue getDefaultNode() 中 keyword 分支的 tree.filter(keyword)。
+      if (this.filterKeyword) {
+        this.handleFilter()
+      }
       console.log('[TopologyTree] setDefaultStateDirectly: finished')
     },
 
@@ -462,10 +473,14 @@ export default {
         return
       }
 
-      const currentPage = this.$route.query.page || 1
+      // 切换到新拓扑节点时，页码必须重置为第 1 页。
+      // 节点是分页上下文：旧节点的页码对目标节点无意义，需“重置/消亡”旧页码并重建为 1，
+      // 否则会出现“路由到新 node 后 page 参数未更新、用旧页码加载新节点数据”的问题。
+      // 对齐原项目 src/ui/src/views/business-topology/children/topology-tree.vue
+      // handleSelectChange：query 始终携带 page: 1。
       const query = {
         node: newId,
-        page: currentPage,
+        page: 1,
         _t: Date.now()
       }
 

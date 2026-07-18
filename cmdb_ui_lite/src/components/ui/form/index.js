@@ -12,6 +12,7 @@ import CmdbFormDatetime from './datetime.vue'
 import CmdbFormTimezone from './timezone.vue'
 import CmdbFormList from './list.vue'
 import CmdbFormUser from './user.vue'
+import CmdbFormMultiple from './form-multiple.vue'
 
 export {
   CmdbForm,
@@ -27,7 +28,8 @@ export {
   CmdbFormDatetime,
   CmdbFormTimezone,
   CmdbFormList,
-  CmdbFormUser
+  CmdbFormUser,
+  CmdbFormMultiple
 }
 
 export default {
@@ -46,5 +48,8 @@ export default {
     Vue.component('cmdb-form-timezone', CmdbFormTimezone)
     Vue.component('cmdb-form-list', CmdbFormList)
     Vue.component('cmdb-form-user', CmdbFormUser)
+    // 全局注册批量编辑表单组件，供业务拓扑「编辑主机」等场景通过
+    // <component :is="'cmdb-form-multiple'"> 动态挂载复用（与原项目一致）。
+    Vue.component('cmdb-form-multiple', CmdbFormMultiple)
   }
 }
