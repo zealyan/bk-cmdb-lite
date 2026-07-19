@@ -578,6 +578,62 @@ type TableAttributesOption struct {
 
 ---
 
+## 六之二、属性分组机制（PropertyGroup）
+
+> 代码依据：后端 `cmdb_server_lite/app/migrate/migrate.py`（`cc_PropertyGroup` 建表 + `migrate_property_groups`）、`app/api/v1/model.py`（`GET /<model_id>/property-groups`）；前端 `src/views/host-details/index.vue`（`effectivePropertyGroups` / `getPropertiesByGroup`）；原项目对齐 `src/scene_server/admin_server/upgrader/history/v3.0.8/addPresetObjects.go` 与 `src/ui/src/mixins/form.js`。
+
+### 1. 分组定义表 `cc_PropertyGroup` —— 已实现
+
+`cc_PropertyGroup` 在 Lite 项目中**已完整实现**（建表语句、迁移写入、查询接口均存在），并非"暂未实现"。每个模型的分组定义须在此表中登记（`bk_obj_id` + `bk_group_id` 联合唯一），前端 `/property-groups` 接口即从此表查询。
+
+> ⚠️ 若某属性的 `bk_property_group` 在 `cc_PropertyGroup` 中**未登记**，接口将漏返回该分组，导致该分组及其下所有属性在详情页整组不显示。修复手段有二（已同时采用）：
+> 1. **后端补全**：`migrate_property_groups()` 在写入固定分组后，从 `cc_ObjAttDes` 反推各模型属性实际出现的 `bk_property_group` 值，将缺失分组自动补齐写入 `cc_PropertyGroup`（空串 `''` 归入 `default`）。
+> 2. **前端兜底**：`host-details` 的 `effectivePropertyGroups` 以接口分组为主、以属性反推分组做**并集补全**，确保任一属性所属分组都能渲染。
+
+### 2. default 兜底机制（复刻原项目）
+
+原项目 `src/ui/src/mixins/form.js` 的 `$groupedProperties` 定义了关键兜底：
+
+```js
+// 兼容旧数据，把 none 这个分组的属性塞到默认分组去
+const isNoneGroup = property.bk_property_group === 'none'
+if (isNoneGroup) {
+  return group.bk_group_id === 'default'
+}
+return property.bk_property_group === group.bk_group_id
+```
+
+即：**属性 `bk_property_group === 'none'` 时，归入 `default` 组显示**（而非整组消失）。仅此一条 `none → default` 兜底，原项目无"任意未知分组 → default"的泛化兜底。
+
+Lite 项目 `host-details/index.vue` 已复刻该逻辑：
+- `dynamicPropertyGroups`：`prop.bk_property_group === 'none' ? 'default' : (prop.bk_property_group || 'default')`
+- `getPropertiesByGroup`：同理处理 `none → default`
+
+### 3. host 模型内置分组（与原项目一致）
+
+原项目 `addPresetObjects.go` 为 host（`BKInnerObjIDHost`）内置登记两个分组：
+
+| 分组 ID | 分组中文名 | `bk_group_index` | 说明 |
+|---------|-----------|------------------|------|
+| `base` | 基础信息 | 1 | 基本信息分组（内/外网IP、运维人、SLA等） |
+| `auto` | 自动发现信息（需要安装agent） | 3 | agent 自动采集属性（`bk_os_type`/`bk_cpu`/`bk_mem`/`bk_disk`/`bk_mac`…）分组 ID 为 `auto`（常量 `HostAutoFields`），**非 `agent`** |
+
+> 注：原项目 agent 类属性 `bk_property_group` 取值为 `"auto"`（常量 `HostAutoFields = "auto"`，中文名"自动发现信息（需要安装agent）"），并非字符串 `"agent"`。Lite 项目当前使用自定义命名 `agent`（"Agent信息"），功能等价；若需严格对齐原项目，可将分组 ID 由 `agent` 改为 `auto`。
+
+`bk_agent_id` / `import_from` 等属性在原项目中 `bk_property_group = "none"`（`mCommon.GroupNone`），经 `none → default` 兜底归入默认分组。
+
+### 4. 字段映射
+
+| 原项目字段 | Lite 字段 | 说明 |
+|-----------|----------|------|
+| `bk_property_group` | `bk_property_group` | 属性所属分组 ID |
+| `PropertyGroup.GroupID` | `bk_group_id` | 分组 ID |
+| `PropertyGroup.GroupName` | `bk_group_name` | 分组展示名 |
+| `PropertyGroup.GroupIndex` | `bk_group_index` | 分组排序 |
+| `PropertyGroup.IsDefault` | `bk_isdefault` | 是否默认分组 |
+
+---
+
 ## 七、与原项目对比
 
 | 原项目 (MongoDB) | Lite项目 (SQLAlchemy) | 状态 |
@@ -589,7 +645,7 @@ type TableAttributesOption struct {
 | `cc_InstAsst_{supplier}_pub` | `cc_InstAsst_0_pub` | ✅ 完全一致 |
 | `cc_ObjectBase_{supplier}_pub_{obj}` | `cc_ObjectBase_0_pub_{obj}` | ✅ 完全一致 |
 | `cc_ObjClassification` | （简化） | ⚠️ 暂未实现 |
-| `cc_PropertyGroup` | （简化） | ⚠️ 暂未实现 |
+| `cc_PropertyGroup` | `cc_PropertyGroup`（建表+迁移+`/property-groups` 接口完整实现） | ✅ 已实现 |
 
 ---
 

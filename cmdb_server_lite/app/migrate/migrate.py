@@ -380,6 +380,16 @@ PROPERTY_GROUPS = [
     {"id": 2, "bk_group_id": "base", "bk_group_name": "基础信息", "bk_isdefault": False, "is_collapse": False, "ispre": True, "bk_group_index": 1},
 ]
 
+# 属性分组中文名映射（用于补全分组定义时按 group_id 取展示名）
+# 与 db.rule.md 及原项目保持一致；未命中时回退为 group_id 首字母大写。
+GROUP_NAME_MAP = {
+    "default": "默认",
+    "base": "基础信息",
+    "agent": "Agent信息",
+    "extend": "扩展信息",
+    "info": "基本信息",
+}
+
 # 需要更新分组的属性映射（属性ID -> 分组ID）
 PROPERTY_GROUP_UPDATE_MAP = {
     "name": "base",
@@ -483,8 +493,63 @@ class DatabaseMigrator:
                     'ispre': group['ispre']
                 })
                 group_id += 1
-        
-        logger.info(f"迁移了 {len(models) * len(PROPERTY_GROUPS)} 个属性分组")
+
+        # 补全：从属性实际出现的 bk_property_group 值反推，
+        # 将 cc_PropertyGroup 中缺失的分组定义补齐（如 host 的 agent 分组）。
+        # 固定 PROPERTY_GROUPS 之外的分组若已存在于属性上却未登记，
+        # 会导致前端 /property-groups 接口查不到、整组属性不渲染。
+        existing_groups = {
+            (row['bk_obj_id'], row['bk_group_id'])
+            for row in self.execute_query(
+                "SELECT bk_obj_id, bk_group_id FROM cc_PropertyGroup"
+            )
+        }
+        # 该模型属性上实际出现的分组集合（去重，跳过空串）
+        used_groups = {}
+        for row in self.execute_query(
+            "SELECT bk_obj_id, bk_property_group FROM cc_ObjAttDes"
+        ):
+            mid = row['bk_obj_id']
+            gid = row['bk_property_group'] or 'default'
+            if not gid or gid.strip() == '':
+                gid = 'default'
+            used_groups.setdefault(mid, set()).add(gid)
+
+        fixed_defs = {g['bk_group_id']: g for g in PROPERTY_GROUPS}
+        for model_id, groups in used_groups.items():
+            for gid in groups:
+                if (model_id, gid) in existing_groups:
+                    continue
+                base = fixed_defs.get(gid)
+                group_name = (
+                    base['bk_group_name']
+                    if base
+                    else GROUP_NAME_MAP.get(gid, gid[:1].upper() + gid[1:])
+                )
+                group_index = base['bk_group_index'] if base else 99
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_PropertyGroup
+                    (_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index,
+                     bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
+                     creator, modifier)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name,
+                            :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
+                            0, '0', 'admin', 'admin')
+                """, {
+                    '_id': f"{model_id}.{gid}",
+                    'id': group_id,
+                    'bk_obj_id': model_id,
+                    'bk_group_id': gid,
+                    'bk_group_name': group_name,
+                    'bk_group_index': group_index,
+                    'bk_isdefault': False,
+                    'is_collapse': False,
+                    'ispre': True
+                })
+                group_id += 1
+                logger.info(f"补全分组定义: {model_id} / {gid} ({group_name})")
+
+        logger.info(f"迁移了 {len(models) * len(PROPERTY_GROUPS)} 个固定属性分组（含缺失分组补全）")
     
     def update_attributes_group(self):
         """更新现有属性的分组"""
@@ -1007,20 +1072,30 @@ class DatabaseMigrator:
         # 枚举类型（单选）
         if prop_type == 'enum':
             if isinstance(option, list):
-                # 将简单数组转换为原项目标准格式
+                # 已是标准结构（元素为 {"id":..,"name":..}）时原样存储，
+                # 避免 convert_enum_option 把 dict 当字符串再序列化导致嵌套字符串化。
+                if self._is_structured_enum(option):
+                    return json.dumps(option, ensure_ascii=False)
+                # 简单字符串数组（如 ["Linux","Windows"]）转换为原项目标准格式
                 return convert_enum_option(option)
             return option
-        
+
         # 多选枚举类型
         if prop_type == 'enummulti':
             if isinstance(option, list):
-                # 将简单数组转换为原项目标准格式
+                if self._is_structured_enum(option):
+                    return json.dumps(option, ensure_ascii=False)
                 return convert_enum_option(option)
             return option
-        
+
         # 列表类型
         if prop_type == 'list':
             if isinstance(option, list):
+                # 元素为字符串时直接序列化（["北京","上海"]）；
+                # 元素为对象（极少见）时按原项目 list 规范提取为字符串数组。
+                if option and isinstance(option[0], dict):
+                    str_list = [str(o.get('name', o.get('id', ''))) for o in option]
+                    return json.dumps(str_list, ensure_ascii=False)
                 return json.dumps(option, ensure_ascii=False)
             return option
         
@@ -1038,7 +1113,21 @@ class DatabaseMigrator:
         
         # 其他类型转为JSON字符串
         return json.dumps(option, ensure_ascii=False)
-    
+
+    @staticmethod
+    def _is_structured_enum(option_list):
+        """
+        判断枚举选项是否已是原项目标准结构（元素为 {"id":..,"name":..} 对象）。
+        用于兼容 host 等模型中 source option 已是结构化 dict 的情况，
+        避免 convert_enum_option 将其当纯字符串再次序列化造成嵌套字符串化。
+        """
+        if not isinstance(option_list, list) or len(option_list) == 0:
+            return False
+        return all(
+            isinstance(item, dict) and 'id' in item and 'name' in item
+            for item in option_list
+        )
+
     def migrate_attributes(self):
         """迁移属性数据"""
         ui_project = self.workspace_root / "cmdb_ui_lite" / "src" / "assets" / "api"

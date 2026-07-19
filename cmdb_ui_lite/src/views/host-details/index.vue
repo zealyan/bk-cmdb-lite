@@ -3,7 +3,7 @@
     <div v-bkloading="{ isLoading: loading }" style="height: 100%;">
       <div class="info" v-if="hostInfo.host">
         <div class="info-basic">
-          <i :class="['info-icon', 'icon-desktop']"></i>
+          <i :class="['info-icon', hostIcon]"></i>
           <span class="info-ip">{{ hostIp }}</span>
           <span class="info-area" v-if="cloudArea">{{ cloudArea }}</span>
         </div>
@@ -153,7 +153,12 @@ export default {
       const groups = {}
       let orderIndex = 0
       this.displayProperties.forEach(prop => {
-        const groupId = prop.bk_property_group || 'default'
+        // 复刻原项目 bk-cmdb (src/ui/src/mixins/form.js $groupedProperties):
+        // 兼容旧数据，把 bk_property_group === 'none' 的属性归入默认分组，
+        // 避免该分组在无对应定义时整组属性消失。
+        const groupId = prop.bk_property_group === 'none'
+          ? 'default'
+          : (prop.bk_property_group || 'default')
         if (!groups[groupId]) {
           groups[groupId] = {
             bk_group_id: groupId,
@@ -166,17 +171,30 @@ export default {
       return Object.values(groups).sort((a, b) => a.bk_group_index - b.bk_group_index)
     },
     effectivePropertyGroups () {
-      if (this.propertyGroups && this.propertyGroups.length > 0) {
-        return this.propertyGroups.sort((a, b) => {
-          const indexA = a.bk_group_index ?? 99
-          const indexB = b.bk_group_index ?? 99
-          return indexA - indexB
-        })
-      }
-      if (this.dynamicPropertyGroups && this.dynamicPropertyGroups.length > 0) {
-        return this.dynamicPropertyGroups
-      }
-      return []
+      const apiGroups = (this.propertyGroups && this.propertyGroups.length > 0)
+        ? this.propertyGroups
+        : []
+      const dynamicGroups = this.dynamicPropertyGroups || []
+
+      // 复刻原项目: 以接口分组为主，但用属性实际所属分组(dynamic)做并集补全，
+      // 防止接口漏返回某分组(如后端分组表未登记)时整组属性消失。
+      const merged = {}
+      apiGroups.forEach(g => {
+        merged[g.bk_group_id] = { ...g, bk_group_index: g.bk_group_index ?? 99, bk_group_name: g.bk_group_name || g.bk_group_id }
+      })
+      // 属性反推的分组(未出现在接口中)追加进来，index 置后保证排在已知分组之后
+      dynamicGroups.forEach(g => {
+        if (!merged[g.bk_group_id]) {
+          merged[g.bk_group_id] = { ...g, bk_group_index: g.bk_group_index ?? 99 }
+        }
+      })
+      const result = Object.values(merged).sort((a, b) => (a.bk_group_index ?? 99) - (b.bk_group_index ?? 99))
+      return result
+    },
+    hostIcon() {
+      // 引用 host 模型描述中预设的图标（bk_obj_icon），如 "icon-cc-host"；
+      // 模型未配置 icon 时回退到通用桌面图标。
+      return (this.modelData && this.modelData.bk_obj_icon) || 'icon-desktop'
     },
     hostIp() {
       const host = this.hostInfo.host || {}
@@ -246,7 +264,10 @@ export default {
       const props = this.properties.filter(p => {
         if (p.bk_property_id === 'id') return false
         if (p.bk_isapi) return false
-        const propGroup = p.bk_property_group || 'default'
+        // 复刻原项目 bk-cmdb: bk_property_group === 'none' 的属性归入默认分组
+        const propGroup = p.bk_property_group === 'none'
+          ? 'default'
+          : (p.bk_property_group || 'default')
         return propGroup === groupId && p.bk_property_index !== -1
       }).sort((a, b) => a.bk_property_index - b.bk_property_index)
       
