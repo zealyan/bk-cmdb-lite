@@ -23,6 +23,13 @@ from sqlglot import parse_one, transpile
 from sqlalchemy import text
 from app.db.engine import get_connection
 from app.config.settings import get_config
+from app.definitions import (
+    get_sql_type,
+    VALID_PROPERTY_TYPES,
+    ASSOCIATION_PROPERTY_TYPES,
+    ASSOCIATION_PROPERTY_SQL_TYPE,
+    LEGACY_PROPERTY_TYPE_ALIAS,
+)
 
 
 # 配置日志
@@ -246,11 +253,11 @@ BUILTIN_MODEL_ATTRIBUTES = {
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
-        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "datetime",
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
-        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "datetime",
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
@@ -305,11 +312,11 @@ BUILTIN_MODEL_ATTRIBUTES = {
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
-        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "datetime",
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
-        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "datetime",
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
@@ -347,11 +354,11 @@ BUILTIN_MODEL_ATTRIBUTES = {
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
-        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "datetime",
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
-        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "datetime",
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
          "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
@@ -1292,11 +1299,22 @@ class DatabaseMigrator:
         for attr in attributes:
             prop_id = attr['bk_property_id']
             prop_type = attr['bk_property_type']
-            
+
             if prop_id in SYSTEM_FIELDS:
                 continue
-            
-            sql_type = self.get_sql_type(prop_type)
+
+            # 关联类型（singleasst/multiasst）：按关联实例 id 建 INTEGER 列，
+            # 不进入 get_sql_type 的 16 种 Go 类型校验。
+            if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                sql_type = ASSOCIATION_PROPERTY_SQL_TYPE[prop_type]
+                columns.append(f'"{prop_id}" {sql_type}')
+                continue
+
+            # lite 历史命名（如 user）先归一为 Go 类型（objuser）再映射。
+            prop_type = LEGACY_PROPERTY_TYPE_ALIAS.get(prop_type, prop_type)
+
+            # 其余必须是 Go definitions.go 的 16 种合法类型，未知类型直接抛错。
+            sql_type = get_sql_type(prop_type)
             columns.append(f'"{prop_id}" {sql_type}')
         
         create_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({", ".join(columns)})'
@@ -1329,37 +1347,6 @@ class DatabaseMigrator:
         """
         self.execute_sql(create_sql)
         logger.info(f"创建实例关联分表: {asst_table_name}")
-    
-    def get_sql_type(self, prop_type):
-        """获取属性类型对应的 SQL 类型"""
-        type_mapping = {
-            'int': 'INTEGER',
-            'long': 'BIGINT',
-            'singlechar': 'VARCHAR',
-            'shortchar': 'VARCHAR',
-            'longchar': 'TEXT',
-            'char': 'VARCHAR',
-            'text': 'TEXT',
-            'float': 'FLOAT',
-            'double': 'DOUBLE',
-            'date': 'DATE',
-            'time': 'TIME',
-            'datetime': 'TIMESTAMP',
-            'bool': 'BOOLEAN',
-            'boolean': 'BOOLEAN',
-            'objuser': 'TEXT',
-            'list': 'TEXT',
-            'enum': 'TEXT',
-            'enummulti': 'TEXT',
-            'enumquote': 'TEXT',
-            'textarea': 'TEXT',
-            'array': 'TEXT',
-            'object': 'TEXT',
-            'singleasst': 'INTEGER',
-            'user': 'TEXT',
-            'timezone': 'TEXT'
-        }
-        return type_mapping.get(prop_type, 'TEXT')
     
     def migrate_instances(self):
         """迁移实例数据"""

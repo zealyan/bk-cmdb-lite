@@ -351,7 +351,7 @@ export default {
 }
 
 .details-layout {
-  overflow: hidden;
+  overflow: visible;
   min-height: 100vh;
   box-sizing: border-box;
   background-color: #fff;
@@ -360,10 +360,15 @@ export default {
     min-height: 400px;
     background-color: transparent;
 
+    // 属性/关联 tab 栏：在 .main-scroller 滚动时吸顶，
+    // 效果与顶部面包屑一致（不随虚拟滚动条下滑而移出视口）
     :deep(.bk-tab-header) {
+      position: sticky;
+      top: 0;
+      z-index: 10;
       padding: 0 20px;
       height: 58px;
-      background-color: transparent !important;
+      background-color: #fff !important;
       background-image: none !important;
       border-bottom: 1px solid #dcdee5;
 

@@ -259,6 +259,27 @@
 </template>
 
 <script>
+// 全局模糊搜索状态：持久化到 localStorage，跨模型 / 会话 / 标签页保持一致
+const FUZZY_STORAGE_KEY = 'bk_cmdb_fuzzy_query'
+
+function getInitialFuzzyQuery() {
+  try {
+    const stored = window.localStorage.getItem(FUZZY_STORAGE_KEY)
+    // 未设置时默认勾选（true）
+    if (stored === null || stored === undefined) return true
+    return stored === 'true'
+  } catch (e) {
+    return true
+  }
+}
+
+function saveFuzzyQuery(val) {
+  try {
+    window.localStorage.setItem(FUZZY_STORAGE_KEY, val ? 'true' : 'false')
+  } catch (e) {
+    // 忽略隐私模式 / 写入失败
+  }
+}
 import ColumnsConfig from '@/components/columns-config/index.vue'
 import FilterTag from '@/components/filter-tag/index.vue'
 import FilterTagItem from '@/components/filter-tag/filter-tag-item.vue'
@@ -294,7 +315,7 @@ export default {
         field: '',
         value: '',
         values: [],
-        fuzzyQuery: true
+        fuzzyQuery: getInitialFuzzyQuery()
       },
       enumDropdownVisible: false,
       enumSearchQuery: '',
@@ -413,8 +434,7 @@ export default {
       const propertyType = property.bk_property_type
       if (!propertyType) return false
       const supportedTypes = [
-        'singlechar', 'longchar', 'shortchar', 'text',
-        'enum', 'int', 'bool', 'time', 'date', 'float', 'list', 'map'
+        'singlechar', 'longchar', 'enum', 'int', 'bool', 'time', 'date', 'float', 'list'
       ]
       return supportedTypes.includes(propertyType)
     },
@@ -728,6 +748,10 @@ export default {
         }
       }
     },
+    'filter.fuzzyQuery'(val) {
+      // 全局模糊状态：任意变化（勾选/取消/URL 同步）均写回 localStorage
+      saveFuzzyQuery(val)
+    },
     '$route.params.objId': {
       handler(newObjId) {
         if (newObjId !== this.objId) {
@@ -806,8 +830,11 @@ export default {
                   }
                 }
               }
-              if (query.fuzzy !== undefined) {
-                this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+              // 仅当 URL 显式给出 fuzzy 取值时覆盖；缺失/空串保留默认（已勾选）
+              if (query.fuzzy === 'true' || query.fuzzy === '1') {
+                this.filter.fuzzyQuery = true
+              } else if (query.fuzzy === 'false' || query.fuzzy === '0') {
+                this.filter.fuzzyQuery = false
               }
               this.hasRestoredFromUrl = true
               this.updateFilterTagsFromQuery()
@@ -923,7 +950,10 @@ export default {
         const query = this.$route.query
         const currentField = query.field || this.filter.field
         const currentValue = query.filter !== undefined ? String(query.filter) : this.filter.value
-        const currentFuzzy = query.fuzzy !== undefined ? (query.fuzzy === 'true' || query.fuzzy === '1') : this.filter.fuzzyQuery
+        // 仅当 URL 显式给出 fuzzy 取值时使用；缺失/空串保留当前/默认值（已勾选）
+        const currentFuzzy = (query.fuzzy === 'true' || query.fuzzy === '1') ? true
+          : (query.fuzzy === 'false' || query.fuzzy === '0') ? false
+          : this.filter.fuzzyQuery
         const currentSort = query.sort || this.table.sort
         const currentPage = query.page ? parseInt(query.page, 10) : this.table.pagination.current
         const currentLimit = query.limit ? parseInt(query.limit, 10) : this.table.pagination.limit
@@ -1178,7 +1208,6 @@ export default {
       // 条件清空将在提交查询时（handleSearch）触发
       this.filter.value = ''
       this.filter.values = []
-      this.filter.fuzzyQuery = false
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
@@ -1261,8 +1290,11 @@ export default {
       } else {
         this.filter.value = ''
       }
-      if (query.fuzzy !== undefined) {
-        this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+      // 仅当 URL 显式给出 fuzzy 取值时覆盖；缺失/空串保留默认（已勾选）
+      if (query.fuzzy === 'true' || query.fuzzy === '1') {
+        this.filter.fuzzyQuery = true
+      } else if (query.fuzzy === 'false' || query.fuzzy === '0') {
+        this.filter.fuzzyQuery = false
       }
       if (query.sort) {
         this.table.sort = query.sort
@@ -1741,7 +1773,6 @@ export default {
       // 清除快速搜索输入框
       this.filter.value = ''
       this.filter.values = []
-      this.filter.fuzzyQuery = false
       this.isUrlUpdateTriggered = true
       // 清除URL中的filter_adv和s参数，保持与原项目一致
       const query = {
@@ -2232,7 +2263,6 @@ export default {
       if (tag.id === this.filter.field) {
         this.filter.value = ''
         this.filter.values = []
-        this.filter.fuzzyQuery = false
       }
       this.table.pagination.current = 1
       this.currentSearchParams = null
@@ -2280,7 +2310,6 @@ export default {
       // 清除快速搜索输入框
       this.filter.value = ''
       this.filter.values = []
-      this.filter.fuzzyQuery = false
       this.table.pagination.current = 1
       this.currentSearchParams = null
       this.advancedFilterConditions = null

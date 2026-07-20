@@ -12,7 +12,7 @@
   - v1.2 - 实现动态模型表名，移除硬编码 `table_map`
   - **v2.0** - 数据库架构重构，从 DuckDB 迁移到 SQLAlchemy 2.0+ + 多数据库支持（SQLite/MySQL/PostgreSQL）
   - **v2.3** - 补充原项目 `Attribute` 结构体所有字段的 bson 标签对照，整理完整 MongoDB 表映射关系
-  - **v2.4** - 统一属性类型规范，移除 `string` 类型，使用 `singlechar`/`shortchar`/`longchar`/`text` 替代，与原项目蓝鲸 CMDB 保持一致
+  - **v2.4** - 统一属性类型规范，移除 `string` 类型，使用 `singlechar`/`longchar` 替代，与原项目蓝鲸 CMDB 保持一致
 
 ---
 
@@ -336,25 +336,21 @@ SQLALCHEMY_ECHO = False           # 是否输出 SQL 日志
 | 属性类型 | SQLite | PostgreSQL | MySQL |
 |---------|--------|-----------|-------|
 | `int` | INTEGER | INTEGER | INT |
-| `long` | BIGINT | BIGINT | BIGINT |
 | `singlechar` | VARCHAR | VARCHAR | VARCHAR |
-| `shortchar` | VARCHAR | VARCHAR | VARCHAR |
 | `longchar` | TEXT | TEXT | TEXT |
-| `char` | VARCHAR | VARCHAR | VARCHAR |
-| `text` | TEXT | TEXT | TEXT |
-| `float` | FLOAT | REAL | FLOAT |
-| `double` | DOUBLE | DOUBLE PRECISION | DOUBLE |
+| `float` | REAL | REAL | DOUBLE |
 | `date` | DATE | DATE | DATE |
 | `time` | TIME | TIME | TIME |
-| `datetime` | TIMESTAMP | TIMESTAMP | DATETIME |
 | `bool` | BOOLEAN | BOOLEAN | BOOLEAN |
 | `enum` | TEXT | TEXT | TEXT |
 | `enummulti` | TEXT | TEXT | TEXT |
 | `list` | TEXT | TEXT | TEXT |
-| `textarea` | TEXT | TEXT | TEXT |
 | `objuser` | TEXT | TEXT | TEXT |
-| `array` | TEXT | TEXT | TEXT |
-| `object` | TEXT | TEXT | TEXT |
+| `organization` | TEXT | TEXT | TEXT |
+| `timezone` | VARCHAR | VARCHAR | VARCHAR |
+| `table` | TEXT | TEXT | TEXT |
+| `innertable` | TEXT | TEXT | TEXT |
+| `enumquote` | TEXT | TEXT | TEXT |
 
 ### 5.2 方言转换处理
 
@@ -552,7 +548,7 @@ type TableAttributesOption struct {
 ```json
 {
     "header": [
-        {"bk_property_id": "col1", "bk_property_name": "列1", "bk_property_type": "text"},
+        {"bk_property_id": "col1", "bk_property_name": "列1", "bk_property_type": "longchar"},
         {"bk_property_id": "col2", "bk_property_name": "列2", "bk_property_type": "int"}
     ],
     "default": [
@@ -568,9 +564,7 @@ type TableAttributesOption struct {
 | 属性类型 | option 存储格式示例 | 是否支持中文 ID |
 |---------|-------------------|----------------|
 | `singlechar`（短字符） | `null`（不存储） | 不适用 |
-| `shortchar`（短字符） | `null`（不存储） | 不适用 |
 | `longchar`（长字符） | `null`（不存储） | 不适用 |
-| `text`（文本） | `null`（不存储） | 不适用 |
 | `enum`（单选枚举） | `[{"id":"x","name":"y","type":"text","is_default":false}]` | ✅ 完全支持 |
 | `enummulti`（多选枚举） | `[{"id":"x","name":"y","type":"text","is_default":false}]` | ✅ 完全支持 |
 | `list`（列表） | `["选项1","选项2"]` | ✅ 数组项支持中文 |
@@ -579,7 +573,6 @@ type TableAttributesOption struct {
 | `table`（表格） | `{"header":[...],"default":[...]}` | ✅ 列名支持中文 |
 | `bool`（布尔） | `null` 或不存储 | 不适用 |
 | `date/time`（日期时间） | `null` 或不存储 | 不适用 |
-| `char`（字符） | `"^[a-zA-Z]\\w*$"` | ✅ 可存储中文正则 |
 
 ---
 
@@ -800,4 +793,4 @@ type Attribute struct {
   - v2.1 - 新增属性选项格式（Option）章节，详细定义 enum/enummulti/list/int/float/table 等类型的 JSON schema 和 MongoDB 存储格式
   - v2.2 - 补充 cc_ObjDes 和 cc_ObjAttDes 表的完整字段定义，包含所有 bson 标签字段对照，新增 ismultiple 字段说明
   - v2.3 - 新增「原项目结构体与 MongoDB 表映射」章节，完整整理 Attribute 结构体所有 bson 标签对照
-  - v2.4 - 统一属性类型规范，移除 `string` 类型，使用 `singlechar`/`shortchar`/`longchar`/`text` 替代，与原项目蓝鲸 CMDB 保持一致
+  - v2.4 - 统一属性类型规范，移除 `string` 类型，使用 `singlechar`/`longchar` 替代，与原项目蓝鲸 CMDB 保持一致
