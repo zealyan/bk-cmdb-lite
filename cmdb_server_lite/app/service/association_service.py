@@ -249,10 +249,18 @@ class AssociationService:
     def delete_instance_association(association_id, obj_id=None):
         """
         删除实例关联
-        需要指定 obj_id 以确定删除哪个分表的数据
+        由于关联记录在源模型和目标模型两个分表中各存一份（与原项目一致的双向插入），
+        删除时需要同时从两个分表删除，避免出现孤儿记录。
+
+        参数:
+            association_id: 实例关联记录ID
+            obj_id: 当前操作的模型ID（前端调用时传入，用于定位起始分表）
+
+        返回:
+            dict: {'result': True, 'deleted': 删除的记录数}
         """
         if not obj_id:
-            # 尝试从所有模型分表删除
+            # 未指定模型，遍历所有模型分表删除
             from app.service.instance_service import InstanceService
             models = InstanceService.list_models()
             deleted_count = 0
@@ -265,15 +273,37 @@ class AssociationService:
                     deleted_count += 1
                 except Exception:
                     pass
-            # 注意：由于同一关联存在于源和目标两个分表，最多删除2条
             return {'result': True, 'deleted': deleted_count}
-        
-        # 删除源模型分表
+
+        # 1. 先从当前模型分表查询关联记录，获取源模型和目标模型信息
         table_name = get_inst_asst_table_name(obj_id)
-        sql = f'DELETE FROM "{table_name}" WHERE id = :association_id'
-        execute(sql, {'association_id': association_id})
-        
-        return {'result': True, 'deleted': 1}
+        select_sql = f'SELECT bk_obj_id, bk_asst_obj_id FROM "{table_name}" WHERE id = :association_id'
+        record = query_one(select_sql, {'association_id': association_id})
+
+        # 2. 删除当前模型分表中的记录
+        delete_sql = f'DELETE FROM "{table_name}" WHERE id = :association_id'
+        execute(delete_sql, {'association_id': association_id})
+        deleted_count = 1
+
+        # 3. 如果能查到记录且源模型与目标模型不同，同时删除目标模型分表中的对应记录
+        if record:
+            bk_obj_id = record.get('bk_obj_id')
+            bk_asst_obj_id = record.get('bk_asst_obj_id')
+            # 候选对端模型：源模型与目标模型都可能是对端（当前 obj_id 可能是源也可能是目标）
+            counterpart_models = {bk_obj_id, bk_asst_obj_id} - {obj_id}
+            for counterpart_model in counterpart_models:
+                if not counterpart_model:
+                    continue
+                counterpart_table = get_inst_asst_table_name(counterpart_model)
+                try:
+                    cp_delete_sql = f'DELETE FROM "{counterpart_table}" WHERE id = :association_id'
+                    execute(cp_delete_sql, {'association_id': association_id})
+                    deleted_count += 1
+                except Exception:
+                    # 对端分表可能不存在，忽略
+                    pass
+
+        return {'result': True, 'deleted': deleted_count}
     
     @staticmethod
     def find_instance_associations(bk_obj_id, conditions=None):
