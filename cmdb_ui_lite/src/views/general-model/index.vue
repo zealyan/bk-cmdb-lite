@@ -1771,13 +1771,13 @@ export default {
       this.batchUpdateFormLoading = true
       try {
         const result = await modelAPI.batchUpdateInstancesWithSameData(this.objId, this.selectedIds, data)
-        if (result.success) {
+        if (result) {
           this.$bkMessage({ message: `成功更新 ${this.selectedIds.length} 个实例`, theme: 'success' })
           this.handleBatchUpdateDialogClose()
           this.selectedIds = []
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: result.message || '更新失败', theme: 'error' })
+          this.$bkMessage({ message: '更新失败', theme: 'error' })
         }
       } catch (error) {
         console.error('Batch update error:', error)
@@ -2001,13 +2001,13 @@ export default {
       try {
         const result = await modelAPI.createInstance(this.objId, formData)
         
-        if (result.success) {
+        if (result) {
           this.$bkMessage({ message: '实例创建成功', theme: 'success' })
           this.handleCreateDialogClose()
           // 刷新列表
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: result.message || '创建失败', theme: 'error' })
+          this.$bkMessage({ message: '创建失败', theme: 'error' })
         }
       } catch (error) {
         console.error('Create instance error:', error)

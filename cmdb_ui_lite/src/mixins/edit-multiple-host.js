@@ -117,7 +117,7 @@ export default {
           changedValues
         )
 
-        if (result && result.success) {
+        if (result) {
           this.slider.show = false
           this.$bkMessage({
             message: `成功更新 ${hostIds.length} 台主机`,
@@ -128,7 +128,7 @@ export default {
           RouterQuery.set({ _t: Date.now() })
         } else {
           this.$bkMessage({
-            message: (result && result.message) || '更新失败',
+            message: '更新失败',
             theme: 'error'
           })
         }

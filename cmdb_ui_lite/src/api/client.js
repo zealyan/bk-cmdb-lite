@@ -31,26 +31,22 @@ http.interceptors.request.use(
   }
 )
 
-// 响应拦截器 - 统一处理原项目 BaseResp 格式
+// 响应拦截器 - 仅处理 BaseResp 错误格式（result: false），成功响应原样返回
+// 与原项目一致：成功时直接返回业务数据，错误时统一抛出包含 bk_error_msg 的异常
 http.interceptors.response.use(
   (response) => {
     const data = response.data
-    // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
-    if (data !== null && typeof data === 'object' && 'result' in data) {
-      if (data.result === false) {
-        // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
-        const error = new Error(data.bk_error_msg || '业务处理失败')
-        error.response = { data }
-        return Promise.reject(error)
-      }
-      // 成功：返回 data 字段内容，保持向后兼容
-      return data.data !== undefined ? data.data : data
+    // 仅当响应为 BaseResp 错误格式时（result 显式为 false），转换为异常抛出
+    if (data !== null && typeof data === 'object' && data.result === false) {
+      const error = new Error(data.bk_error_msg || '业务处理失败')
+      error.response = { data }
+      return Promise.reject(error)
     }
-    // 非标准格式：直接返回原始数据
+    // 成功响应（直接数据或 BaseResp result: true）原样返回，由前端按需解析
     return data
   },
   (error) => {
-    // HTTP 错误（状态码非 2xx）
+    // HTTP 层错误（网络超时、状态码非 2xx 等）
     return Promise.reject(error)
   }
 )
