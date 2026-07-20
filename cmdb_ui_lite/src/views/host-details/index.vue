@@ -509,7 +509,11 @@ export default {
       if (this.isBusinessHost) {
         this.$router.push({
           name: MENU_BUSINESS_TOPOLOGY,
-          params: { bizId: item.bizId }
+          params: { bizId: item.bizId },
+          query: {
+            node: `module-${item.id}`,
+            _t: Date.now()
+          }
         })
       }
     },
