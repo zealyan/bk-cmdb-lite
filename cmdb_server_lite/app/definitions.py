@@ -11,12 +11,15 @@
 ``char`` / ``text`` / ``double`` / ``datetime`` / ``textarea`` 等非 Go 类型，
 容易与前端 / 校验侧认知不一致。
 
-本文件**显性声明所有实际存在的 bk_property_type 常量**，分三类：
+本文件**显性声明所有实际存在的 bk_property_type 常量**，分四类：
 1. ``VALID_PROPERTY_TYPES``        —— 蓝鲸 Go 源码认可的 16 种合法类型（权威集合）。
 2. ``LEGACY_PROPERTY_TYPE_ALIAS``  —— lite 历史命名，归一映射到 Go 类型
                                        （如 ``user`` -> ``objuser``）。
-3. ``ASSOCIATION_PROPERTY_TYPES``  —— 关联类型（singleasst/multiasst），无独立 Go
-                                       字段类型，存关联实例 id，不进入 get_sql_type。
+3. ``ASSOCIATION_PROPERTY_TYPES``  —— 关联类型（singleasst/multiasst/foreignkey），
+                                       在 Go 中是合法的 bk_property_type，但**不作为
+                                       实例表物理列**，关联数据存于 cc_InstAsst 分表。
+4. ``NUMERIC_PROPERTY_TYPES`` / ``JSON_VALUE_PROPERTY_TYPES``
+                                     —— 便于 service 层按类型做值处理的辅助集合。
 
 ``get_sql_type()`` 仅认 ``VALID_PROPERTY_TYPES``（16 种），传入其它类型直接抛错；
 历史 / 关联类型由调用方（migrate.create_instance_table）在调用前先归一或跳过，
@@ -63,6 +66,14 @@ VALID_PROPERTY_TYPES = (
     PROPERTY_TYPE_ENUMQUOTE,
 )
 
+# 数值类型集合：用于搜索 / 写入时把值做数值化（对齐 Go GoFieldTypes 的数值类）。
+# 注：lite 早期曾用 long/double，但非 Go 合法类型且当前数据无此类，故不收录。
+NUMERIC_PROPERTY_TYPES = (PROPERTY_TYPE_INT, PROPERTY_TYPE_FLOAT)
+
+# JSON 值类型集合：实例值采用 UI 端的数据结构（如用户/组织数组），落库时以
+# JSON 字符串保存，读取时再解析回 Python 对象。
+JSON_VALUE_PROPERTY_TYPES = (PROPERTY_TYPE_OBJUSER, PROPERTY_TYPE_ORGANIZATION)
+
 # ---------------------------------------------------------------------------
 # 类型 -> SQL 列类型映射（SQLite 开发库；MySQL / PostgreSQL 见 docs/db.rule.md）
 # ---------------------------------------------------------------------------
@@ -88,32 +99,37 @@ PROPERTY_TYPE_SQL_TYPE = {
 # ---------------------------------------------------------------------------
 # lite 历史 / 关联类型（非 Go FieldTypes，但 lite 实际数据中存在，显式声明）
 # ---------------------------------------------------------------------------
-# lite 历史类型字符串常量（便于全文检索与引用）
+# lite 历史 / 关联类型字符串常量（便于全文检索与引用）
 PROPERTY_TYPE_USER_LEGACY = "user"
 PROPERTY_TYPE_MULTIASST_LEGACY = "multiasst"
+PROPERTY_TYPE_FOREIGNKEY_LEGACY = "foreignkey"
 
 # user 在蓝鲸 Go 源码中名为 objuser，lite 早期直接用了 user，这里显式归一。
 LEGACY_PROPERTY_TYPE_ALIAS = {
     PROPERTY_TYPE_USER_LEGACY: PROPERTY_TYPE_OBJUSER,
 }
 
-# 关联类型：singleasst / multiasst 在 Go 中没有对应 FieldType，它们表达的是
-# 「本实例关联的另一个实例」，数据存于 cc_InstAsst 分表；建实例表时按关联实例
-# id 建一列（INTEGER），不进入 get_sql_type 的 16 种校验。
-ASSOCIATION_PROPERTY_TYPES = ("singleasst", "multiasst")
-ASSOCIATION_PROPERTY_SQL_TYPE = {
-    "singleasst": "INTEGER",
-    "multiasst": "INTEGER",
-}
+# 关联类型：singleasst / multiasst / foreignkey 在 Go 中均为合法的 bk_property_type
+# （见 metadata/attribute.go: case "foreignkey", "singleasst", "multiasst"），但
+# 它们表达的是「本实例关联的另一个实例」，**不作为实例表的物理列**，关联数据存于
+# cc_InstAsst 分表。建实例表时应直接跳过，不进入 get_sql_type 的 16 种校验。
+ASSOCIATION_PROPERTY_TYPES = (
+    PROPERTY_TYPE_MULTIASST_LEGACY,
+    "singleasst",
+    PROPERTY_TYPE_FOREIGNKEY_LEGACY,
+)
 
 
 def get_sql_type(prop_type):
     """根据 bk_property_type 返回对应的 SQL 列类型。
 
-    仅接受 ``VALID_PROPERTY_TYPES`` 中的 16 种 Go 合法类型；传入其它类型
-    （如 lite 历史上出现过的 ``user`` / ``singleasst`` / ``long`` / ``double`` /
-    ``datetime`` 等）将**直接抛错**，不再静默回退为 TEXT，以强制类型与 Go
-    源码保持一致。
+    仅接受 ``VALID_PROPERTY_TYPES`` 中的 16 种 Go 合法类型；传入其它类型将
+    **直接抛错**，不再静默回退为 TEXT，以强制类型与 Go 源码保持一致。
+
+    调用方（migrate.create_instance_table）负责在建表前处理非 16 种类型：
+    - ``user`` 等历史命名先经 ``LEGACY_PROPERTY_TYPE_ALIAS`` 归一为 Go 类型；
+    - ``singleasst`` / ``multiasst`` / ``foreignkey`` 等关联类型直接跳过（无物理列）。
+    因此真正进入本函数的，必为 16 种之一。
 
     :param prop_type: 属性类型字符串
     :raises ValueError: 当 prop_type 不在合法类型集合中时
@@ -144,6 +160,13 @@ __all__ = [
     "PROPERTY_TYPE_INNERTABLE",
     "PROPERTY_TYPE_ENUMQUOTE",
     "VALID_PROPERTY_TYPES",
+    "NUMERIC_PROPERTY_TYPES",
+    "JSON_VALUE_PROPERTY_TYPES",
     "PROPERTY_TYPE_SQL_TYPE",
+    "PROPERTY_TYPE_USER_LEGACY",
+    "PROPERTY_TYPE_MULTIASST_LEGACY",
+    "PROPERTY_TYPE_FOREIGNKEY_LEGACY",
+    "LEGACY_PROPERTY_TYPE_ALIAS",
+    "ASSOCIATION_PROPERTY_TYPES",
     "get_sql_type",
 ]

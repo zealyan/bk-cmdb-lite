@@ -27,7 +27,6 @@ from app.definitions import (
     get_sql_type,
     VALID_PROPERTY_TYPES,
     ASSOCIATION_PROPERTY_TYPES,
-    ASSOCIATION_PROPERTY_SQL_TYPE,
     LEGACY_PROPERTY_TYPE_ALIAS,
 )
 
@@ -1303,11 +1302,9 @@ class DatabaseMigrator:
             if prop_id in SYSTEM_FIELDS:
                 continue
 
-            # 关联类型（singleasst/multiasst）：按关联实例 id 建 INTEGER 列，
-            # 不进入 get_sql_type 的 16 种 Go 类型校验。
+            # 关联类型（singleasst/multiasst/foreignkey）：与原 Go 项目一致，
+            # 不作为实例表物理列，关联数据存于 cc_InstAsst 分表，直接跳过。
             if prop_type in ASSOCIATION_PROPERTY_TYPES:
-                sql_type = ASSOCIATION_PROPERTY_SQL_TYPE[prop_type]
-                columns.append(f'"{prop_id}" {sql_type}')
                 continue
 
             # lite 历史命名（如 user）先归一为 Go 类型（objuser）再映射。

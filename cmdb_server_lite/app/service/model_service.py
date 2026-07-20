@@ -1,4 +1,5 @@
 from app.db.executor import query_all, query_one
+from app.definitions import PROPERTY_TYPE_BOOL
 import json
 
 DEFAULT_OBJ_ICON = 'icon-cc-default'
@@ -60,11 +61,11 @@ class ModelService:
 
             if option is None or option == '':
                 # bool 类型的 option 默认为 false（作为默认值）
-                if prop_type == 'bool':
+                if prop_type == PROPERTY_TYPE_BOOL:
                     attr['option'] = False
                 continue
 
-            if prop_type == 'bool':
+            if prop_type == PROPERTY_TYPE_BOOL:
                 # bool 类型的 option 是布尔值本身（可能存储为字符串 'true'/'false'）
                 if isinstance(option, bool):
                     attr['option'] = option

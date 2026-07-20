@@ -2,6 +2,14 @@ from app.db.executor import query_all, query_one, execute
 from app.db.engine import get_session
 from app.utils.tools import generate_id
 from app.utils.exceptions import ValidationException
+from app.definitions import (
+    PROPERTY_TYPE_BOOL,
+    PROPERTY_TYPE_INT,
+    PROPERTY_TYPE_LIST,
+    NUMERIC_PROPERTY_TYPES,
+    JSON_VALUE_PROPERTY_TYPES,
+    ASSOCIATION_PROPERTY_TYPES,
+)
 from datetime import datetime
 import json
 
@@ -199,7 +207,7 @@ class InstanceService:
                 is_fuzzy = cond.get('fuzzy', False) or fuzzy
 
                 field_type = attr_type_map.get(field, '')
-                if field_type == 'bool':
+                if field_type == PROPERTY_TYPE_BOOL:
                     value = InstanceService._parse_bool_value_for_search(value)
 
                 # 映射前端操作符（语义操作符 → MongoDB 风格操作符）
@@ -234,16 +242,16 @@ class InstanceService:
         # 处理单条件搜索（兼容旧接口）
         elif search_field and (search_value or search_values or search_start or search_end):
             safe_field = search_field.strip()
-            is_bool_field = attr_type_map.get(safe_field, '') == 'bool'
+            is_bool_field = attr_type_map.get(safe_field, '') == PROPERTY_TYPE_BOOL
 
             # 处理日期范围
             if search_start or search_end:
                 field_type = attr_type_map.get(safe_field, '')
-                is_numeric = field_type in ('int', 'long', 'float', 'double')
+                is_numeric = field_type in NUMERIC_PROPERTY_TYPES
                 if search_start:
                     if is_numeric:
                         try:
-                            if field_type in ('int', 'long'):
+                            if field_type == PROPERTY_TYPE_INT:
                                 params['search_start'] = int(search_start)
                             else:
                                 params['search_start'] = float(search_start)
@@ -255,7 +263,7 @@ class InstanceService:
                 if search_end:
                     if is_numeric:
                         try:
-                            if field_type in ('int', 'long'):
+                            if field_type == PROPERTY_TYPE_INT:
                                 params['search_end'] = int(search_end)
                             else:
                                 params['search_end'] = float(search_end)
@@ -267,7 +275,7 @@ class InstanceService:
             else:
                 # 处理普通搜索
                 field_type = attr_type_map.get(safe_field, '')
-                is_numeric_field = field_type in ('int', 'long', 'float', 'double')
+                is_numeric_field = field_type in NUMERIC_PROPERTY_TYPES
                 if search_values:
                     # 兼容字符串（逗号分隔）和列表两种输入形式
                     if isinstance(search_values, str):
@@ -288,7 +296,7 @@ class InstanceService:
                             if v is None or v == '':
                                 continue
                             try:
-                                if field_type in ('int', 'long'):
+                                if field_type == PROPERTY_TYPE_INT:
                                     val_list.append(int(v))
                                 else:
                                     val_list.append(float(v))
@@ -302,7 +310,7 @@ class InstanceService:
                         val_list = [parsed] if parsed is not None else []
                     elif is_numeric_field:
                         try:
-                            if field_type in ('int', 'long'):
+                            if field_type == PROPERTY_TYPE_INT:
                                 val_list = [int(search_value)]
                             else:
                                 val_list = [float(search_value)]
@@ -447,11 +455,16 @@ class InstanceService:
             prop_id = attr.get('bk_property_id')
             prop_type = attr.get('bk_property_type')
 
+            # 关联类型（singleasst/multiasst/foreignkey）：不落实例表列，
+            # 关联数据存于 cc_InstAsst，跳过不解析。
+            if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                continue
+
             if prop_id and prop_id in instance:
                 value = instance[prop_id]
 
                 # bool 类型：SQLite可能存储为 0/1 或 'true'/'false' 字符串
-                if prop_type == 'bool':
+                if prop_type == PROPERTY_TYPE_BOOL:
                     if value is None:
                         instance[prop_id] = False
                     elif isinstance(value, bool):
@@ -470,6 +483,15 @@ class InstanceService:
                         instance[prop_id] = bool(value)
                     continue
 
+                # objuser/organization 等 JSON 值类型：按 UI 端数据结构解析回对象
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is not None and isinstance(value, str):
+                        try:
+                            instance[prop_id] = json.loads(value)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    continue
+
                 # 其他类型：按 JSON 解析
                 if value is not None and isinstance(value, str) and value.strip().startswith(('[', '{')):
                     try:
@@ -477,7 +499,7 @@ class InstanceService:
                         instance[prop_id] = parsed
 
                         # 对于list类型，如果解包是双重编码，则再解一次
-                        if prop_type == 'list' and isinstance(parsed, str) and parsed.strip().startswith(('[', '{')):
+                        if prop_type == PROPERTY_TYPE_LIST and isinstance(parsed, str) and parsed.strip().startswith(('[', '{')):
                             try:
                                 instance[prop_id] = json.loads(parsed)
                             except (json.JSONDecodeError, ValueError):
@@ -515,7 +537,7 @@ class InstanceService:
         if not safe_field.replace('_', '').replace('-', '').isalnum():
             return None, param_counter
 
-        numeric_types = ('int', 'long', 'float', 'double')
+        numeric_types = NUMERIC_PROPERTY_TYPES
         is_numeric = field_type in numeric_types
 
         # 解析多个值。如果值已经是整数/布尔类型，保持原样（避免 bool 的 1/0 被转成字符串）
@@ -530,7 +552,7 @@ class InstanceService:
                     val_list.append(v)
                 elif is_numeric:
                     try:
-                        if field_type in ('int', 'long'):
+                        if field_type == PROPERTY_TYPE_INT:
                             val_list.append(int(v))
                         else:
                             val_list.append(float(v))
@@ -548,7 +570,7 @@ class InstanceService:
                 val_list = []
                 for v in raw_values:
                     try:
-                        if field_type in ('int', 'long'):
+                        if field_type == PROPERTY_TYPE_INT:
                             val_list.append(int(v))
                         else:
                             val_list.append(float(v))
@@ -855,11 +877,25 @@ class InstanceService:
             if key in valid_fields:
                 prop_type = attr_type_map.get(key, '')
 
+                # 关联类型不落实例表列，跳过
+                if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                    continue
+
+                # objuser/organization 等 JSON 值类型：按 UI 端数据结构以 JSON 保存
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is None:
+                        clean_data[key] = None
+                    elif isinstance(value, str):
+                        clean_data[key] = value
+                    else:
+                        clean_data[key] = json.dumps(value)
+                    continue
+
                 if isinstance(value, (dict, list)):
                     clean_data[key] = json.dumps(value)
                 elif value is None:
                     clean_data[key] = None
-                elif prop_type == 'bool':
+                elif prop_type == PROPERTY_TYPE_BOOL:
                     # bool 类型保持原生布尔值
                     if isinstance(value, bool):
                         clean_data[key] = value
@@ -918,13 +954,28 @@ class InstanceService:
 
         for key, value in data.items():
             if key in valid_fields and key not in system_fields_to_exclude:
-                update_fields.append(f'"{key}" = :{key}')
                 prop_type = attr_type_map.get(key, '')
+
+                # 关联类型不落实例表列，跳过
+                if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                    continue
+
+                update_fields.append(f'"{key}" = :{key}')
+                # objuser/organization 等 JSON 值类型：按 UI 端数据结构以 JSON 保存
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is None:
+                        params[key] = None
+                    elif isinstance(value, str):
+                        params[key] = value
+                    else:
+                        params[key] = json.dumps(value)
+                    continue
+
                 if isinstance(value, (dict, list)):
                     params[key] = json.dumps(value)
                 elif value is None:
                     params[key] = None
-                elif prop_type == 'bool':
+                elif prop_type == PROPERTY_TYPE_BOOL:
                     # bool 类型保持原生布尔值
                     if isinstance(value, bool):
                         params[key] = value
@@ -995,15 +1046,30 @@ class InstanceService:
 
         for key, value in data.items():
             if key in valid_fields and key not in system_fields_to_exclude:
+                prop_type = attr_type_map.get(key, '')
+
+                # 关联类型不落实例表列，跳过
+                if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                    continue
+
                 param_name = f'val_{param_idx}'
                 update_fields.append(f'"{key}" = :{param_name}')
-                prop_type = attr_type_map.get(key, '')
+                # objuser/organization 等 JSON 值类型：按 UI 端数据结构以 JSON 保存
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is None:
+                        params[param_name] = None
+                    elif isinstance(value, str):
+                        params[param_name] = value
+                    else:
+                        params[param_name] = json.dumps(value)
+                    param_idx += 1
+                    continue
 
                 if isinstance(value, (dict, list)):
                     params[param_name] = json.dumps(value)
                 elif value is None:
                     params[param_name] = None
-                elif prop_type == 'bool':
+                elif prop_type == PROPERTY_TYPE_BOOL:
                     # bool 类型保持原生布尔值
                     if isinstance(value, bool):
                         params[param_name] = value
