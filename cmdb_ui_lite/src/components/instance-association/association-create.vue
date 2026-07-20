@@ -526,13 +526,11 @@ export default {
           condition.bk_asst_inst_id = Number(this.instId)
         }
         
+        // 关键：当当前实例是目标端时，需要从源模型的分表查询
+        // 与原项目逻辑一致：bk_obj_id 始终指向关联的源模型
         const queryParams = {
-          bk_obj_id: isSource ? this.objId : undefined,
+          bk_obj_id: isSource ? this.objId : option.bk_obj_id,
           condition: condition
-        }
-        
-        if (!queryParams.bk_obj_id) {
-          delete queryParams.bk_obj_id
         }
         
         console.log('[AssociationCreate] Final query params:', JSON.stringify(queryParams, null, 2))
