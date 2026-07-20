@@ -20,6 +20,7 @@ class CCErrorCode:
     CCErrCommParamsInvalid = 1199006
     CCErrCommNotFound = 1199019
     CCErrCommInternalServerError = 1199999
+    CCErrTopoHasHostCheckFailed = 1101030
 
 
 class APIException(Exception):

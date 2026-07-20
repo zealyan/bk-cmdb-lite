@@ -1795,12 +1795,28 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
     elif bk_obj_id == 'set':
         if not bk_biz_id:
             raise ValueError('删除集群需要 bk_biz_id')
-        # 检查集群下是否有模块
-        module_count = query_one("""
-            SELECT COUNT(*) as count FROM cc_ModuleBase WHERE bk_set_id = :set_id
-        """, {'set_id': bk_inst_id})
-        if module_count and module_count['count'] > 0:
-            raise ValueError('集群下存在模块，无法删除')
+
+        # 复刻原项目：检查集群下的模块是否有关联主机
+        # 先获取集群下所有模块ID
+        module_ids = query_all("""
+            SELECT bk_module_id FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
+        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+
+        if module_ids:
+            module_id_list = [str(m['bk_module_id']) for m in module_ids]
+            placeholders = ','.join(module_id_list)
+            # 检查这些模块是否有主机关联（cc_ModuleHostConfig）
+            host_count_sql = f"""
+                SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig
+                WHERE bk_module_id IN ({placeholders})
+            """
+            host_count = query_one(host_count_sql)
+            if host_count and host_count['count'] > 0:
+                from app.utils.exceptions import APIException, CCErrorCode
+                raise APIException(
+                    '目标包含主机, 不允许删除',
+                    error_code=CCErrorCode.CCErrTopoHasHostCheckFailed
+                )
 
         executor.execute("""
             DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
@@ -1808,6 +1824,18 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
     elif bk_obj_id == 'module':
         if not bk_biz_id:
             raise ValueError('删除模块需要 bk_biz_id')
+
+        # 复刻原项目：检查模块是否有关联主机
+        host_count = query_one("""
+            SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_module_id = :module_id
+        """, {'module_id': bk_inst_id})
+        if host_count and host_count['count'] > 0:
+            from app.utils.exceptions import APIException, CCErrorCode
+            raise APIException(
+                '目标包含主机, 不允许删除',
+                error_code=CCErrorCode.CCErrTopoHasHostCheckFailed
+            )
+
         executor.execute("""
             DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id
         """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id})

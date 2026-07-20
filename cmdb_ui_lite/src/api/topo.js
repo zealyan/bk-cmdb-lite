@@ -257,6 +257,21 @@ export const topoAPI = {
   async createModule(bizId, setId, data) {
     const response = await http.post(`${API_BASE}/topo/set/${setId}/module`, data)
     return response
+  },
+
+  /**
+   * 删除拓扑节点（set/module）
+   * 复刻原项目：删除前会检查是否有主机关联，有则拒绝删除
+   * @param {string} objId 模型ID（set/module）
+   * @param {number} instId 实例ID
+   * @param {Object} params 额外参数（bk_biz_id 等）
+   * @returns {Promise<Object>}
+   */
+  async deleteNode(objId, instId, params = {}) {
+    const response = await http.delete(`${API_BASE}/topo/node/${objId}/${instId}`, {
+      params
+    })
+    return response
   }
 }
 

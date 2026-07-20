@@ -49,6 +49,7 @@
 <script>
 import CmdbDetails from '@/components/ui/details/CmdbDetails.vue'
 import { modelAPI } from '@/api/client'
+import { topoAPI } from '@/api/topo'
 import instanceAPI from '@/api/instance'
 import modelAttributeAPI from '@/api/modelAttribute'
 
@@ -309,7 +310,16 @@ export default {
           try {
             const objId = this.node.data.bk_obj_id
             const instId = this.node.data.bk_inst_id
-            await modelAPI.deleteInstances(objId, [instId])
+
+            if (objId === 'set' || objId === 'module') {
+              // 复刻原项目：删除 set/module 时检查是否有主机关联
+              // 后端 topoAPI.deleteNode 会拒绝删除包含主机的节点
+              const bizId = this.node.data.bk_biz_id
+              await topoAPI.deleteNode(objId, instId, { bk_biz_id: bizId })
+            } else {
+              // biz 等非拓扑节点使用通用删除接口
+              await modelAPI.deleteInstances(objId, [instId])
+            }
 
             this.$bkMessage({
               theme: 'success',
