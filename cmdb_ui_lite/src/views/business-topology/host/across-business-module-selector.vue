@@ -87,9 +87,10 @@
 
 <script>
   import { mapGetters } from 'vuex'
-  import { AuthRequestId, afterVerify } from '@/components/ui/auth/auth-queue.js'
-  import ModuleCheckedList from './module-checked-list.vue'
-  import { ONE_TO_ONE, MULTI_TO_ONE } from '@/dictionary/host-transfer-type.js'
+import { AuthRequestId, afterVerify } from '@/components/ui/auth/auth-queue.js'
+import ModuleCheckedList from './module-checked-list.vue'
+import { ONE_TO_ONE, MULTI_TO_ONE } from '@/dictionary/host-transfer-type.js'
+import { topoAPI } from '@/api/topo'
 
   export default {
     name: 'cmdb-across-business-module-selector',
@@ -192,8 +193,8 @@
       },
       async getFullAmountBusiness() {
         try {
-          const data = await this.$http.get('biz/simplify?sort=bk_biz_id', { requestId: this.request.list })
-          const availableBusiness = (data.info || []).filter(business => business.bk_biz_id !== this.bizId)
+          const data = await topoAPI.getBizList()
+          const availableBusiness = (data || []).filter(business => business.bk_biz_id !== this.bizId)
           this.generateRelation(availableBusiness)
           this.businessList = Object.freeze(availableBusiness)
         } catch (e) {

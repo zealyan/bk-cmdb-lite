@@ -78,6 +78,7 @@ import {
   MENU_BUSINESS_TOPOLOGY
 } from '@/dictionary/menu-symbol'
 import { modelAPI } from '@/api/client'
+import { topoAPI } from '@/api/topo'
 import { getCachedBizId } from '@/utils/biz-cache'
 
 export default {
@@ -184,7 +185,7 @@ export default {
       if (this.bizList.length > 0) return
       this.bizLoading = true
       try {
-        const res = await modelAPI.getBizList()
+        const res = await topoAPI.getBizList()
         if (res) {
           this.bizList = res.filter(b => b.default !== 1)
         }
