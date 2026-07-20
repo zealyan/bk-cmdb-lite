@@ -6900,3 +6900,1194 @@ ORDER BY bk_group_index ASC
 2026-07-20 02:39:50,454 INFO sqlalchemy.engine.Engine [cached since 1184s ago] ('host',)
 2026-07-20 02:39:50,454 INFO sqlalchemy.engine.Engine ROLLBACK
 127.0.0.1 - - [20/Jul/2026 02:39:50] "POST /find/objectunique/object/host HTTP/1.1" 200 -
+2026-07-20 02:44:14,595 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,596 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:44:14,598 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('admin',)
+2026-07-20 02:44:14,598 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,599 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjClassification ORDER BY id
+2026-07-20 02:44:14,599 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ()
+2026-07-20 02:44:14,599 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:44:14,601 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,601 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,601 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:14,601 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('bk_network',)
+2026-07-20 02:44:14,602 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,603 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,603 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:14,603 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('bk_host_manage',)
+2026-07-20 02:44:14,603 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,604 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,606 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:14,607 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('bk_loadbalance',)
+2026-07-20 02:44:14,608 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "POST /api/v1/classifications/find/classificationobject HTTP/1.1" 200 -
+2026-07-20 02:44:14,750 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,751 INFO sqlalchemy.engine.Engine 
+        SELECT bk_obj_id, target_obj_id, bk_obj_asst_id
+        FROM cc_ObjAsst
+        WHERE bk_asst_id = 'bk_mainline'
+          AND bk_supplier_account = ?
+        ORDER BY bk_obj_asst_id
+    
+2026-07-20 02:44:14,751 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0',)
+2026-07-20 02:44:14,751 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,753 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,753 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,754 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:44:14,754 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('admin',)
+2026-07-20 02:44:14,754 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,755 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, "default", bk_supplier_account
+        FROM cc_ApplicationBase
+        WHERE bk_supplier_account = ?
+        ORDER BY bk_biz_id
+    
+2026-07-20 02:44:14,755 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0',)
+2026-07-20 02:44:14,755 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:44:14,754 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, *
+        FROM cc_ApplicationBase
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:14,756 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (2, '0')
+2026-07-20 02:44:14,756 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "GET /api/v1/topo/biz HTTP/1.1" 200 -
+2026-07-20 02:44:14,757 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine 
+            SELECT bk_set_id, bk_set_name, "default", bk_parent_id, bk_biz_id, *
+            FROM cc_SetBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_set_id
+        
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 2)
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine 
+            SELECT bk_module_id, bk_module_name, "default", bk_parent_id, bk_set_id, bk_biz_id, *
+            FROM cc_ModuleBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_module_id
+        
+2026-07-20 02:44:14,758 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 2)
+2026-07-20 02:44:14,759 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,759 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,759 INFO sqlalchemy.engine.Engine 
+        SELECT bk_module_id, COUNT(DISTINCT bk_host_id) as host_count
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+        GROUP BY bk_module_id
+    
+2026-07-20 02:44:14,759 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (2, '0')
+2026-07-20 02:44:14,759 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "GET /api/v1/topo/instance/mainline?bk_biz_id=2&with_statistics=true HTTP/1.1" 200 -
+2026-07-20 02:44:14,977 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,978 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:14,980 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('host',)
+2026-07-20 02:44:14,981 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,980 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,983 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:14,983 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (2, 2, '0')
+2026-07-20 02:44:14,982 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,983 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:14,983 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('set',)
+2026-07-20 02:44:14,983 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,982 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:14,984 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('module',)
+2026-07-20 02:44:14,984 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "GET /api/v1/models/host/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:14,984 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "GET /api/v1/models/set/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:14,984 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,987 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:14,987 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (10, 2, '0')
+2026-07-20 02:44:14,987 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "GET /api/v1/models/module/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:14,988 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,989 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,989 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:14,989 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (11, 2, '0')
+2026-07-20 02:44:14,990 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,990 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,990 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:14,990 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (2, '0')
+2026-07-20 02:44:14,990 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:14] "POST /api/v1/topo/statistics HTTP/1.1" 200 -
+2026-07-20 02:44:14,998 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,998 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:44:14,998 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (2,)
+2026-07-20 02:44:14,998 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:14,999 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,000 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 10, 11)
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 100, 101, 110)
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,001 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:15,002 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 2)
+2026-07-20 02:44:15,002 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:15] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:15,064 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,064 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ? AND config_key = ?
+
+2026-07-20 02:44:15,065 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('admin', 'columns_host')
+2026-07-20 02:44:15,065 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:15] "GET /api/usercustom/model/host HTTP/1.1" 200 -
+2026-07-20 02:44:15,150 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,150 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:44:15,150 INFO sqlalchemy.engine.Engine [cached since 1500s ago] (2,)
+2026-07-20 02:44:15,150 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,150 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:44:15,151 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:44:15,152 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 10, 11)
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 100, 101, 110)
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:15,153 INFO sqlalchemy.engine.Engine [cached since 1500s ago] ('0', 2)
+2026-07-20 02:44:15,154 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:15] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:26,262 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:26,262 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:26,264 INFO sqlalchemy.engine.Engine [cached since 1511s ago] ('biz',)
+2026-07-20 02:44:26,264 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:26,264 INFO sqlalchemy.engine.Engine SELECT * FROM "cc_ApplicationBase" WHERE "bk_biz_id" = ?
+2026-07-20 02:44:26,265 INFO sqlalchemy.engine.Engine [generated in 0.00093s] (2,)
+2026-07-20 02:44:26,265 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:26,265 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:26,265 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:26,265 INFO sqlalchemy.engine.Engine [cached since 1511s ago] ('biz',)
+2026-07-20 02:44:26,266 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:26] "GET /api/v1/models/biz/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:26,267 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:26,268 INFO sqlalchemy.engine.Engine -- 获取模型的属性分组
+SELECT 
+    id,
+    bk_obj_id,
+    bk_group_id,
+    bk_group_name,
+    bk_group_index,
+    bk_isdefault,
+    is_collapse,
+    ispre,
+    creator,
+    modifier,
+    create_time,
+    last_time
+FROM cc_PropertyGroup
+WHERE bk_obj_id = ?
+  AND bk_supplier_account = '0'
+ORDER BY bk_group_index ASC
+
+2026-07-20 02:44:26,268 INFO sqlalchemy.engine.Engine [cached since 1460s ago] ('biz',)
+2026-07-20 02:44:26,267 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:26] "POST /find/biz HTTP/1.1" 200 -
+2026-07-20 02:44:26,269 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:26] "GET /api/v1/models/biz/property-groups HTTP/1.1" 200 -
+2026-07-20 02:44:27,826 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:27,827 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:27,828 INFO sqlalchemy.engine.Engine [cached since 1513s ago] ('biz',)
+2026-07-20 02:44:27,828 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:27,827 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:27,829 INFO sqlalchemy.engine.Engine -- 获取模型的属性分组
+SELECT 
+    id,
+    bk_obj_id,
+    bk_group_id,
+    bk_group_name,
+    bk_group_index,
+    bk_isdefault,
+    is_collapse,
+    ispre,
+    creator,
+    modifier,
+    create_time,
+    last_time
+FROM cc_PropertyGroup
+WHERE bk_obj_id = ?
+  AND bk_supplier_account = '0'
+ORDER BY bk_group_index ASC
+
+2026-07-20 02:44:27,829 INFO sqlalchemy.engine.Engine [cached since 1461s ago] ('biz',)
+2026-07-20 02:44:27,829 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:27] "GET /api/v1/models/biz/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:27,829 INFO sqlalchemy.engine.Engine SELECT * FROM "cc_ApplicationBase" WHERE "bk_biz_id" = ?
+2026-07-20 02:44:27,830 INFO sqlalchemy.engine.Engine [cached since 1.566s ago] (2,)
+2026-07-20 02:44:27,830 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:27] "GET /api/v1/models/biz/property-groups HTTP/1.1" 200 -
+2026-07-20 02:44:27,830 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:27,831 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:27,831 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:27,831 INFO sqlalchemy.engine.Engine [cached since 1513s ago] ('biz',)
+2026-07-20 02:44:27,831 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:27] "POST /find/biz HTTP/1.1" 200 -
+2026-07-20 02:44:36,407 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,407 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjClassification ORDER BY id
+2026-07-20 02:44:36,408 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ()
+2026-07-20 02:44:36,408 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,408 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,408 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:36,408 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('bk_network',)
+2026-07-20 02:44:36,408 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('bk_host_manage',)
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('bk_loadbalance',)
+2026-07-20 02:44:36,409 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "POST /api/v1/classifications/find/classificationobject HTTP/1.1" 200 -
+2026-07-20 02:44:36,460 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,460 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:44:36,461 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('admin',)
+2026-07-20 02:44:36,461 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:44:36,741 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,742 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:44:36,742 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('admin',)
+2026-07-20 02:44:36,742 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:44:36,768 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,768 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, "default", bk_supplier_account
+        FROM cc_ApplicationBase
+        WHERE bk_supplier_account = ?
+        ORDER BY bk_biz_id
+    
+2026-07-20 02:44:36,769 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0',)
+2026-07-20 02:44:36,769 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,770 INFO sqlalchemy.engine.Engine 
+        SELECT bk_obj_id, target_obj_id, bk_obj_asst_id
+        FROM cc_ObjAsst
+        WHERE bk_asst_id = 'bk_mainline'
+          AND bk_supplier_account = ?
+        ORDER BY bk_obj_asst_id
+    
+2026-07-20 02:44:36,770 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0',)
+2026-07-20 02:44:36,770 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "GET /api/v1/topo/biz HTTP/1.1" 200 -
+2026-07-20 02:44:36,770 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,770 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,771 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, *
+        FROM cc_ApplicationBase
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:36,771 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (2, '0')
+2026-07-20 02:44:36,771 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine 
+            SELECT bk_set_id, bk_set_name, "default", bk_parent_id, bk_biz_id, *
+            FROM cc_SetBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_set_id
+        
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 2)
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine 
+            SELECT bk_module_id, bk_module_name, "default", bk_parent_id, bk_set_id, bk_biz_id, *
+            FROM cc_ModuleBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_module_id
+        
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 2)
+2026-07-20 02:44:36,772 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,773 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,773 INFO sqlalchemy.engine.Engine 
+        SELECT bk_module_id, COUNT(DISTINCT bk_host_id) as host_count
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+        GROUP BY bk_module_id
+    
+2026-07-20 02:44:36,773 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (2, '0')
+2026-07-20 02:44:36,773 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "GET /api/v1/topo/instance/mainline?bk_biz_id=2&with_statistics=true HTTP/1.1" 200 -
+2026-07-20 02:44:36,958 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,958 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:36,960 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (2, 2, '0')
+2026-07-20 02:44:36,960 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,961 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:36,961 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('set',)
+2026-07-20 02:44:36,961 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,962 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,961 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,963 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:36,963 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('host',)
+2026-07-20 02:44:36,963 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,964 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:36,964 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('module',)
+2026-07-20 02:44:36,963 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "GET /api/v1/models/set/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:36,963 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:36,965 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (10, 2, '0')
+2026-07-20 02:44:36,966 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,966 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,966 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:36,967 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (11, 2, '0')
+2026-07-20 02:44:36,967 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "GET /api/v1/models/module/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:36,967 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:36,968 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:36,968 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:36,968 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (2, '0')
+2026-07-20 02:44:36,968 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "POST /api/v1/topo/statistics HTTP/1.1" 200 -
+2026-07-20 02:44:36,970 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:36] "GET /api/v1/models/host/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:37,027 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,027 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:44:37,027 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (2,)
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,028 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:37,029 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:44:37,029 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,029 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,029 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:37,029 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:44:37,029 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 10, 11)
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 100, 101, 110)
+2026-07-20 02:44:37,030 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,031 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,031 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:37,031 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 2)
+2026-07-20 02:44:37,031 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:37] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:37,051 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,051 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ? AND config_key = ?
+
+2026-07-20 02:44:37,051 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('admin', 'columns_host')
+2026-07-20 02:44:37,052 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:37] "GET /api/usercustom/model/host HTTP/1.1" 200 -
+2026-07-20 02:44:37,075 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,075 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:44:37,075 INFO sqlalchemy.engine.Engine [cached since 1522s ago] (2,)
+2026-07-20 02:44:37,075 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:37,076 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:44:37,077 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 10, 11)
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 100, 101, 110)
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:37,078 INFO sqlalchemy.engine.Engine [cached since 1522s ago] ('0', 2)
+2026-07-20 02:44:37,079 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:37] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:40,185 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,185 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_module_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:40,185 INFO sqlalchemy.engine.Engine [cached since 1491s ago] (100, '0')
+2026-07-20 02:44:40,185 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,185 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,185 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_module_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:40,186 INFO sqlalchemy.engine.Engine [cached since 1491s ago] (101, '0')
+2026-07-20 02:44:40,186 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:40] "POST /api/v1/topo/statistics HTTP/1.1" 200 -
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine 
+        SELECT bk_set_id
+        FROM cc_SetBase
+        WHERE bk_supplier_account = ? AND bk_biz_id = ? AND bk_set_id = ?
+    
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine [cached since 1491s ago] ('0', 2, 10)
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ? AND bk_set_id IN (?)
+        
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine [cached since 1491s ago] (2, 10)
+2026-07-20 02:44:40,202 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 1, 2, 3, 9, 10, 11, 12)
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:40,203 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 1, 2, 3, 9, 10, 11, 12, 10, 0)
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 2, 1, 2, 3, 9, 10, 11, 12)
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?)
+2026-07-20 02:44:40,204 INFO sqlalchemy.engine.Engine [cached since 1491s ago] ('0', 10)
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?)
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 100, 101)
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine [cached since 1525s ago] ('0', 2)
+2026-07-20 02:44:40,205 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:40] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:40,729 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,729 INFO sqlalchemy.engine.Engine 
+        SELECT bk_module_id
+        FROM cc_ModuleBase
+        WHERE bk_supplier_account = ? AND bk_biz_id = ? AND bk_module_id = ?
+    
+2026-07-20 02:44:40,730 INFO sqlalchemy.engine.Engine [cached since 1491s ago] ('0', 2, 100)
+2026-07-20 02:44:40,730 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,730 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,730 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ? AND bk_module_id IN (?)
+        
+2026-07-20 02:44:40,730 INFO sqlalchemy.engine.Engine [cached since 1491s ago] (2, 100)
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?)
+    
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 1, 2, 9, 10)
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,731 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:40,732 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 1, 2, 9, 10, 10, 0)
+2026-07-20 02:44:40,732 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,732 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,732 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?)
+    
+2026-07-20 02:44:40,732 INFO sqlalchemy.engine.Engine [cached since 1486s ago] ('0', 2, 1, 2, 9, 10)
+2026-07-20 02:44:40,733 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,733 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,733 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?)
+2026-07-20 02:44:40,733 INFO sqlalchemy.engine.Engine [cached since 1491s ago] ('0', 10)
+2026-07-20 02:44:40,733 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,733 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?)
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine [cached since 1491s ago] ('0', 100)
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine [cached since 1526s ago] ('0', 2)
+2026-07-20 02:44:40,734 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:40] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:49,697 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:49,697 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjClassification ORDER BY id
+2026-07-20 02:44:49,697 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ()
+2026-07-20 02:44:49,697 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('bk_network',)
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('bk_host_manage',)
+2026-07-20 02:44:49,698 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:49,699 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:49,699 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:44:49,699 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('bk_loadbalance',)
+2026-07-20 02:44:49,699 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:49] "POST /api/v1/classifications/find/classificationobject HTTP/1.1" 200 -
+2026-07-20 02:44:49,787 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:49,787 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:44:49,787 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('admin',)
+2026-07-20 02:44:49,788 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:49] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:44:50,144 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,144 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:44:50,144 INFO sqlalchemy.engine.Engine [cached since 1536s ago] ('admin',)
+2026-07-20 02:44:50,145 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,146 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, "default", bk_supplier_account
+        FROM cc_ApplicationBase
+        WHERE bk_supplier_account = ?
+        ORDER BY bk_biz_id
+    
+2026-07-20 02:44:50,147 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0',)
+2026-07-20 02:44:50,146 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:44:50,147 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,148 INFO sqlalchemy.engine.Engine 
+        SELECT bk_obj_id, target_obj_id, bk_obj_asst_id
+        FROM cc_ObjAsst
+        WHERE bk_asst_id = 'bk_mainline'
+          AND bk_supplier_account = ?
+        ORDER BY bk_obj_asst_id
+    
+2026-07-20 02:44:50,148 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0',)
+2026-07-20 02:44:50,148 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "GET /api/v1/topo/biz HTTP/1.1" 200 -
+2026-07-20 02:44:50,149 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,149 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,150 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, *
+        FROM cc_ApplicationBase
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:50,150 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (2, '0')
+2026-07-20 02:44:50,150 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,150 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,150 INFO sqlalchemy.engine.Engine 
+            SELECT bk_set_id, bk_set_name, "default", bk_parent_id, bk_biz_id, *
+            FROM cc_SetBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_set_id
+        
+2026-07-20 02:44:50,150 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 2)
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine 
+            SELECT bk_module_id, bk_module_name, "default", bk_parent_id, bk_set_id, bk_biz_id, *
+            FROM cc_ModuleBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_module_id
+        
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 2)
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine 
+        SELECT bk_module_id, COUNT(DISTINCT bk_host_id) as host_count
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+        GROUP BY bk_module_id
+    
+2026-07-20 02:44:50,151 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (2, '0')
+2026-07-20 02:44:50,152 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "GET /api/v1/topo/instance/mainline?bk_biz_id=2&with_statistics=true HTTP/1.1" 200 -
+2026-07-20 02:44:50,278 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,278 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('host',)
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (2, 2, '0')
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,279 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (10, 2, '0')
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (11, 2, '0')
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,281 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:44:50,281 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (2, '0')
+2026-07-20 02:44:50,280 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "GET /api/v1/models/host/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:50,281 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "POST /api/v1/topo/statistics HTTP/1.1" 200 -
+2026-07-20 02:44:50,287 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,287 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:50,287 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('set',)
+2026-07-20 02:44:50,287 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "GET /api/v1/models/set/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:50,292 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,292 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:44:50,292 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('module',)
+2026-07-20 02:44:50,293 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "GET /api/v1/models/module/attributes HTTP/1.1" 200 -
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (2,)
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:50,297 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:44:50,298 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,298 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,298 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:50,298 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:44:50,298 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 10, 11)
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,299 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 100, 101, 110)
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 2)
+2026-07-20 02:44:50,300 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:44:50,372 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,372 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ? AND config_key = ?
+
+2026-07-20 02:44:50,372 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('admin', 'columns_host')
+2026-07-20 02:44:50,372 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "GET /api/usercustom/model/host HTTP/1.1" 200 -
+2026-07-20 02:44:50,497 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,497 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:44:50,497 INFO sqlalchemy.engine.Engine [cached since 1535s ago] (2,)
+2026-07-20 02:44:50,497 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,497 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:44:50,498 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 10, 11)
+2026-07-20 02:44:50,499 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 100, 101, 110)
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine [cached since 1535s ago] ('0', 2)
+2026-07-20 02:44:50,500 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:44:50] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:45:55,567 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,568 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjClassification ORDER BY id
+2026-07-20 02:45:55,568 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ()
+2026-07-20 02:45:55,568 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,568 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('bk_network',)
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('bk_host_manage',)
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,569 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjDes WHERE bk_classification_id = ? ORDER BY obj_sort_number
+2026-07-20 02:45:55,570 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('bk_loadbalance',)
+2026-07-20 02:45:55,570 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:55] "POST /api/v1/classifications/find/classificationobject HTTP/1.1" 200 -
+2026-07-20 02:45:55,578 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,578 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:45:55,578 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('admin',)
+2026-07-20 02:45:55,579 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:55] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:45:55,848 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,848 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ?
+2026-07-20 02:45:55,848 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('admin',)
+2026-07-20 02:45:55,849 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:55] "POST /api/usercustom/user/search HTTP/1.1" 200 -
+2026-07-20 02:45:55,853 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,854 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, "default", bk_supplier_account
+        FROM cc_ApplicationBase
+        WHERE bk_supplier_account = ?
+        ORDER BY bk_biz_id
+    
+2026-07-20 02:45:55,855 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0',)
+2026-07-20 02:45:55,855 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,855 INFO sqlalchemy.engine.Engine 
+        SELECT bk_obj_id, target_obj_id, bk_obj_asst_id
+        FROM cc_ObjAsst
+        WHERE bk_asst_id = 'bk_mainline'
+          AND bk_supplier_account = ?
+        ORDER BY bk_obj_asst_id
+    
+2026-07-20 02:45:55,855 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0',)
+2026-07-20 02:45:55,855 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:55] "GET /api/v1/topo/biz HTTP/1.1" 200 -
+2026-07-20 02:45:55,856 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,857 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,857 INFO sqlalchemy.engine.Engine 
+        SELECT bk_biz_id, bk_biz_name, *
+        FROM cc_ApplicationBase
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:45:55,857 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (2, '0')
+2026-07-20 02:45:55,857 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,857 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,858 INFO sqlalchemy.engine.Engine 
+            SELECT bk_set_id, bk_set_name, "default", bk_parent_id, bk_biz_id, *
+            FROM cc_SetBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_set_id
+        
+2026-07-20 02:45:55,858 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 2)
+2026-07-20 02:45:55,858 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine 
+            SELECT bk_module_id, bk_module_name, "default", bk_parent_id, bk_set_id, bk_biz_id, *
+            FROM cc_ModuleBase
+            WHERE bk_supplier_account = ?
+              AND bk_biz_id = ?
+            ORDER BY "default" DESC, bk_module_id
+        
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 2)
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine 
+        SELECT bk_module_id, COUNT(DISTINCT bk_host_id) as host_count
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+        GROUP BY bk_module_id
+    
+2026-07-20 02:45:55,859 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (2, '0')
+2026-07-20 02:45:55,860 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:55] "GET /api/v1/topo/instance/mainline?bk_biz_id=2&with_statistics=true HTTP/1.1" 200 -
+2026-07-20 02:45:56,047 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,047 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:45:56,047 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (2, 2, '0')
+2026-07-20 02:45:56,047 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (10, 2, '0')
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_set_id = ?
+          AND bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (11, 2, '0')
+2026-07-20 02:45:56,048 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,049 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,049 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT bk_host_id) as cnt
+        FROM cc_ModuleHostConfig
+        WHERE bk_biz_id = ?
+          AND bk_supplier_account = ?
+    
+2026-07-20 02:45:56,049 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (2, '0')
+2026-07-20 02:45:56,049 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "POST /api/v1/topo/statistics HTTP/1.1" 200 -
+2026-07-20 02:45:56,057 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,057 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:45:56,057 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('host',)
+2026-07-20 02:45:56,058 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "GET /api/v1/models/host/attributes HTTP/1.1" 200 -
+2026-07-20 02:45:56,087 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,088 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:45:56,088 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('set',)
+2026-07-20 02:45:56,088 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "GET /api/v1/models/set/attributes HTTP/1.1" 200 -
+2026-07-20 02:45:56,092 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,092 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = ? ORDER BY bk_property_index
+2026-07-20 02:45:56,092 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('module',)
+2026-07-20 02:45:56,093 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "GET /api/v1/models/module/attributes HTTP/1.1" 200 -
+2026-07-20 02:45:56,112 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,112 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:45:56,112 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (2,)
+2026-07-20 02:45:56,112 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,112 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,112 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,113 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 10, 11)
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,114 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:45:56,115 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 100, 101, 110)
+2026-07-20 02:45:56,115 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,115 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,115 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:45:56,115 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 2)
+2026-07-20 02:45:56,115 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -
+2026-07-20 02:45:56,161 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,161 INFO sqlalchemy.engine.Engine SELECT config_key, config_value FROM user_custom WHERE user_name = ? AND config_key = ?
+
+2026-07-20 02:45:56,161 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('admin', 'columns_host')
+2026-07-20 02:45:56,161 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "GET /api/usercustom/model/host HTTP/1.1" 200 -
+2026-07-20 02:45:56,272 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,272 INFO sqlalchemy.engine.Engine 
+            SELECT DISTINCT bk_host_id
+            FROM cc_ModuleHostConfig
+            WHERE bk_biz_id = ?
+        
+2026-07-20 02:45:56,272 INFO sqlalchemy.engine.Engine [cached since 1601s ago] (2,)
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine 
+        SELECT COUNT(DISTINCT h.bk_host_id) as cnt
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21)
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,273 INFO sqlalchemy.engine.Engine 
+        SELECT DISTINCT h.*
+        FROM cc_HostBase h
+        WHERE h.bk_supplier_account = ? AND h.bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ORDER BY h.bk_host_id ASC
+        LIMIT ? OFFSET ?
+    
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 21, 10, 0)
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine 
+        SELECT bk_host_id, bk_set_id, bk_module_id
+        FROM cc_ModuleHostConfig
+        WHERE bk_supplier_account = ?
+          AND bk_biz_id = ?
+          AND bk_host_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 2, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14)
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,274 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine SELECT * FROM cc_SetBase WHERE bk_supplier_account = ? AND bk_set_id IN (?, ?)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 10, 11)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine SELECT * FROM cc_ModuleBase WHERE bk_supplier_account = ? AND bk_module_id IN (?, ?, ?)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 100, 101, 110)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine ROLLBACK
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine SELECT bk_biz_name FROM cc_ApplicationBase WHERE bk_supplier_account = ? AND bk_biz_id = ?
+2026-07-20 02:45:56,275 INFO sqlalchemy.engine.Engine [cached since 1601s ago] ('0', 2)
+2026-07-20 02:45:56,276 INFO sqlalchemy.engine.Engine ROLLBACK
+127.0.0.1 - - [20/Jul/2026 02:45:56] "POST /api/v1/topo/hosts/search HTTP/1.1" 200 -

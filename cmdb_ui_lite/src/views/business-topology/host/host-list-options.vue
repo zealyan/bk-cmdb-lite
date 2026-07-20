@@ -2,7 +2,7 @@
   <div class="options-layout">
     <!-- 左侧操作按钮区 -->
     <div class="options options-left">
-      <bk-button class="option"
+      <bk-button class="option" theme="primary"
         :disabled="!hasSelection"
         @click="handleMultipleEdit">
         编辑
