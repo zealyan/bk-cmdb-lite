@@ -1043,16 +1043,61 @@ class InstanceService:
         if not ids:
             return 0
         
-        # 先删除关联表中的记录（使用命名参数）
+        # 先删除关联表中的记录（按模型分表，与原项目一致）
+        # 1. 从该模型的分表删除作为源实例的关联
+        # 2. 从该模型的分表删除作为目标实例的关联
+        # 3. 从关联的对端模型分表清理冗余记录
         id_params = {f'id_{idx}': inst_id for idx, inst_id in enumerate(ids)}
         id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
         
-        delete_assoc_src_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
-        params_src = {'model_id': model_id, **id_params}
-        execute(delete_assoc_src_sql, params_src)
+        # 获取该模型的实例关联分表名
+        from app.service.association_service import get_inst_asst_table_name
+        model_asst_table = get_inst_asst_table_name(model_id)
         
-        delete_assoc_dest_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
-        execute(delete_assoc_dest_sql, params_src)
+        # 先查出涉及的对端模型（用于清理对端分表冗余记录）
+        try:
+            related_models_sql = f'''
+                SELECT DISTINCT bk_asst_obj_id FROM "{model_asst_table}"
+                WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})
+            '''
+            related_dest_models = query_all(related_models_sql, {'model_id': model_id, **id_params})
+            
+            related_src_models_sql = f'''
+                SELECT DISTINCT bk_obj_id FROM "{model_asst_table}"
+                WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})
+            '''
+            related_src_models = query_all(related_src_models_sql, {'model_id': model_id, **id_params})
+        except Exception:
+            related_dest_models = []
+            related_src_models = []
+        
+        # 从该模型分表删除（源 + 目标）
+        delete_src_sql = f'DELETE FROM "{model_asst_table}" WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
+        execute(delete_src_sql, {'model_id': model_id, **id_params})
+        
+        delete_dest_sql = f'DELETE FROM "{model_asst_table}" WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
+        execute(delete_dest_sql, {'model_id': model_id, **id_params})
+        
+        # 从对端模型分表清理冗余记录
+        for item in related_dest_models:
+            dest_model_id = item.get('bk_asst_obj_id')
+            if dest_model_id and dest_model_id != model_id:
+                dest_table = get_inst_asst_table_name(dest_model_id)
+                try:
+                    sql = f'DELETE FROM "{dest_table}" WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
+                    execute(sql, {'model_id': model_id, **id_params})
+                except Exception:
+                    pass
+        
+        for item in related_src_models:
+            src_model_id = item.get('bk_obj_id')
+            if src_model_id and src_model_id != model_id:
+                src_table = get_inst_asst_table_name(src_model_id)
+                try:
+                    sql = f'DELETE FROM "{src_table}" WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
+                    execute(sql, {'model_id': model_id, **id_params})
+                except Exception:
+                    pass
         
         # 删除实例表中的记录
         id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])

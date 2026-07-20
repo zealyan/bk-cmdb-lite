@@ -905,6 +905,8 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
+            # 兼容性单表（已废弃，实际使用按模型分表 cc_InstAsst_0_pub_{obj_id}）
+            # 保留此表用于旧版本数据迁移和历史兼容，新业务逻辑请勿使用
             "cc_InstAsst_0_pub": """
                 CREATE TABLE IF NOT EXISTS cc_InstAsst_0_pub (
                     _id VARCHAR,
@@ -918,8 +920,8 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
-            # 实例关联分表模板（动态创建）
-            # 格式: cc_InstAsst_0_pub_{obj_id}，与原项目保持一致
+            # 实例关联分表（动态创建，格式: cc_InstAsst_0_pub_{obj_id}，与原项目保持一致）
+            # 详见 create_instance_association_table() 方法
             "cc_ObjectUnique": """
                 CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
                     _id VARCHAR,

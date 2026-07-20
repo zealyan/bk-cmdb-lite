@@ -1,1 +1,11 @@
-DELETE FROM cc_InstAsst_0_pub WHERE id = :association_id
+-- 废弃：此 SQL 文件不再被 association_service.py 加载使用
+-- 实例关联表已按模型分表，表名格式：cc_InstAsst_0_pub_{obj_id}
+-- 实际删除逻辑见 app/service/association_service.py 中的 delete_instance_association
+-- 删除时需从源模型和目标模型两个分表清理（与原项目一致）
+-- 该文件保留仅作历史参考，请勿通过文件路径加载
+--
+-- 历史删除（单表，已废弃）：
+-- DELETE FROM cc_InstAsst_0_pub WHERE id = :association_id
+--
+-- 当前删除（分表，需指定 obj_id 确定分表）：
+-- DELETE FROM "cc_InstAsst_0_pub_{obj_id}" WHERE id = :association_id
