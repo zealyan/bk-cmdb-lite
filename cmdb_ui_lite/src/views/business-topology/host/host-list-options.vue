@@ -2,13 +2,6 @@
   <div class="options-layout">
     <!-- 左侧操作按钮区 -->
     <div class="options options-left">
-      <!-- 新增按钮暂时注释掉，待开发 -->
-      <!-- <bk-button class="option mr10" theme="primary"
-        :disabled="!isNormalModuleNode"
-        @click="handleAddHost">
-        新增
-      </bk-button> -->
-
       <bk-button class="option"
         :disabled="!hasSelection"
         @click="handleMultipleEdit">
@@ -39,26 +32,6 @@
           </li>
         </ul>
       </bk-dropdown-menu>
-
-      <!-- 更多按钮暂时注释掉，待开发 -->
-      <!-- <bk-dropdown-menu class="option ml10" trigger="click"
-        font-size="medium"
-        :disabled="!hasSelection"
-        @show="isMoreMenuOpen = true"
-        @hide="isMoreMenuOpen = false">
-        <bk-button slot="dropdown-trigger">
-          <span>更多</span>
-          <i :class="['dropdown-icon bk-icon icon-angle-down',{ 'open': isMoreMenuOpen }]"></i>
-        </bk-button>
-        <ul class="bk-dropdown-list" slot="dropdown-content">
-          <li :class="['bk-dropdown-item', { disabled: !hasSelection }]" @click="handleExport">
-            导出选中
-          </li>
-          <li :class="['bk-dropdown-item', { disabled: !count }]" @click="handleBatchExport">
-            导出全部
-          </li>
-        </ul>
-      </bk-dropdown-menu> -->
 
       <bk-button class="option ml10 refresh-btn" icon="bk-icon icon-refresh"
         @click="handleRefresh">
@@ -188,6 +161,10 @@ export default {
 .options {
   display: flex;
   align-items: center;
+
+  &.options-left {
+    justify-content: flex-start;
+  }
 
   &.options-right {
     flex: 1;
