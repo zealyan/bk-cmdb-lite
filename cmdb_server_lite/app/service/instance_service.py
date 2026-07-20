@@ -26,6 +26,11 @@ class InstanceService:
     }
     
     @staticmethod
+    def list_models():
+        """获取所有模型列表"""
+        return query_all("SELECT * FROM cc_ObjDes ORDER BY obj_sort_number")
+    
+    @staticmethod
     def _get_table_name(model_id):
         """获取实例表名（内置模型使用专用表，自定义模型使用 ObjectBase 分表）"""
         # 检查是否为内置模型

@@ -55,7 +55,8 @@ def find_object_association():
 def get_instance_associations(instance_id):
     """获取实例的关联关系"""
     try:
-        associations = AssociationService.get_instance_associations(instance_id)
+        obj_id = request.args.get('obj_id')
+        associations = AssociationService.get_instance_associations(instance_id, obj_id)
         return jsonify({'associations': associations})
     except Exception as e:
         logger.error(f"Error getting instance associations: {e}")
@@ -80,7 +81,7 @@ def create_instassociation():
 def delete_instassociation(obj_id, inst_asst_id):
     """删除实例关联"""
     try:
-        result = AssociationService.delete_instance_association(inst_asst_id)
+        result = AssociationService.delete_instance_association(inst_asst_id, obj_id)
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error deleting instance association: {e}")

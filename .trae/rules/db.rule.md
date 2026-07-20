@@ -214,9 +214,23 @@ SQLALCHEMY_ECHO = False           # 是否输出 SQL 日志
 
 ---
 
-### 3.5 cc_InstAsst_0_pub - 实例关联关系表
+### 3.5 cc_InstAsst_0_pub_{obj_id} - 实例关联关系分表
 
-**作用**：存储实例之间的具体关联数据
+**作用**：存储实例之间的具体关联数据，按模型分表（与原项目保持一致）
+
+**表命名**：`cc_InstAsst_{supplier}_pub_{bk_obj_id}`
+- `{supplier}` - 供应商（默认 0）
+- `{bk_obj_id}` - 模型ID（来自 cc_ObjDes）
+
+**示例**：
+- `cc_InstAsst_0_pub_bk_slb` - SLB模型的实例关联表
+- `cc_InstAsst_0_pub_bk_switch` - 交换机模型的实例关联表
+- `cc_InstAsst_0_pub_host` - 主机模型的实例关联表
+
+**分表规则**：
+- 每个模型对应一个实例关联分表
+- 创建实例关联时，同时插入到源模型和目标模型两个分表（与原项目一致）
+- 查询实例关联时，从对应模型的分表查询
 
 **表结构**：
 

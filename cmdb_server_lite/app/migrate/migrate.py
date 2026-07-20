@@ -918,6 +918,8 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
+            # 实例关联分表模板（动态创建）
+            # 格式: cc_InstAsst_0_pub_{obj_id}，与原项目保持一致
             "cc_ObjectUnique": """
                 CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
                     _id VARCHAR,
@@ -1260,7 +1262,7 @@ class DatabaseMigrator:
         logger.info(f"总共迁移 {total_attrs} 个属性")
     
     def create_instance_table(self, model_id):
-        """为模型创建实例表"""
+        """为模型创建实例表和实例关联分表"""
         table_name = f"cc_ObjectBase_0_pub_{model_id}"
         
         # 先查询模型的属性定义
@@ -1298,6 +1300,33 @@ class DatabaseMigrator:
         create_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({", ".join(columns)})'
         self.execute_sql(create_sql)
         logger.info(f"创建实例表: {table_name}")
+        
+        # 同时创建实例关联分表（与原项目保持一致）
+        self.create_instance_association_table(model_id)
+    
+    def create_instance_association_table(self, model_id):
+        """
+        为模型创建实例关联分表
+        格式: cc_InstAsst_0_pub_{obj_id}
+        与原项目 tablenames.go GetObjectInstAsstTableName 一致
+        """
+        asst_table_name = f"cc_InstAsst_0_pub_{model_id}"
+        
+        create_sql = f"""
+            CREATE TABLE IF NOT EXISTS "{asst_table_name}" (
+                _id VARCHAR,
+                id INTEGER PRIMARY KEY,
+                bk_obj_id VARCHAR NOT NULL,
+                bk_inst_id INTEGER NOT NULL,
+                bk_asst_obj_id VARCHAR NOT NULL,
+                bk_asst_inst_id INTEGER NOT NULL,
+                bk_obj_asst_id VARCHAR NOT NULL,
+                bk_relation_type_id VARCHAR NOT NULL,
+                bk_supplier_account VARCHAR DEFAULT '0'
+            )
+        """
+        self.execute_sql(create_sql)
+        logger.info(f"创建实例关联分表: {asst_table_name}")
     
     def get_sql_type(self, prop_type):
         """获取属性类型对应的 SQL 类型"""
@@ -1583,7 +1612,10 @@ class DatabaseMigrator:
         
         logger.info(f"迁移了 {len(obj_associations)} 个对象关联")
 
-        # 3. 迁移实例关联数据
+        # 3. 创建所有模型的实例关联分表（在迁移数据前）
+        self._ensure_all_inst_asst_tables_exist()
+
+        # 4. 迁移实例关联数据（按模型分表，与原项目保持一致）
         inst_assoc_file = ui_project / "models" / "associations" / "index.json"
         if inst_assoc_file.exists():
             with open(inst_assoc_file, 'r', encoding='utf-8') as f:
@@ -1602,22 +1634,19 @@ class DatabaseMigrator:
                 # bk_obj_asst_id 格式: {源}_{类型}_{目标}
                 bk_obj_asst_id = f"{bk_obj_id}_{bk_relation_type_id}_{bk_asst_obj_id}"
                 
-                self.execute_sql("""
-                    INSERT OR REPLACE INTO cc_InstAsst_0_pub 
-                    (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
-                     bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
-                    VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
-                            :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
-                """, {
+                assoc_data = {
                     "id": assoc.get("id"),
                     "bk_obj_id": bk_obj_id,
                     "bk_inst_id": assoc.get("bk_inst_id"),
                     "bk_asst_obj_id": bk_asst_obj_id,
                     "bk_asst_inst_id": assoc.get("bk_asst_inst_id"),
                     "bk_obj_asst_id": bk_obj_asst_id,
-                    "bk_relation_type_id": assoc.get("bk_relation_type_id"),
+                    "bk_relation_type_id": bk_relation_type_id,
                     "bk_supplier_account": "0"
-                })
+                }
+                
+                # 按源模型和目标模型分表插入（与原项目一致）
+                self._insert_instance_association_to_sharding_tables(assoc_data)
             
             logger.info(f"迁移了 {len(associations)} 个实例关联")
         else:
@@ -1649,15 +1678,55 @@ class DatabaseMigrator:
         ]
         
         for assoc in mock_host_slb_associations:
-            self.execute_sql("""
-                INSERT OR REPLACE INTO cc_InstAsst_0_pub 
-                (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
-                 bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
-                VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
-                        :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
-            """, assoc)
+            self._insert_instance_association_to_sharding_tables(assoc)
         
         logger.info(f"添加了 {len(mock_host_slb_associations)} 个模拟主机-SLB实例关联")
+
+    def _insert_instance_association_to_sharding_tables(self, assoc_data):
+        """
+        将实例关联数据插入到源模型和目标模型的分表
+        与原项目 instance.go save() 方法保持一致
+        """
+        bk_obj_id = assoc_data.get("bk_obj_id")
+        bk_asst_obj_id = assoc_data.get("bk_asst_obj_id")
+        
+        # 插入到源模型的关联分表
+        src_table = f"cc_InstAsst_0_pub_{bk_obj_id}"
+        self._insert_association_to_table(src_table, assoc_data)
+        
+        # 如果源模型和目标模型不同，同时插入到目标模型的关联分表
+        if bk_obj_id != bk_asst_obj_id:
+            dst_table = f"cc_InstAsst_0_pub_{bk_asst_obj_id}"
+            self._insert_association_to_table(dst_table, assoc_data)
+
+    def _insert_association_to_table(self, table_name, assoc_data):
+        """插入关联数据到指定分表"""
+        self.execute_sql(f"""
+            INSERT OR REPLACE INTO "{table_name}" 
+            (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
+             bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
+            VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
+                    :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
+        """, assoc_data)
+
+    def _ensure_all_inst_asst_tables_exist(self):
+        """
+        确保所有模型的实例关联分表都存在
+        包括 cc_ObjDes 中的所有模型 + host 模型
+        """
+        # 查询所有模型
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        model_ids = [m['bk_obj_id'] for m in models]
+        
+        # 确保包含 host 模型（即使不在 cc_ObjDes 中）
+        if 'host' not in model_ids:
+            model_ids.append('host')
+        
+        # 为每个模型创建实例关联分表
+        for model_id in model_ids:
+            self.create_instance_association_table(model_id)
+        
+        logger.info(f"创建了 {len(model_ids)} 个实例关联分表")
 
     def migrate(self):
         """执行完整的迁移"""

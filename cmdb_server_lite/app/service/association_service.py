@@ -2,6 +2,16 @@ from app.db.executor import query_all, query_one, execute
 from app.utils.tools import generate_id
 from datetime import datetime
 
+
+def get_inst_asst_table_name(obj_id):
+    """
+    获取实例关联分表名
+    格式: cc_InstAsst_0_pub_{obj_id}
+    与原项目 tablenames.go GetObjectInstAsstTableName 一致
+    """
+    return f"cc_InstAsst_0_pub_{obj_id}"
+
+
 class AssociationService:
     
     @staticmethod
@@ -82,18 +92,54 @@ class AssociationService:
         return query_all(sql, {'model_id': model_id})
     
     @staticmethod
-    def get_instance_associations(instance_id):
-        """获取实例的关联关系"""
-        sql = """
-            SELECT * FROM cc_InstAsst_0_pub 
-            WHERE bk_inst_id = :instance_id OR bk_asst_inst_id = :instance_id
+    def get_instance_associations(instance_id, obj_id=None):
         """
-        return query_all(sql, {'instance_id': instance_id})
+        获取实例的关联关系
+        如果提供 obj_id，从该模型的分表查询，效率更高
+        否则查询所有模型分表（较慢，不推荐）
+        """
+        if obj_id:
+            # 从指定模型的分表查询
+            table_name = get_inst_asst_table_name(obj_id)
+            sql = f"""
+                SELECT * FROM "{table_name}" 
+                WHERE bk_inst_id = :instance_id OR bk_asst_inst_id = :instance_id
+            """
+            return query_all(sql, {'instance_id': instance_id})
+        else:
+            # 兼容旧逻辑：查询所有分表
+            # 先获取所有模型，然后逐个查询分表
+            from app.service.instance_service import InstanceService
+            models = InstanceService.list_models()
+            all_associations = []
+            for model in models:
+                model_id = model.get('bk_obj_id')
+                table_name = get_inst_asst_table_name(model_id)
+                try:
+                    sql = f"""
+                        SELECT * FROM "{table_name}" 
+                        WHERE bk_inst_id = :instance_id OR bk_asst_inst_id = :instance_id
+                    """
+                    results = query_all(sql, {'instance_id': instance_id})
+                    all_associations.extend(results)
+                except Exception:
+                    # 分表可能不存在，跳过
+                    pass
+            # 去重（同一关联可能存在于多个分表）
+            seen_ids = set()
+            unique_associations = []
+            for assoc in all_associations:
+                assoc_id = assoc.get('id')
+                if assoc_id and assoc_id not in seen_ids:
+                    seen_ids.add(assoc_id)
+                    unique_associations.append(assoc)
+            return unique_associations
     
     @staticmethod
-    def _count_instance_association(obj_asst_id, **conditions):
-        """统计实例关联数量"""
-        sql = "SELECT COUNT(*) as count FROM cc_InstAsst_0_pub WHERE bk_obj_asst_id = :bk_obj_asst_id"
+    def _count_instance_association(obj_asst_id, obj_id, **conditions):
+        """统计实例关联数量（指定模型的分表）"""
+        table_name = get_inst_asst_table_name(obj_id)
+        sql = f'SELECT COUNT(*) as count FROM "{table_name}" WHERE bk_obj_asst_id = :bk_obj_asst_id'
         params = {'bk_obj_asst_id': obj_asst_id}
         
         if 'bk_inst_id' in conditions:
@@ -137,10 +183,10 @@ class AssociationService:
         
         if mapping == '1:1':
             inst_count = AssociationService._count_instance_association(
-                obj_asst_id, bk_inst_id=inst_id
+                obj_asst_id, object_id, bk_inst_id=inst_id
             )
             asst_inst_count = AssociationService._count_instance_association(
-                obj_asst_id, bk_asst_inst_id=asst_inst_id
+                obj_asst_id, object_id, bk_asst_inst_id=asst_inst_id
             )
             
             if inst_count > 0:
@@ -150,7 +196,7 @@ class AssociationService:
         
         elif mapping == '1:n':
             asst_inst_count = AssociationService._count_instance_association(
-                obj_asst_id, bk_asst_inst_id=asst_inst_id
+                obj_asst_id, object_id, bk_asst_inst_id=asst_inst_id
             )
             
             if asst_inst_count > 0:
@@ -158,7 +204,7 @@ class AssociationService:
         
         elif mapping == 'n:1':
             inst_count = AssociationService._count_instance_association(
-                obj_asst_id, bk_inst_id=inst_id
+                obj_asst_id, object_id, bk_inst_id=inst_id
             )
             
             if inst_count > 0:
@@ -169,10 +215,12 @@ class AssociationService:
     
     @staticmethod
     def create_instance_association(data):
-        """创建实例关联"""
+        """创建实例关联（按模型分表，与原项目一致）"""
         obj_asst_id = data.get('bk_obj_asst_id')
         inst_id = data.get('bk_inst_id')
         asst_inst_id = data.get('bk_asst_inst_id')
+        bk_obj_id = data.get('bk_obj_id')
+        bk_asst_obj_id = data.get('bk_asst_obj_id')
         
         if obj_asst_id and inst_id and asst_inst_id:
             AssociationService.check_association_mapping(obj_asst_id, inst_id, asst_inst_id)
@@ -181,34 +229,58 @@ class AssociationService:
         data['_id'] = str(data['id'])
         data.setdefault('bk_supplier_account', '0')
         
-        sql = """
-            INSERT INTO cc_InstAsst_0_pub
+        # 按源模型和目标模型分表插入（与原项目一致）
+        src_table = get_inst_asst_table_name(bk_obj_id)
+        sql = f"""
+            INSERT INTO "{src_table}"
             (_id, id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
             VALUES (:_id, :id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
         """
         execute(sql, data)
         
+        # 如果源模型和目标模型不同，同时插入到目标模型的关联分表
+        if bk_obj_id != bk_asst_obj_id:
+            dst_table = get_inst_asst_table_name(bk_asst_obj_id)
+            execute(sql.replace(f'"{src_table}"', f'"{dst_table}"'), data)
+        
         return {'id': data['id'], 'result': True}
     
     @staticmethod
-    def delete_instance_association(association_id):
-        """删除实例关联"""
-        sql = "DELETE FROM cc_InstAsst_0_pub WHERE id = :association_id"
+    def delete_instance_association(association_id, obj_id=None):
+        """
+        删除实例关联
+        需要指定 obj_id 以确定删除哪个分表的数据
+        """
+        if not obj_id:
+            # 尝试从所有模型分表删除
+            from app.service.instance_service import InstanceService
+            models = InstanceService.list_models()
+            deleted_count = 0
+            for model in models:
+                model_id = model.get('bk_obj_id')
+                table_name = get_inst_asst_table_name(model_id)
+                try:
+                    sql = f'DELETE FROM "{table_name}" WHERE id = :association_id'
+                    execute(sql, {'association_id': association_id})
+                    deleted_count += 1
+                except Exception:
+                    pass
+            # 注意：由于同一关联存在于源和目标两个分表，最多删除2条
+            return {'result': True, 'deleted': deleted_count}
+        
+        # 删除源模型分表
+        table_name = get_inst_asst_table_name(obj_id)
+        sql = f'DELETE FROM "{table_name}" WHERE id = :association_id'
         execute(sql, {'association_id': association_id})
+        
         return {'result': True, 'deleted': 1}
     
     @staticmethod
     def find_instance_associations(bk_obj_id, conditions=None):
-        """查询实例关联"""
-        # 有效的字段列表
-        valid_fields = [
-            '_id', 'id', 'bk_obj_id', 'bk_inst_id', 
-            'bk_asst_obj_id', 'bk_asst_inst_id', 
-            'bk_obj_asst_id', 'bk_relation_type_id', 
-            'bk_supplier_account'
-        ]
+        """查询实例关联（从指定模型的分表查询）"""
+        table_name = get_inst_asst_table_name(bk_obj_id)
         
-        base_sql = """
+        base_sql = f"""
             SELECT ia.*, 
                    oa.bk_obj_asst_name,
                    oa.bk_obj_asst_id,
@@ -217,12 +289,19 @@ class AssociationService:
                    oa.target_obj_name,
                    oa.mapping,
                    oa.on_delete
-            FROM cc_InstAsst_0_pub ia
+            FROM "{table_name}" ia
             JOIN cc_ObjAsst oa ON ia.bk_obj_asst_id = oa.bk_obj_asst_id
             JOIN cc_AsstDes ad ON ia.bk_relation_type_id = ad.bk_asst_id
             WHERE ia.bk_obj_id = :bk_obj_id
         """
         params = {'bk_obj_id': bk_obj_id}
+        
+        valid_fields = [
+            '_id', 'id', 'bk_obj_id', 'bk_inst_id', 
+            'bk_asst_obj_id', 'bk_asst_inst_id', 
+            'bk_obj_asst_id', 'bk_relation_type_id', 
+            'bk_supplier_account'
+        ]
         
         if conditions and isinstance(conditions, dict):
             for field, value in conditions.items():
@@ -258,21 +337,48 @@ class AssociationService:
     
     @staticmethod
     def get_related_instances(instance_id, model_id=None):
-        """获取实例的相关实例"""
-        sql = """
-            SELECT a.*, ad.bk_asst_name as bk_relation_type_name, 
-                   oa.bk_obj_id as bk_src_model, oa.target_obj_id as bk_dst_model,
-                   oa.mapping, oa.on_delete
-            FROM cc_InstAsst_0_pub a
-            JOIN cc_AsstDes ad ON a.bk_relation_type_id = ad.bk_asst_id
-            JOIN cc_ObjAsst oa ON a.bk_obj_asst_id = oa.bk_obj_asst_id
-            WHERE a.bk_inst_id = :instance_id OR a.bk_asst_inst_id = :instance_id
-        """
-        
-        params = {'instance_id': instance_id}
-        
+        """获取实例的相关实例（从指定模型的分表查询）"""
         if model_id:
-            sql += " AND a.bk_obj_id = :model_id"
-            params['model_id'] = model_id
-        
-        return query_all(sql, params)
+            table_name = get_inst_asst_table_name(model_id)
+            sql = f"""
+                SELECT a.*, ad.bk_asst_name as bk_relation_type_name, 
+                       oa.bk_obj_id as bk_src_model, oa.target_obj_id as bk_dst_model,
+                       oa.mapping, oa.on_delete
+                FROM "{table_name}" a
+                JOIN cc_AsstDes ad ON a.bk_relation_type_id = ad.bk_asst_id
+                JOIN cc_ObjAsst oa ON a.bk_obj_asst_id = oa.bk_obj_asst_id
+                WHERE a.bk_inst_id = :instance_id OR a.bk_asst_inst_id = :instance_id
+            """
+            params = {'instance_id': instance_id}
+            return query_all(sql, params)
+        else:
+            # 查询所有模型分表
+            from app.service.instance_service import InstanceService
+            models = InstanceService.list_models()
+            all_results = []
+            for model in models:
+                m_id = model.get('bk_obj_id')
+                table_name = get_inst_asst_table_name(m_id)
+                try:
+                    sql = f"""
+                        SELECT a.*, ad.bk_asst_name as bk_relation_type_name, 
+                               oa.bk_obj_id as bk_src_model, oa.target_obj_id as bk_dst_model,
+                               oa.mapping, oa.on_delete
+                        FROM "{table_name}" a
+                        JOIN cc_AsstDes ad ON a.bk_relation_type_id = ad.bk_asst_id
+                        JOIN cc_ObjAsst oa ON a.bk_obj_asst_id = oa.bk_obj_asst_id
+                        WHERE a.bk_inst_id = :instance_id OR a.bk_asst_inst_id = :instance_id
+                    """
+                    results = query_all(sql, {'instance_id': instance_id})
+                    all_results.extend(results)
+                except Exception:
+                    pass
+            # 去重
+            seen_ids = set()
+            unique_results = []
+            for r in all_results:
+                r_id = r.get('id')
+                if r_id and r_id not in seen_ids:
+                    seen_ids.add(r_id)
+                    unique_results.append(r)
+            return unique_results
