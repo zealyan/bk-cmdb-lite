@@ -39,18 +39,26 @@ def create_app(config=None):
     # 注册所有 v1 版本路由
     register_v1_routes(app)
     
-    # 全局错误处理
+    # 全局错误处理 - 统一返回 BaseResp 格式，与原项目一致
     @app.errorhandler(APIException)
     def handle_api_exception(e):
         return jsonify(e.to_dict()), e.status_code
     
     @app.errorhandler(404)
     def handle_not_found(e):
-        return jsonify({'detail': 'Not found'}), 404
+        return jsonify({
+            'result': False,
+            'bk_error_code': 1199019,
+            'bk_error_msg': '请求路径不存在'
+        }), 200
     
     @app.errorhandler(500)
     def handle_server_error(e):
-        return jsonify({'detail': 'Internal server error'}), 500
+        return jsonify({
+            'result': False,
+            'bk_error_code': 1199999,
+            'bk_error_msg': '服务器内部错误'
+        }), 200
     
     # 根路径
     @app.route('/')

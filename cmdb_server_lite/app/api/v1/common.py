@@ -10,6 +10,25 @@ from app.utils.logger import get_logger
 logger = get_logger('api.common')
 common_bp = Blueprint('common', __name__)
 
+def error_response(message, error_code=1199999):
+    """统一错误响应格式 - 与原项目 BaseResp 一致"""
+    return jsonify({
+        'result': False,
+        'bk_error_code': error_code,
+        'bk_error_msg': message
+    }), 200
+
+def success_response(data=None, message=''):
+    """统一成功响应格式 - 与原项目 BaseResp 一致"""
+    if data is None:
+        data = {}
+    return jsonify({
+        'result': True,
+        'bk_error_code': 0,
+        'bk_error_msg': message,
+        'data': data
+    }), 200
+
 @common_bp.route('/health', methods=['GET'])
 @handle_errors
 def health_check():
@@ -21,7 +40,7 @@ def health_check():
     except Exception as e:
         db_status = f"error: {str(e)}"
     
-    return jsonify({
+    return success_response({
         'status': 'healthy' if db_status == 'connected' else 'unhealthy',
         'service': 'CMDB Server Lite',
         'version': '1.0.0',
@@ -56,7 +75,7 @@ def get_statistics():
             except:
                 pass
         
-        return jsonify(stats)
+        return success_response(stats)
     except Exception as e:
         logger.error(f"Error getting statistics: {e}")
-        return jsonify({'error': str(e)}), 500
+        return error_response(f'获取统计数据失败: {str(e)}')

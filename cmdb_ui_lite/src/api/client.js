@@ -31,12 +31,26 @@ http.interceptors.request.use(
   }
 )
 
-// 响应拦截器
+// 响应拦截器 - 统一处理原项目 BaseResp 格式
 http.interceptors.response.use(
   (response) => {
-    return response.data
+    const data = response.data
+    // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
+    if (data !== null && typeof data === 'object' && 'result' in data) {
+      if (data.result === false) {
+        // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
+        const error = new Error(data.bk_error_msg || '业务处理失败')
+        error.response = { data }
+        return Promise.reject(error)
+      }
+      // 成功：返回 data 字段内容，保持向后兼容
+      return data.data !== undefined ? data.data : data
+    }
+    // 非标准格式：直接返回原始数据
+    return data
   },
   (error) => {
+    // HTTP 错误（状态码非 2xx）
     return Promise.reject(error)
   }
 )
