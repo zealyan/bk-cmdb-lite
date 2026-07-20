@@ -365,8 +365,8 @@ export default {
         }
 
         const res = await modelAPI.getHostTopology(this.instId, this.bizId)
-        if (res && res.data) {
-          this.topologyData = res.data || []
+        if (res) {
+          this.topologyData = res || []
           if (this.topologyData.length > 0) {
             this.hostInfo.biz = this.topologyData.map(biz => ({
               bk_biz_id: biz.bk_biz_id,
@@ -432,14 +432,6 @@ export default {
       } catch (error) {
         console.error('更新属性失败:', error)
         let errorMsg = error.message || '未知错误'
-        if (error.response && error.response.data) {
-          const errorData = error.response.data
-          if (errorData.bk_error_msg) {
-            errorMsg = errorData.bk_error_msg
-          } else if (errorData.detail) {
-            errorMsg = errorData.detail
-          }
-        }
         this.$bkMessage({
           message: errorMsg,
           theme: 'error'

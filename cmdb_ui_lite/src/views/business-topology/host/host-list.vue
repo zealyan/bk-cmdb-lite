@@ -775,7 +775,7 @@ export default {
         const result = await topoAPI.searchHosts(payload)
 
         // 兼容后端返回的数据结构
-        const resData = result.data || result
+        const resData = result
         this.table.data = resData.info || []
         this.table.pagination.count = resData.count || 0
       } catch (e) {
@@ -1072,7 +1072,7 @@ export default {
       let bizName = ''
       try {
         const res = await topoAPI.getBizList()
-        const list = res.data || res || []
+        const list = res || []
         const biz = (Array.isArray(list) ? list : []).find(b => b.bk_biz_id === bkBizId)
         bizName = biz ? biz.bk_biz_name : ''
       } catch (e) {

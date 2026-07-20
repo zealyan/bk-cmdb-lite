@@ -2011,18 +2011,7 @@ export default {
         }
       } catch (error) {
         console.error('Create instance error:', error)
-        let errorMsg = '创建失败，请稍后重试'
-
-        if (error.response) {
-          const errorData = error.response.data
-          // 适配原项目 BaseResp 错误格式: { result: false, bk_error_code: xxx, bk_error_msg: 'xxx' }
-          if (errorData && errorData.bk_error_msg) {
-            errorMsg = errorData.bk_error_msg
-          } else if (errorData && errorData.detail) {
-            errorMsg = errorData.detail
-          }
-        }
-
+        let errorMsg = error.message || '创建失败，请稍后重试'
         this.$bkMessage({ message: errorMsg, theme: 'error' })
       } finally {
         this.createFormLoading = false

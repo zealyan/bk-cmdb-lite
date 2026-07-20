@@ -868,9 +868,7 @@ export default {
       } catch (e) {
         console.log(e)
         let errorMsg = '操作失败'
-        if (e.response && e.response.data && e.response.data.error) {
-          errorMsg = e.response.data.error
-        } else if (e.message) {
+        if (e.message) {
           errorMsg = '操作失败: ' + e.message
         }
         this.$bkMessage({ message: errorMsg, theme: 'error' })

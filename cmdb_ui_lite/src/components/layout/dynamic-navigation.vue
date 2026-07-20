@@ -185,8 +185,8 @@ export default {
       this.bizLoading = true
       try {
         const res = await modelAPI.getBizList()
-        if (res && res.data) {
-          this.bizList = res.data.filter(b => b.default !== 1)
+        if (res) {
+          this.bizList = res.filter(b => b.default !== 1)
         }
       } catch (e) {
         console.error('[DynamicNavigation] 加载业务列表失败:', e)

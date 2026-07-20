@@ -18,10 +18,15 @@ def error_response(message, error_code=1199999):
     }), 200
 
 def success_response(data=None, message=''):
-    """统一成功响应 - 直接返回业务数据（与原项目一致）"""
+    """统一成功响应格式 - 与原项目 BaseResp 一致"""
     if data is None:
         data = {}
-    return jsonify(data), 200
+    return jsonify({
+        'result': True,
+        'bk_error_code': 0,
+        'bk_error_msg': message,
+        'data': data
+    }), 200
 
 # 模型相关路由 - /api/v1/models/...
 @model_bp.route('', methods=['GET'])

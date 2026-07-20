@@ -186,7 +186,7 @@ export default {
       this.bizId = bizId
 
       const res = await topoAPI.getInstanceTopo(bizId, { with_statistics: true })
-      const data = res.data || {}
+      const data = res || {}
 
       if (!data.bk_inst_id) {
         return []
@@ -414,7 +414,7 @@ export default {
         }))
 
         const response = await topoAPI.getTopoStatistics(this.bizId, { condition })
-        const results = response.data || []
+        const results = response || []
 
         // 设置成功状态和统计数据
         normalNodes.forEach(({ data }) => {

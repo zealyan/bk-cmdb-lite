@@ -332,15 +332,6 @@ export default {
       } catch (error) {
         console.error('更新属性失败:', error)
         let errorMsg = error.message || '未知错误'
-        // 适配原项目 BaseResp 错误格式
-        if (error.response && error.response.data) {
-          const errorData = error.response.data
-          if (errorData.bk_error_msg) {
-            errorMsg = errorData.bk_error_msg
-          } else if (errorData.detail) {
-            errorMsg = errorData.detail
-          }
-        }
         this.$bkMessage({
           message: errorMsg,
           theme: 'error'
