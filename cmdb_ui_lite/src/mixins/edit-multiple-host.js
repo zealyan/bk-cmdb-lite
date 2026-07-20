@@ -164,6 +164,16 @@ export default {
         })
       }
       return true
+    },
+
+    /**
+     * 取消按钮点击处理：先校验未保存修改，再关闭抽屉
+     */
+    async handleCancel() {
+      const canClose = await this.handleSliderBeforeClose()
+      if (canClose !== false) {
+        this.slider.show = false
+      }
     }
   }
 }

@@ -20,11 +20,11 @@
     <div class="form-content" slot="content" style="height: 100%"
       v-bkloading="{ isLoading: loading }">
       <component :is="slider.component"
-        ref="multipleForm"
-        v-bind="slider.props"
-        @submit="handleMultipleSave"
-        @cancel="handleSliderBeforeClose">
-      </component>
+      ref="multipleForm"
+      v-bind="slider.props"
+      @submit="handleMultipleSave"
+      @cancel="handleCancel">
+    </component>
     </div>
   </bk-sideslider>
 </template>

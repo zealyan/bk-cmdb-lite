@@ -2,11 +2,12 @@
   <div class="options-layout">
     <!-- 左侧操作按钮区 -->
     <div class="options options-left">
-      <bk-button class="option mr10" theme="primary"
+      <!-- 新增按钮暂时注释掉，待开发 -->
+      <!-- <bk-button class="option mr10" theme="primary"
         :disabled="!isNormalModuleNode"
         @click="handleAddHost">
         新增
-      </bk-button>
+      </bk-button> -->
 
       <bk-button class="option"
         :disabled="!hasSelection"
@@ -39,7 +40,8 @@
         </ul>
       </bk-dropdown-menu>
 
-      <bk-dropdown-menu class="option ml10" trigger="click"
+      <!-- 更多按钮暂时注释掉，待开发 -->
+      <!-- <bk-dropdown-menu class="option ml10" trigger="click"
         font-size="medium"
         :disabled="!hasSelection"
         @show="isMoreMenuOpen = true"
@@ -56,7 +58,7 @@
             导出全部
           </li>
         </ul>
-      </bk-dropdown-menu>
+      </bk-dropdown-menu> -->
 
       <bk-button class="option ml10 refresh-btn" icon="bk-icon icon-refresh"
         @click="handleRefresh">
