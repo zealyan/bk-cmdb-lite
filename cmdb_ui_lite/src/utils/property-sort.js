@@ -44,7 +44,7 @@ export const BUILTIN_MODEL_HOST = 'host'
  *
  * 复刻原项目 isPropertySortable：
  *   - 主机(host)属性：排除 foreignkey / topology / inner_table 三类不可排序
- *   - 非主机属性（如 set / module 关联属性）：仅排除 inner_table
+ *   - 非主机属性（如 set / module 关联属性）：不支持排序（与原项目一致，模块和集群列不可排序）
  * 其余标量、枚举、时间等类型均可排序。
  *
  * @param {Object} property 属性定义，需包含 bk_obj_id 与 bk_property_type
@@ -55,7 +55,7 @@ export function isPropertySortable(property = {}) {
     return ![PROPERTY_TYPES.FOREIGNKEY, PROPERTY_TYPES.TOPOLOGY, PROPERTY_TYPES.INNER_TABLE]
       .includes(property.bk_property_type)
   }
-  return ![PROPERTY_TYPES.INNER_TABLE].includes(property.bk_property_type)
+  return false
 }
 
 /**
