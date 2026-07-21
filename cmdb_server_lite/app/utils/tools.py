@@ -7,84 +7,77 @@ from datetime import datetime
 import json
 import uuid
 
-# --- ID 生成器：按序列域递增 ---
+# --- ID 生成器：全局唯一、数据库无关 ---
 #
 # 设计要点：
-# 1. 每类 ID 维护独立的 DB 递增序列（MAX+1），互不干扰
-# 2. 起始值 ID_SEQ_START = 10000（5 位），逐步 +1 递增
-# 3. 无参调用 generate_id() 时，返回进程内自增序列（兼容旧关联 ID 等场景）
-# 4. 指定 scope 时，从对应表/列取 MAX+1，保证 DB 落库唯一
+# 1. 单一全局递增计数器，覆盖 bk_inst_id / bk_biz_id / bk_set_id /
+#    bk_module_id / bk_host_id / 实例关联 等所有序列域 → 保证全局唯一
+# 2. 起始值 ID_SEQ_START = 10000（5 位），每次 +1，位数随增长自然增加（3~6 位起，逐步递增）
+# 3. 不依赖任何数据库特性（无 MAX / 序列 / RETURNING / 自增列），
+#    SQLite / PostgreSQL / MySQL 行为完全一致（数据库无关）
+# 4. threading.Lock 保证并发安全；状态文件持久化，进程重启后不重复
+
+import threading
+import os
 
 ID_SEQ_START = 10000  # 起始值：5 位数，逐步递增
 
-# 各序列域 → (表名, ID 列名) 映射
-# None 表示该 scope 使用进程内自增（不查 DB），用于无固定表的场景
-_ID_SCOPE_TABLE_MAP = {
-    'bk_biz_id':    ('cc_ApplicationBase', 'bk_biz_id'),
-    'bk_set_id':    ('cc_SetBase',         'bk_set_id'),
-    'bk_module_id': ('cc_ModuleBase',      'bk_module_id'),
-    'bk_host_id':   ('cc_HostBase',        'bk_host_id'),
-    'bk_inst_id':   None,  # 自定义模型分表，需 model_id 动态定位
-    'inst_assoc':   None,  # 实例关联分表，使用进程内自增兜底
-}
+# 序列状态持久化文件（纯文件系统，不依赖任何数据库，保证跨重启全局唯一）
+# 与 cmdb_dev.db 同目录，随数据一起管理
+_ID_SEQ_STATE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'id_seq.state'
+)
 
-# 进程内自增计数器（用于无固定表的 scope，如 inst_assoc）
-# 起始值与 DB 种子数据错开，避免冲突
-_proc_seq_counter = {'_default': ID_SEQ_START}
+_id_seq_lock = threading.Lock()
+_id_seq_value = [None]  # 用 list 以便闭包内修改
+
+
+def _id_seq_load():
+    """从状态文件加载当前计数（文件不存在或损坏则返回起始值）"""
+    try:
+        with open(_ID_SEQ_STATE_FILE, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+            v = int(state.get('value', ID_SEQ_START))
+            return v if v >= ID_SEQ_START else ID_SEQ_START
+    except Exception:
+        return ID_SEQ_START
+
+
+def _id_seq_save(value):
+    """原子写入当前计数（写临时文件后 rename，避免半写损坏）"""
+    try:
+        tmp = _ID_SEQ_STATE_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({'value': value}, f)
+        os.replace(tmp, _ID_SEQ_STATE_FILE)
+    except Exception:
+        # 持久化失败不阻断 ID 生成（仅丢失跨重启唯一性保证）
+        pass
 
 
 def generate_id(scope: str = None, model_id: str = None) -> int:
     """
-    生成唯一 ID（按序列域递增）
+    生成全局唯一 ID（数据库无关，进程内原子递增 + 文件持久化）
 
-    策略：
-    - scope 为 None：返回进程内自增整数（从 ID_SEQ_START 起），兼容无表场景
-    - scope 指定且映射到固定表：SELECT MAX(列) + 1，下限 ID_SEQ_START
-    - scope='bk_inst_id' 且 model_id 指定：从对应分表取 MAX(bk_inst_id)+1
+    覆盖 bk_inst_id / biz→bk_biz_id / set→bk_set_id / module→bk_module_id /
+    host→bk_host_id 等所有序列域，统一从单一全局计数器取号，保证全局唯一。
 
     Args:
-        scope: 序列域，可选值见 _ID_SCOPE_TABLE_MAP 的 key
-        model_id: 模型 ID（仅 scope='bk_inst_id' 时需要）
+        scope: 序列域标识（仅语义说明，取值来自全局唯一序列，不受 scope 影响）
+        model_id: 模型 ID（兼容旧调用，不影响取值）
 
     Returns:
-        唯一整数 ID（从 ID_SEQ_START 起，逐步递增）
+        全局唯一整数 ID（从 ID_SEQ_START 起，逐步递增）
     """
-    global _proc_seq_counter
-
-    # 无 scope：进程内自增兜底
-    if scope is None:
-        val = _proc_seq_counter.get('_default', ID_SEQ_START)
-        _proc_seq_counter['_default'] = val + 1
-        return val
-
-    table_info = _ID_SCOPE_TABLE_MAP.get(scope)
-
-    # scope 不在映射表 或 映射为 None：进程内自增
-    if table_info is None:
-        key = scope or '_default'
-        val = _proc_seq_counter.get(key, ID_SEQ_START)
-        _proc_seq_counter[key] = val + 1
-        return val
-
-    table_name, id_column = table_info
-
-    # 自定义模型实例表：动态表名
-    if scope == 'bk_inst_id' and model_id:
-        table_name = f"cc_ObjectBase_0_pub_{model_id}"
-
-    # 从 DB 取 MAX(id)+1，下限 ID_SEQ_START
-    try:
-        from app.db.executor import query_one
-        row = query_one(
-            f'SELECT MAX("{id_column}") as max_id FROM "{table_name}"',
-            {}
-        )
-        current_max = (row['max_id'] if row and row['max_id'] else 0)
-    except Exception:
-        current_max = 0
-
-    next_id = max(current_max + 1, ID_SEQ_START)
-    return next_id
+    with _id_seq_lock:
+        if _id_seq_value[0] is None:
+            _id_seq_value[0] = _id_seq_load()
+        # 先发号（首条恰好为 ID_SEQ_START），再推进并持久化"下一个待发号"
+        val = _id_seq_value[0]
+        _id_seq_value[0] += 1
+        _id_seq_save(_id_seq_value[0])
+    return val
 
 def safe_get(data: dict, key: str, default: Any = None) -> Any:
     """

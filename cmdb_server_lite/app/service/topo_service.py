@@ -1492,9 +1492,6 @@ def create_set(bk_biz_id: int, names: List[str],
     if not biz:
         raise ValueError(f'业务 {bk_biz_id} 不存在')
 
-    # 获取起始集群ID（从 generate_id 取，保证序列统一）
-    next_id = generate_id(scope='bk_set_id')
-
     # 过滤空名称和去重
     unique_names = []
     for name in names:
@@ -1506,6 +1503,8 @@ def create_set(bk_biz_id: int, names: List[str],
 
     for name in unique_names:
         try:
+            # 全局唯一 ID（每个名称独立取号，保证持久化与跨请求不重复）
+            next_id = generate_id()
             # 插入集群数据
             executor.execute("""
                 INSERT INTO cc_SetBase
@@ -1532,7 +1531,6 @@ def create_set(bk_biz_id: int, names: List[str],
                 'bk_set_name': name,
                 'bk_biz_id': bk_biz_id
             })
-            next_id += 1
         except Exception as e:
             error_names.append({
                 'name': name,
@@ -1580,9 +1578,6 @@ def create_module(bk_set_id: int, names: List[str],
     if not bk_biz_id:
         bk_biz_id = set_info['bk_biz_id']
 
-    # 获取起始模块ID（从 generate_id 取，保证序列统一）
-    next_id = generate_id(scope='bk_module_id')
-
     # 过滤空名称和去重
     unique_names = []
     for name in names:
@@ -1594,6 +1589,8 @@ def create_module(bk_set_id: int, names: List[str],
 
     for name in unique_names:
         try:
+            # 全局唯一 ID（每个名称独立取号，保证持久化与跨请求不重复）
+            next_id = generate_id()
             # 插入模块数据
             executor.execute("""
                 INSERT INTO cc_ModuleBase
@@ -1622,7 +1619,6 @@ def create_module(bk_set_id: int, names: List[str],
                 'bk_set_id': bk_set_id,
                 'bk_biz_id': bk_biz_id
             })
-            next_id += 1
         except Exception as e:
             error_names.append({
                 'name': name,
