@@ -1476,6 +1476,7 @@ def create_set(bk_biz_id: int, names: List[str],
         { 'created': [...], 'error_names': [...] }
     """
     from app.db.executor import SQLExecutor
+    from app.utils.tools import generate_id
     import time
 
     executor = SQLExecutor()
@@ -1491,11 +1492,8 @@ def create_set(bk_biz_id: int, names: List[str],
     if not biz:
         raise ValueError(f'业务 {bk_biz_id} 不存在')
 
-    # 获取当前最大集群ID
-    max_id_row = query_one("""
-        SELECT MAX(bk_set_id) as max_id FROM cc_SetBase
-    """, {})
-    next_id = (max_id_row['max_id'] or 0) + 1
+    # 获取起始集群ID（从 generate_id 取，保证序列统一）
+    next_id = generate_id(scope='bk_set_id')
 
     # 过滤空名称和去重
     unique_names = []
@@ -1562,6 +1560,7 @@ def create_module(bk_set_id: int, names: List[str],
         { 'created': [...], 'error_names': [...] }
     """
     from app.db.executor import SQLExecutor
+    from app.utils.tools import generate_id
     import time
 
     executor = SQLExecutor()
@@ -1581,11 +1580,8 @@ def create_module(bk_set_id: int, names: List[str],
     if not bk_biz_id:
         bk_biz_id = set_info['bk_biz_id']
 
-    # 获取当前最大模块ID
-    max_id_row = query_one("""
-        SELECT MAX(bk_module_id) as max_id FROM cc_ModuleBase
-    """, {})
-    next_id = (max_id_row['max_id'] or 0) + 1
+    # 获取起始模块ID（从 generate_id 取，保证序列统一）
+    next_id = generate_id(scope='bk_module_id')
 
     # 过滤空名称和去重
     unique_names = []

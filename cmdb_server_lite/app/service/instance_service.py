@@ -33,6 +33,15 @@ class InstanceService:
         'host': 'bk_host_id',
         'bk_host': 'bk_host_id'
     }
+
+    # 内置模型 → generate_id scope 映射（自定义模型走 bk_inst_id scope）
+    BUILTIN_ID_SCOPE_MAP = {
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'host': 'bk_host_id',
+        'bk_host': 'bk_host_id'
+    }
     
     @staticmethod
     def list_models():
@@ -850,10 +859,16 @@ class InstanceService:
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        instance_id = generate_id()
-        data['id'] = instance_id
+        # 按 scope 生成 ID：内置模型走对应业务序列，自定义模型走 bk_inst_id 序列
+        scope = InstanceService.BUILTIN_ID_SCOPE_MAP.get(model_id, 'bk_inst_id')
+        instance_id = generate_id(scope=scope, model_id=model_id)
+        # 内置模型表无 id/bk_obj_id 列，只有业务主键列（bk_host_id 等）
+        # 自定义模型表有 id（PK）+ bk_inst_id + bk_obj_id 列
+        is_builtin = model_id in InstanceService.BUILTIN_ID_FIELD_MAP
+        if not is_builtin:
+            data['id'] = instance_id
+            data['bk_obj_id'] = model_id
         data[id_field] = instance_id
-        data['bk_obj_id'] = model_id
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
         data.setdefault('last_time', now)
