@@ -1,5 +1,5 @@
 from app.db.executor import query_all, query_one, execute
-from app.db.engine import get_session
+from app.db.engine import get_session, get_engine
 from app.utils.tools import generate_id
 from app.utils.exceptions import ValidationException
 from app.definitions import (
@@ -11,8 +11,25 @@ from app.definitions import (
     JSON_VALUE_PROPERTY_TYPES,
     ASSOCIATION_PROPERTY_TYPES,
 )
+from sqlalchemy import inspect
 from datetime import datetime
 import json
+
+
+# 表真实列名缓存（SQLAlchemy 反射，数据库无关；SQLite/PostgreSQL/MySQL 通用）
+_table_columns_cache = {}
+
+
+def get_table_columns(table_name):
+    """获取目标表的真实列名集合；带缓存，避免每次写入都反射。"""
+    if table_name not in _table_columns_cache:
+        try:
+            cols = inspect(get_engine()).get_columns(table_name)
+            _table_columns_cache[table_name] = {c['name'] for c in cols}
+        except Exception:
+            # 反射失败（如表尚未创建）时返回空集合，由后续 SQL 执行暴露真实错误
+            _table_columns_cache[table_name] = set()
+    return _table_columns_cache[table_name]
 
 class InstanceService:
     
@@ -932,6 +949,13 @@ class InstanceService:
                 else:
                     clean_data[key] = str(value)
 
+        # 只保留目标表真实存在的列，过滤内置模型无对应列的元数据字段
+        # （如 host 表的 bk_inst_name / id / bk_obj_id / bk_inst_id）。
+        # 这些字段被 cc_ObjAttDes 列为属性，但内置表不含该列，写入会触发
+        # "table cc_HostBase has no column named ..."，故在此按真实表结构收敛。
+        real_cols = get_table_columns(table_name)
+        clean_data = {k: v for k, v in clean_data.items() if k in real_cols}
+
         if not clean_data:
             raise ValidationException('No valid data to update')
 
@@ -975,7 +999,7 @@ class InstanceService:
         params = {'instance_id': instance_id}
 
         for key, value in data.items():
-            if key in valid_fields and key not in system_fields_to_exclude:
+            if key in valid_fields and key not in system_fields_to_exclude and key in get_table_columns(table_name):
                 prop_type = attr_type_map.get(key, '')
 
                 # 关联类型不落实例表列，跳过
@@ -1080,7 +1104,7 @@ class InstanceService:
         param_idx = 0
 
         for key, value in data.items():
-            if key in valid_fields and key not in system_fields_to_exclude:
+            if key in valid_fields and key not in system_fields_to_exclude and key in get_table_columns(table_name):
                 prop_type = attr_type_map.get(key, '')
 
                 # 关联类型不落实例表列，跳过

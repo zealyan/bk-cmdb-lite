@@ -167,8 +167,9 @@ def update_instance(model_id, instance_id):
     """更新单个实例"""
     try:
         data = request.get_json() or {}
-        
-        result = InstanceService.update_instance(model_id, instance_id, data)
+        instance_data = data.get('data', {})
+
+        result = InstanceService.update_instance(model_id, instance_id, instance_data)
         return success_response(result, '实例更新成功')
     except APIException as e:
         return jsonify(e.to_dict()), e.status_code

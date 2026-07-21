@@ -1,6 +1,7 @@
 from app.db.executor import query_all, query_one, execute
 from app.utils.tools import generate_id
 from datetime import datetime
+import uuid
 
 
 def get_inst_asst_table_name(obj_id):
@@ -226,6 +227,10 @@ class AssociationService:
             AssociationService.check_association_mapping(obj_asst_id, inst_id, asst_inst_id)
         
         data['id'] = generate_id()
+        # _id 为 MongoDB 风格文档主键，前端不传，后端兜底生成 UUID，
+        # 否则 sqlalchemy 因 INSERT 引用了 :_id 命名参数却无对应值而抛
+        # InvalidRequestError: A value is required for bind parameter '_id'
+        data.setdefault('_id', str(uuid.uuid4()))
         data.setdefault('bk_supplier_account', '0')
         
         # 按源模型和目标模型分表插入（与原项目一致）
