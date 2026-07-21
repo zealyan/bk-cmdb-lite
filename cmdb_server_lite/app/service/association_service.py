@@ -226,7 +226,6 @@ class AssociationService:
             AssociationService.check_association_mapping(obj_asst_id, inst_id, asst_inst_id)
         
         data['id'] = generate_id()
-        data['_id'] = str(data['id'])
         data.setdefault('bk_supplier_account', '0')
         
         # 按源模型和目标模型分表插入（与原项目一致）

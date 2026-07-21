@@ -1511,13 +1511,12 @@ def create_set(bk_biz_id: int, names: List[str],
             # 插入集群数据
             executor.execute("""
                 INSERT INTO cc_SetBase
-                (_id, bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default",
+                (bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default",
                  bk_supplier_account, create_time, last_time, creator, modifier)
                 VALUES
-                (:_id, :bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default,
+                (:bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default,
                  :bk_supplier_account, :create_time, :last_time, :creator, :modifier)
             """, {
-                '_id': f'set_{next_id}',
                 'bk_set_id': next_id,
                 'bk_set_name': name,
                 'bk_parent_id': bk_biz_id,
@@ -1602,13 +1601,12 @@ def create_module(bk_set_id: int, names: List[str],
             # 插入模块数据
             executor.execute("""
                 INSERT INTO cc_ModuleBase
-                (_id, bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id,
+                (bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id,
                  "default", bk_supplier_account, create_time, last_time, creator, modifier)
                 VALUES
-                (:_id, :bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id,
+                (:bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id,
                  :default, :bk_supplier_account, :create_time, :last_time, :creator, :modifier)
             """, {
-                '_id': f'module_{next_id}',
                 'bk_module_id': next_id,
                 'bk_module_name': name,
                 'bk_parent_id': bk_set_id,

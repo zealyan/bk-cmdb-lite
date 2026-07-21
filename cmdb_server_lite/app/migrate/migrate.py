@@ -698,7 +698,7 @@ class DatabaseMigrator:
             # 参考：/workspace/cmdb_server_lite/docs/原项目/bk-cmdb-主线拓扑与业务拓扑树分析.md
             "cc_ApplicationBase": """
                 CREATE TABLE IF NOT EXISTS cc_ApplicationBase (
-                    _id VARCHAR,
+                    _id TEXT,
                     bk_biz_id INTEGER PRIMARY KEY,
                     bk_biz_name VARCHAR NOT NULL,
                     "default" INTEGER DEFAULT 0,
@@ -711,7 +711,7 @@ class DatabaseMigrator:
             """,
             "cc_SetBase": """
                 CREATE TABLE IF NOT EXISTS cc_SetBase (
-                    _id VARCHAR,
+                    _id TEXT,
                     bk_set_id INTEGER PRIMARY KEY,
                     bk_set_name VARCHAR NOT NULL,
                     bk_parent_id INTEGER NOT NULL,
@@ -729,7 +729,7 @@ class DatabaseMigrator:
             """,
             "cc_ModuleBase": """
                 CREATE TABLE IF NOT EXISTS cc_ModuleBase (
-                    _id VARCHAR,
+                    _id TEXT,
                     bk_module_id INTEGER PRIMARY KEY,
                     bk_module_name VARCHAR NOT NULL,
                     bk_parent_id INTEGER NOT NULL,
@@ -745,7 +745,7 @@ class DatabaseMigrator:
             """,
             "cc_HostBase": """
                 CREATE TABLE IF NOT EXISTS cc_HostBase (
-                    _id VARCHAR,
+                    _id TEXT,
                     bk_host_id INTEGER PRIMARY KEY,
                     bk_host_name VARCHAR,
                     bk_host_innerip VARCHAR,
@@ -807,7 +807,7 @@ class DatabaseMigrator:
             """,
             "cc_ObjDes": """
                 CREATE TABLE IF NOT EXISTS cc_ObjDes (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_obj_name VARCHAR NOT NULL,
@@ -826,7 +826,7 @@ class DatabaseMigrator:
             """,
             "cc_PropertyGroup": """
                 CREATE TABLE IF NOT EXISTS cc_PropertyGroup (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER PRIMARY KEY,
                     bk_obj_id VARCHAR,
                     bk_group_id VARCHAR NOT NULL,
@@ -845,7 +845,7 @@ class DatabaseMigrator:
             """,
             "cc_ObjAttDes": """
                 CREATE TABLE IF NOT EXISTS cc_ObjAttDes (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL,
                     bk_property_id VARCHAR NOT NULL,
@@ -876,7 +876,7 @@ class DatabaseMigrator:
             """,
             "cc_AsstDes": """
                 CREATE TABLE IF NOT EXISTS cc_AsstDes (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_asst_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_asst_name VARCHAR NOT NULL,
@@ -894,7 +894,7 @@ class DatabaseMigrator:
             """,
             "cc_ObjAsst": """
                 CREATE TABLE IF NOT EXISTS cc_ObjAsst (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL,
                     target_obj_id VARCHAR NOT NULL,
@@ -915,7 +915,7 @@ class DatabaseMigrator:
             # 保留此表用于旧版本数据迁移和历史兼容，新业务逻辑请勿使用
             "cc_InstAsst_0_pub": """
                 CREATE TABLE IF NOT EXISTS cc_InstAsst_0_pub (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER PRIMARY KEY,
                     bk_obj_id VARCHAR NOT NULL,
                     bk_inst_id INTEGER NOT NULL,
@@ -930,7 +930,7 @@ class DatabaseMigrator:
             # 详见 create_instance_association_table() 方法
             "cc_ObjectUnique": """
                 CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_template_id INTEGER DEFAULT 0,
                     bk_obj_id VARCHAR NOT NULL,
@@ -1283,7 +1283,7 @@ class DatabaseMigrator:
         
         # 构建表结构
         columns = [
-            '_id VARCHAR',
+            '_id TEXT',
             'id INTEGER PRIMARY KEY',
             'bk_inst_id INTEGER NOT NULL',
             'bk_inst_name VARCHAR NOT NULL',
@@ -1331,7 +1331,7 @@ class DatabaseMigrator:
         
         create_sql = f"""
             CREATE TABLE IF NOT EXISTS "{asst_table_name}" (
-                _id VARCHAR,
+                _id TEXT,
                 id INTEGER PRIMARY KEY,
                 bk_obj_id VARCHAR NOT NULL,
                 bk_inst_id INTEGER NOT NULL,
@@ -1422,7 +1422,11 @@ class DatabaseMigrator:
                             placeholders.append(f":{key}")
                             # 根据属性类型处理值
                             prop_type = attr_type_map.get(key)
-                            if prop_type in ['list', 'enum', 'enummulti', 'array', 'object'] and isinstance(value, (list, dict)):
+                            # organization（部门 ID 数组）按 JSON 文本落库，与 MongoDB 数组结构一致；
+                            # objuser 为纯逗号拼接字符串（非数组），走 else 原样保存为字符串。
+                            if prop_type == 'organization' and isinstance(value, (list, dict)):
+                                values.append(json.dumps(value, ensure_ascii=False))
+                            elif prop_type in ['list', 'enum', 'enummulti', 'array', 'object'] and isinstance(value, (list, dict)):
                                 values.append(json.dumps(value, ensure_ascii=False))
                             else:
                                 values.append(value)
@@ -1889,9 +1893,9 @@ class DatabaseMigrator:
         
         self.execute_sql("""
             INSERT OR REPLACE INTO cc_ApplicationBase
-            (_id, bk_biz_id, bk_biz_name, "default", bk_supplier_account)
-            VALUES (:_id, :bk_biz_id, :bk_biz_name, :default, :bk_supplier_account)
-        """, default_biz | {"_id": "biz_1"})
+            (bk_biz_id, bk_biz_name, "default", bk_supplier_account)
+            VALUES (:bk_biz_id, :bk_biz_name, :default, :bk_supplier_account)
+        """, default_biz)
         
         # 创建示例业务
         demo_biz_list = [

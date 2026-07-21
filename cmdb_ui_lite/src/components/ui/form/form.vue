@@ -290,6 +290,7 @@ export default {
         'datetime': 'cmdb-form-datetime',
         'timezone': 'cmdb-form-timezone',
         'list': 'cmdb-form-list',
+        'objuser': 'cmdb-form-user',
         'organization': 'cmdb-form-organization',
         'user': 'cmdb-form-user'
       }

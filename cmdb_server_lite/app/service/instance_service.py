@@ -7,6 +7,7 @@ from app.definitions import (
     PROPERTY_TYPE_INT,
     PROPERTY_TYPE_LIST,
     NUMERIC_PROPERTY_TYPES,
+    OBJUSER_PROPERTY_TYPES,
     JSON_VALUE_PROPERTY_TYPES,
     ASSOCIATION_PROPERTY_TYPES,
 )
@@ -483,7 +484,11 @@ class InstanceService:
                         instance[prop_id] = bool(value)
                     continue
 
-                # objuser/organization 等 JSON 值类型：按 UI 端数据结构解析回对象
+                # objuser（MongoDB 为纯逗号拼接字符串）：落库即纯字符串，读取原样返回，不做 JSON 解析
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：落库为 JSON 文本，读取解析回数组
                 if prop_type in JSON_VALUE_PROPERTY_TYPES:
                     if value is not None and isinstance(value, str):
                         try:
@@ -847,7 +852,6 @@ class InstanceService:
 
         instance_id = generate_id()
         data['id'] = instance_id
-        data['_id'] = instance_id
         data[id_field] = instance_id
         data['bk_obj_id'] = model_id
         data.setdefault('bk_supplier_account', '0')
@@ -881,7 +885,20 @@ class InstanceService:
                 if prop_type in ASSOCIATION_PROPERTY_TYPES:
                     continue
 
-                # objuser/organization 等 JSON 值类型：按 UI 端数据结构以 JSON 保存
+                # objuser（MongoDB 为纯逗号拼接字符串）：原样保存为纯字符串，不 JSON 化
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    if value is None:
+                        clean_data[key] = None
+                    elif isinstance(value, str):
+                        clean_data[key] = value
+                    elif isinstance(value, (list, tuple)):
+                        # UI 传入数组时按 MongoDB 规则用逗号拼接为英文名串
+                        clean_data[key] = ",".join(str(v).strip() for v in value)
+                    else:
+                        clean_data[key] = str(value)
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：以 JSON 文本保存，读取时解析回数组
                 if prop_type in JSON_VALUE_PROPERTY_TYPES:
                     if value is None:
                         clean_data[key] = None
@@ -961,7 +978,20 @@ class InstanceService:
                     continue
 
                 update_fields.append(f'"{key}" = :{key}')
-                # objuser/organization 等 JSON 值类型：按 UI 端数据结构以 JSON 保存
+                # objuser（MongoDB 为纯逗号拼接字符串）：原样保存为纯字符串，不 JSON 化
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    if value is None:
+                        params[key] = None
+                    elif isinstance(value, str):
+                        params[key] = value
+                    elif isinstance(value, (list, tuple)):
+                        # UI 传入数组时按 MongoDB 规则用逗号拼接为英文名串
+                        params[key] = ",".join(str(v).strip() for v in value)
+                    else:
+                        params[key] = str(value)
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：以 JSON 文本保存，读取时解析回数组
                 if prop_type in JSON_VALUE_PROPERTY_TYPES:
                     if value is None:
                         params[key] = None
@@ -1054,7 +1084,21 @@ class InstanceService:
 
                 param_name = f'val_{param_idx}'
                 update_fields.append(f'"{key}" = :{param_name}')
-                # objuser/organization 等 JSON 值类型：按 UI 端数据结构以 JSON 保存
+                # objuser（MongoDB 为纯逗号拼接字符串）：原样保存为纯字符串，不 JSON 化
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    if value is None:
+                        params[param_name] = None
+                    elif isinstance(value, str):
+                        params[param_name] = value
+                    elif isinstance(value, (list, tuple)):
+                        # UI 传入数组时按 MongoDB 规则用逗号拼接为英文名串
+                        params[param_name] = ",".join(str(v).strip() for v in value)
+                    else:
+                        params[param_name] = str(value)
+                    param_idx += 1
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：以 JSON 文本保存，读取时解析回数组
                 if prop_type in JSON_VALUE_PROPERTY_TYPES:
                     if value is None:
                         params[param_name] = None

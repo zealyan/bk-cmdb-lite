@@ -18,8 +18,10 @@
 3. ``ASSOCIATION_PROPERTY_TYPES``  —— 关联类型（singleasst/multiasst/foreignkey），
                                        在 Go 中是合法的 bk_property_type，但**不作为
                                        实例表物理列**，关联数据存于 cc_InstAsst 分表。
-4. ``NUMERIC_PROPERTY_TYPES`` / ``JSON_VALUE_PROPERTY_TYPES``
+4. ``OBJUSER_PROPERTY_TYPES`` / ``JSON_VALUE_PROPERTY_TYPES``
                                      —— 便于 service 层按类型做值处理的辅助集合。
+                                     其中 objuser 在 MongoDB 中是纯逗号拼接字符串；
+                                     organization 在 MongoDB 中是部门 ID 数组（落库 JSON 化）。
 
 ``get_sql_type()`` 仅认 ``VALID_PROPERTY_TYPES``（16 种），传入其它类型直接抛错；
 历史 / 关联类型由调用方（migrate.create_instance_table）在调用前先归一或跳过，
@@ -70,9 +72,15 @@ VALID_PROPERTY_TYPES = (
 # 注：lite 早期曾用 long/double，但非 Go 合法类型且当前数据无此类，故不收录。
 NUMERIC_PROPERTY_TYPES = (PROPERTY_TYPE_INT, PROPERTY_TYPE_FLOAT)
 
-# JSON 值类型集合：实例值采用 UI 端的数据结构（如用户/组织数组），落库时以
-# JSON 字符串保存，读取时再解析回 Python 对象。
-JSON_VALUE_PROPERTY_TYPES = (PROPERTY_TYPE_OBJUSER, PROPERTY_TYPE_ORGANIZATION)
+# objuser 在 MongoDB 中为「纯逗号拼接字符串」（如 "admin,test,zhangsan"），
+# 与 singlechar/longchar 一样落库为 TEXT 纯字符串，读取/写入均不做 JSON 序列化，
+# UI 端按逗号拆分（split(',')）展示、变更时数组用逗号拼接（join(',')）回写。
+OBJUSER_PROPERTY_TYPES = (PROPERTY_TYPE_OBJUSER,)
+
+# JSON 值类型集合（数组型）：如 organization 在 MongoDB 中为部门 ID 数组
+#（bson.A / []interface{}），落库以 JSON 字符串保存，读取时解析回 Python 数组对象。
+# 注意：objuser 是纯字符串，不属于此类。
+JSON_VALUE_PROPERTY_TYPES = (PROPERTY_TYPE_ORGANIZATION,)
 
 # ---------------------------------------------------------------------------
 # 类型 -> SQL 列类型映射（SQLite 开发库；MySQL / PostgreSQL 见 docs/db.rule.md）
@@ -161,6 +169,7 @@ __all__ = [
     "PROPERTY_TYPE_ENUMQUOTE",
     "VALID_PROPERTY_TYPES",
     "NUMERIC_PROPERTY_TYPES",
+    "OBJUSER_PROPERTY_TYPES",
     "JSON_VALUE_PROPERTY_TYPES",
     "PROPERTY_TYPE_SQL_TYPE",
     "PROPERTY_TYPE_USER_LEGACY",
