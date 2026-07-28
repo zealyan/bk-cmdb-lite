@@ -51,6 +51,21 @@ def get_model_by_id(model_id):
         logger.error(f"Error getting model: {e}")
         return error_response(f'获取模型失败: {str(e)}')
 
+@model_bp.route('/<model_id>', methods=['PUT'])
+def update_model(model_id):
+    """更新模型元数据（停用/启用等）"""
+    try:
+        data = request.get_json() or {}
+        update_data = data.get('data', data)
+
+        model = ModelService.update_model(model_id, update_data)
+        if model is None:
+            return error_response(f'模型 {model_id} 不存在', 1199019)
+        return success_response({'model': model}, '模型更新成功')
+    except Exception as e:
+        logger.error(f"Error updating model {model_id}: {e}")
+        return error_response(f'更新模型失败: {str(e)}')
+
 @model_bp.route('/<model_id>/attributes', methods=['GET'])
 def get_model_attributes(model_id):
     """获取模型属性列表

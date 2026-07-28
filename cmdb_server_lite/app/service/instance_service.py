@@ -862,6 +862,12 @@ class InstanceService:
     @staticmethod
     def create_instance(model_id, data):
         """创建实例"""
+        # 检查模型是否已停用
+        from app.service.model_service import ModelService
+        model = ModelService.get_model_by_id(model_id)
+        if model and model.get('bk_ispaused'):
+            raise ValidationException(f'模型 {model.get("bk_obj_name", model_id)} 已停用，无法创建实例')
+
         table_name = InstanceService._get_table_name(model_id)
         id_field = InstanceService._get_id_field(model_id)
 

@@ -82,7 +82,12 @@ export const modelAPI = {
   getModel (modelId) {
     return http.get(`/api/v1/models/${modelId}`)
   },
-  
+
+  // 更新模型元数据（停用/启用等）
+  updateModel (modelId, data) {
+    return http.put(`/api/v1/models/${modelId}`, { data })
+  },
+
   // 获取模型属性
   getModelAttributes (modelId) {
     return http.get(`/api/v1/models/${modelId}/attributes`)
@@ -180,7 +185,9 @@ export const modelAPI = {
 
   // 更新单个实例
   updateInstance (modelId, instanceId, data) {
-    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, data)
+    // 与 createInstance 保持一致：后端 update_instance 读取 data.get('data', {}),
+    // 必须将请求体包裹为 { data }，否则扁平 body 会被当成空 data，更新成为空操作。
+    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, { data })
   },
 
   // 批量更新实例（格式1：每个实例有不同数据）
