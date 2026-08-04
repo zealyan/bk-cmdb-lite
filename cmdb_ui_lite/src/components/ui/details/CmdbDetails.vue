@@ -174,7 +174,8 @@ export default {
       if (this.propertyGroups.length > 0) {
         return this.propertyGroups
       }
-      return [{ bk_group_id: 'default', bk_group_name: '基本信息' }]
+      // 兜底分组：ID 用上游标准的小写 default，显示名用「基础信息」（上游 BaseInfoName）
+      return [{ bk_group_id: 'default', bk_group_name: '基础信息' }]
     }
   },
   created() {

@@ -378,13 +378,15 @@ VALUES
 
 | 顶层键 | 作用 | 缺省行为 |
 |--------|------|----------|
-| `classification` | 新建/复用模型分类，写入 `cc_ObjClassification` | 分类已存在则跳过（不报错） |
-| `model` | 模型元信息，写入 `cc_ObjDes` | 必需；`bk_ispaused` 固定写 `0` |
+| `classification` | 新建/复用模型分类，写入 `cc_ObjClassification` | 可为空（不建分类）；若提供则**必须含 `bk_classification_id`，否则 spec 预检报错（退出码 `2`）** |
+| `model` | 模型元信息，写入 `cc_ObjDes` | 必需；**`bk_obj_id` 必填，缺则 spec 预检报错（退出码 `2`）**；`bk_ispaused` 固定写 `0` |
 | `groups` | **属性分组定义**，写入 `cc_PropertyGroup` | **缺省时 CLI 自动创建 `default` 分组**（见 5.2 步骤 4）；显式给出则按规格创建（含 `base` 等） |
 | `attributes` | 业务属性列表，逐条走 5.3 流程（写 `cc_ObjAttDes` + ALTER 实例表） | 每条属性按 `bk_property_group` 归入对应分组；类型经 `get_sql_type()` 映射为列类型 |
 
 > 处理顺序：`classification` → `model`（自动补 4 个系统属性 + 实例表 + 关联表 + `default` 分组）→ `groups`（若显式给出则追加，与自动 `default` 去重）→ `attributes`（逐条加列）。
 > 规格结构刻意与指南 3.3/3.4 的前端 `index.json`、`attributes/*.json` 保持一致，便于从前端定义直接转为 CLI 输入；其中 `option` 格式（enum 标准结构 / list 简单数组）与指南 2.4 完全一致。
+
+> **spec 预检（退出码 `2`，§9）**：`scaffold spec` 解析 JSON 后**先校验必填字段**再开启事务：`model` 须为对象且含 `bk_obj_id`；若提供 `classification` 须含 `bk_classification_id`。缺失即 `CliError(EXIT_PARAM=2)` 终止，避免运行时 `TypeError` / `KeyError` 落到通用错误（退出码 `1`）；空文件 / 非法 JSON 已由 `parse_json` 返回 `None` 拦下并给 `EXIT_PARAM`。
 
 #### 5.6.1 `cmdb scaffold seed`（CSV 模式：生成模板目录）
 
@@ -853,6 +855,7 @@ python3 -m app.cli.cmdb model import \
 | 规范 | 说明 |
 |------|------|
 | 单行失败不影响整体 | 默认 `--no-strict`：该行跳过、记错误清单、继续后续行（除非 `--strict` 整体终止） |
+| **行级异常全覆盖（含类型转换）** | 所有行级异常（`CliError` / `InvalidIdentifierError` / 数值·布尔转换 `ValueError` / `TypeError`）**均须在行级 `try/except` 捕获并路由拒绝汇**，禁止让 `int()` / `parse_bool()` 等裸异常穿透循环——否则单坏行会使整份 CSV 在本事务内回滚、前面已写入行全部丢失。四类导入（分类 / 模型 / 属性 / 实例）须保持**一致的捕获元组**（已对齐为 `CliError, InvalidIdentifierError, ValueError, TypeError`） |
 | 错误清单内容 | 行号 + 列名 + 原因（未知列 / 类型非法 / 唯一冲突 / 枚举未命中 / 必填缺失 / 批内重复键） |
 | **拒绝汇（Reject Store，C2）** | 坏行**持久化**到拒绝文件而不仅是内存 / 终端：默认写 `<dir>/<file>.rejects.csv`（无目录则用 `./<file>.rejects.csv`），列为 `原行号,原行内容,失败列,失败原因`；可用 `--reject-out <path>` 覆盖。拒绝汇是 ETL 数据质量闭环的必备，供运营补数后重跑 |
 | 批内主键重复（H2） | upsert 模式下先对整批匹配键做去重检查：同一 CSV 内两行匹配键相同 → 后者静默覆盖前者，造成批内数据丢失；侦测到的重复行**路由到拒绝汇**（或 `--strict` 整体终止），计入摘要 `批内重复 D` |
@@ -940,6 +943,7 @@ ETL 可追溯性要求"这批行来自哪次运行"，否则无法按批次回�
 |------|------|----------|
 | 类型 → option 必填 | `bk_property_type ∈ {enum, enummulti, list}` 时，对应 `option` / 数据配置列**必须非空且为合法 JSON**；为空或非法 → 该行计入拒绝汇（§5.11.6） | 拒绝汇 |
 | 引用完整性（FK） | `instance import` 的 `--upsert-key` 列、以及表头列，必须真实存在于目标表"允许写入列集"；`model import` 的 `bk_classification_id` 必须已存在于 `cc_ObjClassification` | 预检即报错（退出码 `2` / `3`） |
+| **upsert 匹配键存在性** | `instance import` 由 `cc_ObjectUnique` 解析出的匹配列（`bk_property_id`）**必须全部出现在 CSV 表头内**；任一缺失 → 预检报错（退出码 `2`），避免逐行 `WHERE k=:v` 构造时 `KeyError` | 预检即报错（退出码 `2`） |
 | 必填列完整性 | `bk_obj_id` / `bk_obj_name` / `bk_classification_id`（模型）、`bk_property_id` / `bk_property_name` / `bk_property_type`（属性）、`bk_inst_name`（实例）缺失 → 拒绝该行 | 拒绝汇 |
 | 可扩展钩子 | 预留 `--validate <rule>` 或配置化校验钩子位，未来可加 范围 / 正则 / 跨字段一致性（如 `bk_inst_id` 与 `id` 一致性）校验，不硬编码于主流程 | 拒绝汇 / `--strict` 终止 |
 
@@ -1021,7 +1025,7 @@ ETL 可追溯性要求"这批行来自哪次运行"，否则无法按批次回�
 | `4` | 已存在且 `--on-duplicate=error`（默认）   |
 | `5` | 数据库不可达 / 连接失败（如 `database is locked`，见 §2 运行约束 C4）       |
 
-所有错误以 `{"error": "...", "step": "..."}` 形式输出（`--json` 仅提供结构化明细，不改变退出码）；`--dry-run` 成功返回 `0`，预检失败返回 `2`。装载后对账不一致（§5.11.11）以退出码 `1` 告警。
+所有错误以 `{"error": "...", "step": "..."}` 形式输出到 **stderr**（`--json` 仅提供结构化明细，不改变退出码）；成功结果（摘要 / 查询）输出到 **stdout**。故 `--json` 消费方应**以退出码判定成败**，而非依赖从 stdout 解析错误体。`--dry-run` 成功返回 `0`，预检失败返回 `2`。装载后对账不一致（§5.11.11）以退出码 `1` 告警。
 
 ---
 

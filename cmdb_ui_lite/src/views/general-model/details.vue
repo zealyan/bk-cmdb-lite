@@ -210,8 +210,8 @@ export default {
           this.propertyGroups = [{
             id: 1,
             bk_group_id: 'default',
-            bk_group_name: '默认',
-            bk_group_index: 0,
+            bk_group_name: '基础信息',
+            bk_group_index: 1,
             bk_isdefault: true
           }]
         }

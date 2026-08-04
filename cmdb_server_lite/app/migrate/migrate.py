@@ -235,11 +235,11 @@ BUILTIN_MODEL_ATTRIBUTES = {
         {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
          "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 0, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "default"},
         {"bk_property_id": "bk_biz_name", "bk_property_name": "业务名称", "bk_property_type": "singlechar",
          "isrequired": True, "isreadonly": False, "isonly": True, "editable": True,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 1, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "default"},
         {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
@@ -247,29 +247,29 @@ BUILTIN_MODEL_ATTRIBUTES = {
         {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 20, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "default"},
         {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "default"},
         {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "default"},
         {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "default"},
     ],
     "set": [
         {"bk_property_id": "bk_set_id", "bk_property_name": "集群ID", "bk_property_type": "int",
          "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 0, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "default"},
         {"bk_property_id": "bk_set_name", "bk_property_name": "集群名称", "bk_property_type": "singlechar",
          "isrequired": True, "isreadonly": False, "isonly": False, "editable": True,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 1, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "default"},
         {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
          "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
@@ -281,11 +281,11 @@ BUILTIN_MODEL_ATTRIBUTES = {
         {"bk_property_id": "bk_set_desc", "bk_property_name": "集群描述", "bk_property_type": "longchar",
          "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 5, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 5, "bk_property_group": "default"},
         {"bk_property_id": "bk_set_env", "bk_property_name": "环境类型", "bk_property_type": "enum",
          "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 6, "bk_property_group": "base",
+         "ispre": True, "bk_property_index": 6, "bk_property_group": "default",
          "option": [
              {"id": "1", "name": "测试环境", "type": "text", "is_default": False},
              {"id": "2", "name": "体验环境", "type": "text", "is_default": False},
@@ -294,7 +294,7 @@ BUILTIN_MODEL_ATTRIBUTES = {
         {"bk_property_id": "bk_service_status", "bk_property_name": "服务状态", "bk_property_type": "enum",
          "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 7, "bk_property_group": "base",
+         "ispre": True, "bk_property_index": 7, "bk_property_group": "default",
          "option": [
              {"id": "1", "name": "开放", "type": "text", "is_default": True},
              {"id": "2", "name": "关闭", "type": "text", "is_default": False}
@@ -306,29 +306,29 @@ BUILTIN_MODEL_ATTRIBUTES = {
         {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 20, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "default"},
         {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "default"},
         {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "default"},
         {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "default"},
     ],
     "module": [
         {"bk_property_id": "bk_module_id", "bk_property_name": "模块ID", "bk_property_type": "int",
          "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 0, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "default"},
         {"bk_property_id": "bk_module_name", "bk_property_name": "模块名称", "bk_property_type": "singlechar",
          "isrequired": True, "isreadonly": False, "isonly": False, "editable": True,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 1, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "default"},
         {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
          "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
@@ -348,19 +348,19 @@ BUILTIN_MODEL_ATTRIBUTES = {
         {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 20, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "default"},
         {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 21, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "default"},
         {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 22, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "default"},
         {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
          "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
          "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
-         "ispre": True, "bk_property_index": 23, "bk_property_group": "base"},
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "default"},
     ]
 }
 
@@ -380,45 +380,64 @@ CLASSIFICATIONS = [
     {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True},
 ]
 
-# 属性分组定义
+# 属性分组定义（对齐上游 bk-cmdb）
+#
+# 术语澄清（易错点）：
+#   bk_group_id / bk_property_group  = 分组【ID】，上游 NewGroupID(true) 固定返回小写 "default"
+#                                      （src/scene_server/topo_server/logics/model/group.go:335-341）
+#   bk_group_name                    = 分组【显示名】，中文语境为「基础信息」
+#                                      （admin_server/common/definitions.go:22 BaseInfoName）
+#   首字母大写的 "Default" 只是上游自定义模型的显示名硬编码（logics/model/object.go:150），
+#   属于 bk_group_name 而非 ID，切勿写进 bk_property_group。
+#
+# 上游内置模型只有 default 一个通用分组（addPresetObjects.go:242-268），
+# 不存在 base 分组；host 的自动发现分组 ID 是 auto 而非 agent。
 PROPERTY_GROUPS = [
-    {"id": 1, "bk_group_id": "default", "bk_group_name": "默认", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
-    {"id": 2, "bk_group_id": "base", "bk_group_name": "基础信息", "bk_isdefault": False, "is_collapse": False, "ispre": True, "bk_group_index": 1},
+    {"id": 1, "bk_group_id": "default", "bk_group_name": "基础信息", "bk_isdefault": True,
+     "is_collapse": False, "ispre": True, "bk_group_index": -1},
 ]
 
-# 属性分组中文名映射（用于补全分组定义时按 group_id 取展示名）
-# 与 db.rule.md 及原项目保持一致；未命中时回退为 group_id 首字母大写。
-GROUP_NAME_MAP = {
-    "default": "默认",
-    "base": "基础信息",
-    "agent": "Agent信息",
-    "extend": "扩展信息",
-    "info": "基本信息",
+# 非通用分组定义：仅在特定模型上出现，由属性实际引用反推补全时取此处的名称与序号。
+# 对齐 admin_server/common/definitions.go 与 addPresetObjects.go 的 GroupIndex。
+EXTRA_GROUP_DEFS = {
+    "auto": {"bk_group_name": "自动发现信息（需要安装agent）", "bk_group_index": 3},
+    "role": {"bk_group_name": "角色", "bk_group_index": 2},
+    "proc_port": {"bk_group_name": "监听信息", "bk_group_index": 2},
+}
+
+# 历史分组 ID 归并规则：旧值 -> 上游标准值。
+# base 是 lite 早期自造的分组，上游内置模型的「基础信息」分组 ID 就是 default，故并回 default；
+# agent 是 lite 对上游 auto（HostAutoFields）的误写，直接改名。
+GROUP_ID_MIGRATION = {
+    "base": "default",
+    "agent": "auto",
 }
 
 # 需要更新分组的属性映射（属性ID -> 分组ID）
+# 全部归入 default：对齐上游各 *Row() 中标注为 groupBaseInfo（= mCommon.BaseInfo = "default"）的属性，
+# 见 objAttDescData.go:29 `groupBaseInfo = mCommon.BaseInfo` 及 HostRow() 的「基本信息分组」注释。
 PROPERTY_GROUP_UPDATE_MAP = {
-    "name": "base",
-    "bk_inst_name": "base",
-    "bk_host_innerip": "base",
-    "bk_host_outerip": "base",
-    "bk_cloud_id": "base",
-    "bk_switch_name": "base",
-    "bk_switch_ip": "base",
-    "bk_lb_name": "base",
-    "bk_server_name": "base",
-    "bk_listener_name": "base",
-    "description": "base",
-    "operator": "base",
-    "bk_bak_operator": "base",
-    "bk_asset_id": "base",
-    "bk_sn": "base",
-    "bk_comment": "base",
-    "bk_service_term": "base",
-    "bk_sla": "base",
-    "bk_state_name": "base",
-    "bk_province_name": "base",
-    "bk_isp_name": "base",
+    "name": "default",
+    "bk_inst_name": "default",
+    "bk_host_innerip": "default",
+    "bk_host_outerip": "default",
+    "bk_cloud_id": "default",
+    "bk_switch_name": "default",
+    "bk_switch_ip": "default",
+    "bk_lb_name": "default",
+    "bk_server_name": "default",
+    "bk_listener_name": "default",
+    "description": "default",
+    "operator": "default",
+    "bk_bak_operator": "default",
+    "bk_asset_id": "default",
+    "bk_sn": "default",
+    "bk_comment": "default",
+    "bk_service_term": "default",
+    "bk_sla": "default",
+    "bk_state_name": "default",
+    "bk_province_name": "default",
+    "bk_isp_name": "default",
 }
 
 
@@ -474,36 +493,115 @@ class DatabaseMigrator:
         """迁移属性分组数据"""
         # 先获取所有模型
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
-        
-        group_id = 1
+
         for model in models:
             model_id = model['bk_obj_id']
             for group in PROPERTY_GROUPS:
-                self.execute_sql("""
-                    INSERT OR REPLACE INTO cc_PropertyGroup
-                    (_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, 
-                     bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
-                     creator, modifier)
-                    VALUES (:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, 
-                            :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
-                            0, '0', 'admin', 'admin')
-                """, {
-                    '_id': f"{model_id}.{group['bk_group_id']}",
-                    'id': group_id,
-                    'bk_obj_id': model_id,
-                    'bk_group_id': group['bk_group_id'],
-                    'bk_group_name': group['bk_group_name'],
-                    'bk_group_index': group['bk_group_index'],
-                    'bk_isdefault': group['bk_isdefault'],
-                    'is_collapse': group['is_collapse'],
-                    'ispre': group['ispre']
-                })
-                group_id += 1
+                # 去重写入：cc_PropertyGroup 主键为自增 id，_id 非唯一，
+                # 旧版 INSERT OR REPLACE 仅按 id 判重，会在「模型已存在 default 行」
+                # 时插入第二条同名分组（如旧的「默认」与新的「基础信息」并存）。
+                # 这里改为先查后更：复用既有 id 把分组定义刷新为规范值，
+                # 并删除该 (bk_obj_id, bk_group_id) 下的其他残留行，保证每组唯一。
+                existing = self.execute_query(
+                    "SELECT id FROM cc_PropertyGroup "
+                    "WHERE bk_obj_id = :mid AND bk_group_id = :gid ORDER BY id",
+                    {'mid': model_id, 'gid': group['bk_group_id']}
+                )
+                if existing:
+                    canonical_id = existing[0]['id']
+                    self.execute_sql("""
+                        UPDATE cc_PropertyGroup
+                        SET _id = :_id, bk_group_name = :bk_group_name,
+                            bk_group_index = :bk_group_index, bk_isdefault = :bk_isdefault,
+                            is_collapse = :is_collapse, ispre = :ispre,
+                            modifier = 'admin', bk_supplier_account = '0',
+                            last_time = CURRENT_TIMESTAMP
+                        WHERE id = :id
+                    """, {
+                        '_id': f"{model_id}.{group['bk_group_id']}",
+                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_index': group['bk_group_index'],
+                        'bk_isdefault': group['bk_isdefault'],
+                        'is_collapse': group['is_collapse'],
+                        'ispre': group['ispre'],
+                        'id': canonical_id,
+                    })
+                    if len(existing) > 1:
+                        extra_ids = [r['id'] for r in existing[1:]]
+                        placeholders = ", ".join(f":eid_{i}" for i in range(len(extra_ids)))
+                        del_params = {f"eid_{i}": v for i, v in enumerate(extra_ids)}
+                        self.execute_sql(
+                            f"DELETE FROM cc_PropertyGroup WHERE id IN ({placeholders})",
+                            del_params
+                        )
+                        logger.info(
+                            f"清理重复分组 {group['bk_group_id']} "
+                            f"（模型 {model_id}）：{len(extra_ids)} 行"
+                        )
+                else:
+                    # 省略 id 列，由 SQLite 对 INTEGER PRIMARY KEY 自动取 MAX(id)+1，
+                    # 避免复用既有 id 触发主键冲突。
+                    self.execute_sql("""
+                        INSERT INTO cc_PropertyGroup
+                        (_id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index,
+                         bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
+                         creator, modifier)
+                        VALUES (:_id, :bk_obj_id, :bk_group_id, :bk_group_name,
+                                :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
+                                0, '0', 'admin', 'admin')
+                    """, {
+                        '_id': f"{model_id}.{group['bk_group_id']}",
+                        'bk_obj_id': model_id,
+                        'bk_group_id': group['bk_group_id'],
+                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_index': group['bk_group_index'],
+                        'bk_isdefault': group['bk_isdefault'],
+                        'is_collapse': group['is_collapse'],
+                        'ispre': group['ispre']
+                    })
 
-        # 补全：从属性实际出现的 bk_property_group 值反推，
-        # 将 cc_PropertyGroup 中缺失的分组定义补齐（如 host 的 agent 分组）。
-        # 固定 PROPERTY_GROUPS 之外的分组若已存在于属性上却未登记，
-        # 会导致前端 /property-groups 接口查不到、整组属性不渲染。
+        # 空值规范化：对齐上游 bk-cmdb 的 checkAttributeGroupExist —
+        # 当属性未指定分组时，落库值固定为 common.BKDefaultField（即小写 "default"），
+        # 而不是留空串。留空会在 cc_PropertyGroup 上形成悬空引用，
+        # 前端只能靠 `bk_property_group || 'default'` 兜底，数据层不干净。
+        blank_rows = self.execute_query(
+            "SELECT COUNT(*) AS n FROM cc_ObjAttDes "
+            "WHERE bk_property_group IS NULL OR TRIM(bk_property_group) = ''"
+        )
+        blank_cnt = blank_rows[0]['n'] if blank_rows else 0
+        if blank_cnt:
+            self.execute_sql(
+                "UPDATE cc_ObjAttDes SET bk_property_group = 'default' "
+                "WHERE bk_property_group IS NULL OR TRIM(bk_property_group) = ''"
+            )
+            logger.info(f"规范化空 bk_property_group -> 'default'，共 {blank_cnt} 条")
+
+        # 历史分组 ID 归并：把 lite 自造的 base / agent 收敛到上游标准 default / auto。
+        # 先迁移属性引用，再清理 cc_PropertyGroup 中的旧分组行，避免出现悬空引用。
+        for old_gid, new_gid in GROUP_ID_MIGRATION.items():
+            moved = self.execute_query(
+                "SELECT COUNT(*) AS n FROM cc_ObjAttDes WHERE bk_property_group = :g",
+                {'g': old_gid}
+            )
+            moved_cnt = moved[0]['n'] if moved else 0
+            if moved_cnt:
+                self.execute_sql(
+                    "UPDATE cc_ObjAttDes SET bk_property_group = :new "
+                    "WHERE bk_property_group = :old",
+                    {'new': new_gid, 'old': old_gid}
+                )
+                logger.info(f"归并分组 {old_gid} -> {new_gid}，迁移属性 {moved_cnt} 条")
+            # 旧分组定义行一并删除，其属性已迁走
+            stale = self.execute_query(
+                "SELECT COUNT(*) AS n FROM cc_PropertyGroup WHERE bk_group_id = :g",
+                {'g': old_gid}
+            )
+            if stale and stale[0]['n']:
+                self.execute_sql(
+                    "DELETE FROM cc_PropertyGroup WHERE bk_group_id = :g", {'g': old_gid}
+                )
+                logger.info(f"清理旧分组定义 {old_gid}，共 {stale[0]['n']} 行")
+
         existing_groups = {
             (row['bk_obj_id'], row['bk_group_id'])
             for row in self.execute_query(
@@ -526,24 +624,26 @@ class DatabaseMigrator:
             for gid in groups:
                 if (model_id, gid) in existing_groups:
                     continue
-                base = fixed_defs.get(gid)
+                # 先查通用分组定义，再查上游已知的非通用分组（auto/role/proc_port），
+                # 都未命中才回退为「首字母大写的 group_id」
+                spec = fixed_defs.get(gid) or EXTRA_GROUP_DEFS.get(gid)
                 group_name = (
-                    base['bk_group_name']
-                    if base
-                    else GROUP_NAME_MAP.get(gid, gid[:1].upper() + gid[1:])
+                    spec['bk_group_name'] if spec
+                    else gid[:1].upper() + gid[1:]
                 )
-                group_index = base['bk_group_index'] if base else 99
+                group_index = spec['bk_group_index'] if spec else 99
+                # 此处仅处理 existing_groups 中不存在的分组（上面已 continue 跳过已存在的），
+                # 属全新分组，省略 id 列交由 SQLite 自动取 MAX(id)+1。
                 self.execute_sql("""
-                    INSERT OR REPLACE INTO cc_PropertyGroup
-                    (_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index,
+                    INSERT INTO cc_PropertyGroup
+                    (_id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index,
                      bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
                      creator, modifier)
-                    VALUES (:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name,
+                    VALUES (:_id, :bk_obj_id, :bk_group_id, :bk_group_name,
                             :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
                             0, '0', 'admin', 'admin')
                 """, {
                     '_id': f"{model_id}.{gid}",
-                    'id': group_id,
                     'bk_obj_id': model_id,
                     'bk_group_id': gid,
                     'bk_group_name': group_name,
@@ -552,7 +652,6 @@ class DatabaseMigrator:
                     'is_collapse': False,
                     'ispre': True
                 })
-                group_id += 1
                 logger.info(f"补全分组定义: {model_id} / {gid} ({group_name})")
 
         logger.info(f"迁移了 {len(models) * len(PROPERTY_GROUPS)} 个固定属性分组（含缺失分组补全）")

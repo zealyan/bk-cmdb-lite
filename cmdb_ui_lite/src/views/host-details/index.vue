@@ -150,6 +150,13 @@ export default {
       ).sort((a, b) => a.bk_property_index - b.bk_property_index)
     },
     dynamicPropertyGroups () {
+      // 分组显示名对齐上游 bk-cmdb（admin_server/common/definitions.go）
+      const groupNameMap = {
+        default: '基础信息',
+        auto: '自动发现信息（需要安装agent）',
+        role: '角色',
+        proc_port: '监听信息'
+      }
       const groups = {}
       let orderIndex = 0
       this.displayProperties.forEach(prop => {
@@ -162,7 +169,7 @@ export default {
         if (!groups[groupId]) {
           groups[groupId] = {
             bk_group_id: groupId,
-            bk_group_name: groupId === 'default' ? '默认' : groupId,
+            bk_group_name: groupNameMap[groupId] || groupId,
             bk_group_index: orderIndex
           }
           orderIndex += 1
@@ -295,8 +302,8 @@ export default {
           this.propertyGroups = [{
             id: 1,
             bk_group_id: 'default',
-            bk_group_name: '默认',
-            bk_group_index: 0,
+            bk_group_name: '基础信息',
+            bk_group_index: 1,
             bk_isdefault: true
           }]
         }

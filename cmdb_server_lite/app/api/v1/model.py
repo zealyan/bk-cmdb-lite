@@ -172,7 +172,10 @@ def create_instance(model_id):
         result = InstanceService.create_instance(model_id, instance_data)
         return success_response(result, '实例创建成功')
     except APIException as e:
-        return jsonify(e.to_dict()), e.status_code
+        # 业务异常统一上抛，由全局 handle_api_exception 以
+        # HTTP 200 + BaseResp（result:false + bk_error_code）统一返回，
+        # 避免端点各自返回非 2xx 状态码，破坏与原项目一致的响应约定。
+        raise
     except Exception as e:
         logger.error(f"Error creating instance: {e}")
         return error_response(f'创建实例失败: {str(e)}')
@@ -187,7 +190,10 @@ def update_instance(model_id, instance_id):
         result = InstanceService.update_instance(model_id, instance_id, instance_data)
         return success_response(result, '实例更新成功')
     except APIException as e:
-        return jsonify(e.to_dict()), e.status_code
+        # 业务异常统一上抛，由全局 handle_api_exception 以
+        # HTTP 200 + BaseResp（result:false + bk_error_code）统一返回，
+        # 避免端点各自返回非 2xx 状态码，破坏与原项目一致的响应约定。
+        raise
     except Exception as e:
         logger.error(f"Error updating instance: {e}")
         return error_response(f'更新实例失败: {str(e)}')
@@ -220,9 +226,15 @@ def batch_update_instances(model_id):
         else:
             return error_response('请求格式无效', 1199006)
     except ValidationException as e:
-        return jsonify(e.to_dict()), e.status_code
+        # 业务异常统一上抛，由全局 handle_api_exception 以
+        # HTTP 200 + BaseResp（result:false + bk_error_code）统一返回，
+        # 避免端点各自返回非 2xx 状态码，破坏与原项目一致的响应约定。
+        raise
     except APIException as e:
-        return jsonify(e.to_dict()), e.status_code
+        # 业务异常统一上抛，由全局 handle_api_exception 以
+        # HTTP 200 + BaseResp（result:false + bk_error_code）统一返回，
+        # 避免端点各自返回非 2xx 状态码，破坏与原项目一致的响应约定。
+        raise
     except Exception as e:
         logger.error(f"Error updating instances: {e}")
         return error_response(f'批量更新失败: {str(e)}')

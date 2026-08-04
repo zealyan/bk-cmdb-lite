@@ -52,6 +52,17 @@ http.interceptors.response.use(
   },
   (error) => {
     // HTTP 层错误（网络超时、状态码非 2xx 等）
+    // 统一处理：若响应体符合 BaseResp 格式（含 result:false），提取 bk_error_msg
+    // 作为错误信息，避免上层只拿到 "Request failed with status code 400" 这类传输层文案。
+    const resp = error.response
+    if (resp && resp.data && typeof resp.data === 'object'
+        && 'result' in resp.data && resp.data.result === false) {
+      const bizError = new Error(resp.data.bk_error_msg || '业务处理失败')
+      bizError.response = resp
+      bizError.bk_error_code = resp.data.bk_error_code
+      bizError.isBusinessError = true
+      return Promise.reject(bizError)
+    }
     return Promise.reject(error)
   }
 )

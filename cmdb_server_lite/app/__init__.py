@@ -40,9 +40,12 @@ def create_app(config=None):
     register_v1_routes(app)
     
     # 全局错误处理 - 统一返回 BaseResp 格式，与原项目一致
+    # 业务异常一律返回 HTTP 200 + BaseResp（result:false + bk_error_code），
+    # 由响应体内的 result 字段承载成功/失败，与 404/500 处理器保持一致，
+    # 避免前端因 HTTP 非 2xx 把 friendly 的 bk_error_msg 当传输错误处理。
     @app.errorhandler(APIException)
     def handle_api_exception(e):
-        return jsonify(e.to_dict()), e.status_code
+        return jsonify(e.to_dict()), 200
     
     @app.errorhandler(404)
     def handle_not_found(e):

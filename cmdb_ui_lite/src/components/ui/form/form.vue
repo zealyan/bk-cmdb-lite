@@ -166,12 +166,15 @@ export default {
       return false
     },
     groupedPropertiesList() {
+      // 分组显示名与排序对齐上游 bk-cmdb：
+      // default(基础信息) 恒排首位，auto 为 host 自动发现分组（上游 HostAutoFields）
       const groupNameMap = {
-        'base': '基本信息',
-        'default': '默认',
-        'extend': '扩展信息'
+        'default': '基础信息',
+        'auto': '自动发现信息（需要安装agent）',
+        'role': '角色',
+        'proc_port': '监听信息'
       }
-      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
+      const groupOrder = { 'default': 0, 'role': 2, 'proc_port': 2, 'auto': 3 }
       const groups = {}
       this.properties.forEach(property => {
         const groupId = property.bk_property_group || 'default'
