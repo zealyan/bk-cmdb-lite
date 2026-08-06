@@ -1712,6 +1712,8 @@ class DatabaseMigrator:
             
             associations = inst_assoc_data.get("associations", [])
             
+            from app.service.instance_service import InstanceService
+            skipped = 0
             for assoc in associations:
                 # 确定 bk_obj_asst_id 和 bk_relation_type_id
                 # 格式: {源模型ID}_{AsstKindID}_{目标模型ID}
@@ -1722,7 +1724,18 @@ class DatabaseMigrator:
                 bk_relation_type_id = assoc.get("bk_relation_type_id")
                 # bk_obj_asst_id 格式: {源}_{类型}_{目标}
                 bk_obj_asst_id = f"{bk_obj_id}_{bk_relation_type_id}_{bk_asst_obj_id}"
-                
+
+                # 遵循原项目 bk-cmdb 逻辑：两端实例必须存在才允许创建关联，
+                # 跳过指向不存在实例的孤儿关联（种子数据不一致时的防护）。
+                if not InstanceService.get_instance(bk_obj_id, assoc.get("bk_inst_id")):
+                    logger.warning(f"跳过孤儿关联（源实例不存在）: {bk_obj_id}/{assoc.get('bk_inst_id')} -> {bk_asst_obj_id}/{assoc.get('bk_asst_inst_id')}")
+                    skipped += 1
+                    continue
+                if not InstanceService.get_instance(bk_asst_obj_id, assoc.get("bk_asst_inst_id")):
+                    logger.warning(f"跳过孤儿关联（目标实例不存在）: {bk_obj_id}/{assoc.get('bk_inst_id')} -> {bk_asst_obj_id}/{assoc.get('bk_asst_inst_id')}")
+                    skipped += 1
+                    continue
+
                 assoc_data = {
                     "id": assoc.get("id"),
                     "bk_obj_id": bk_obj_id,
@@ -1733,9 +1746,12 @@ class DatabaseMigrator:
                     "bk_relation_type_id": bk_relation_type_id,
                     "bk_supplier_account": "0"
                 }
-                
+
                 # 按源模型和目标模型分表插入（与原项目一致）
                 self._insert_instance_association_to_sharding_tables(assoc_data)
+
+            if skipped:
+                logger.warning(f"已跳过 {skipped} 条孤儿关联（源/目标实例不存在）")
             
             logger.info(f"迁移了 {len(associations)} 个实例关联")
         else:
