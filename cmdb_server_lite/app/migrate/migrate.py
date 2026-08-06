@@ -1271,7 +1271,7 @@ class DatabaseMigrator:
                     option = self.process_option(prop_type, option)
                     
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes
+                        INSERT OR REPLACE INTO cc_ObjAttDes
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
                          bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
@@ -1327,7 +1327,7 @@ class DatabaseMigrator:
                     bk_ishidden = prop.get("bk_ishidden", False)
 
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes
+                        INSERT OR REPLACE INTO cc_ObjAttDes
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
                          bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre,

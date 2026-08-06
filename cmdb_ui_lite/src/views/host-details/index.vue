@@ -528,7 +528,13 @@ export default {
       // 复刻原项目 bk-cmdb：所属拓扑路径分段可点击，点击在【新窗口】打开业务拓扑，
       // 并定位展开到对应 node（biz / set / module）。原项目通过 this.$routerActions.open()
       // 实现，其内部即 router.resolve(to).href + window.open(href)。
-      if (!this.isBusinessHost) return
+      // 本组件同时承载「业务拓扑主机详情」与「资源主机详情」两种入口：业务入口的 bizId
+      // 来自路由参数；资源入口无该参数（isBusinessHost === false）。但两种入口下
+      // topologyList 均已按 biz/set/module 构建好 item.bizId 与 node 标识，点击定位逻辑
+      // 实际只依赖 item.bizId（而非 this.bizId），因此去掉原 isBusinessHost 守卫——
+      // 只要该路径确实归属某个业务（item.bizId 存在），点击即在新窗口打开业务拓扑并定位。
+      // 原守卫会拦截资源入口，导致「所属拓扑」点击无任何效果，本次修复即解决该问题。
+      if (!item || !item.bizId) return
       const to = {
         name: MENU_BUSINESS_TOPOLOGY,
         params: { bizId: String(item.bizId) },

@@ -1090,6 +1090,23 @@ export default {
         this.table.list = instResult.instances || []
         this.table.pagination.count = instResult.total || 0
 
+        // 复刻原项目 bk-cmdb（general-model/index.vue getTableData）：
+        // 当后端返回 count > 0 但当前页 info 为空时，回退到「当前页 - 1」重新加载，
+        // 而非停留在空页。典型场景：末页（如 page=7）仅剩的 1 条被删除后，该页被删空、
+        // 但总记录仍 > 0，若不做处理表格会显示「暂无数据」且翻页组件因 current 越界而丢失。
+        // 原项目用 RouterQuery.set({ page: current - 1 }) 触发 watch 重新拉取上一页数据。
+        // lite 这里改为「同步内联递归重载」：直接递减 current 并就地重新请求上一页，
+        // 同时同步 URL。这样避免依赖 watch 异步链（watch 读取 current 的时序可能仍读到
+        // 旧值 7，导致用空页参数再请求一次、陷入延迟级联回退）。
+        // 注意：回到的是「上一页」(current-1)，既不是首页(1)也不是末页，这是删除后
+        // 剩余数据最自然的落点（上一页恰好承载被删空页之前的最后若干条）。
+        if (this.table.pagination.count && this.table.list.length === 0 && this.table.pagination.current > 1) {
+          this.table.pagination.current -= 1
+          routerQuery.set({ page: this.table.pagination.current, _t: Date.now() })
+          // 用更新后的页码内联重新加载上一页（递归，但最终页有数据时自然收敛）
+          return this.loadModelData(searchParams)
+        }
+
         console.log('[Index.loadModelData] 加载完成，当前列表行数:', this.table.list.length)
 
       } catch (error) {
