@@ -48,21 +48,28 @@ const routes = [
           layout: {
             breadcrumbs: true
           }
-        }
-      },
-      {
-        name: MENU_BUSINESS_HOST_DETAILS,
-        path: ':bizId/index/host/:id',
-        component: () => import('@/views/host-details/index.vue'),
-        meta: {
-          menu: {
-            i18n: '主机详情',
-            relative: MENU_BUSINESS_TOPOLOGY
-          },
-          layout: {
-            breadcrumbs: true
+        },
+        // 复刻原项目 bk-cmdb/src/ui/src/views/business-topology/router.config.js：
+        // 主机详情(host/:id) 是「业务拓扑(index)」的【嵌套子路由】，而非兄弟路由。
+        // 这样进入主机详情时，父路由 business-topology/index.vue（含拓扑树）保持挂载，
+        // 拓扑树的节点展开状态保留在 bk-big-tree 组件内存中，不会因整页重建而丢失；
+        // 返回时仅关闭浮层，拓扑树原样保留，符合"进入/返回主机详情不刷新重建拓扑树"的诉求。
+        children: [
+          {
+            name: MENU_BUSINESS_HOST_DETAILS,
+            path: 'host/:id',
+            component: () => import('@/views/host-details/index.vue'),
+            meta: {
+              menu: {
+                i18n: '主机详情',
+                relative: MENU_BUSINESS_TOPOLOGY
+              },
+              layout: {
+                breadcrumbs: true
+              }
+            }
           }
-        }
+        ]
       }
     ]
   },

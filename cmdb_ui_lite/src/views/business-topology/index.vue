@@ -70,6 +70,18 @@
           </bk-tab-panel>
         </bk-tab>
       </div>
+
+      <!-- 主机详情浮层：复刻原项目 bk-cmdb 的 <router-subview> 机制。
+           host/:id 已声明为「业务拓扑(index)」的嵌套子路由，故此处 <router-view>
+           仅在命中该子路由时渲染 host-details/index.vue，并以绝对定位全屏浮层
+           (position:absolute; top:0; left:0; width/height:100%; z-index:100; background:#fff)
+           覆盖在拓扑视图之上。业务拓扑视图（含拓扑树）在整个过程中 NEVER 卸载，
+           因此拓扑树的节点展开状态（保存在 bk-big-tree 组件内存）始终保留：
+           - 进入主机详情：父组件保持挂载，仅浮层叠加显示，拓扑树不重建、不重置；
+           - 返回主机列表：仅关闭浮层，拓扑树原样保留，不触发任何重载；
+           - 主机列表重加载由 host-list 内的 RouterQuery.watch('*') 在 query.page
+             变化时自动触发（返回时 page 由缺省恢复为 1），无需在此额外处理。 -->
+      <router-view class="host-detail-subview"></router-view>
     </div>
   </div>
 </template>
@@ -79,6 +91,7 @@ import TopologyTree from './children/topology-tree.vue'
 import HostList from './host/host-list.vue'
 import NodeInfo from './children/node-info.vue'
 import RouterQuery from '@/utils/router-query'
+import { MENU_BUSINESS_TOPOLOGY, MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
 
 export default {
   name: 'BusinessTopology',
@@ -101,7 +114,13 @@ export default {
   },
   computed: {
     bizId() {
-      return this.$route.params.bizId
+      // 必须做类型归一：URL 直接解析出的 params.bizId 是字符串 '2'，
+      // 而编程式导航（如主机详情返回时 router.replace({ params: { bizId: 2 } })）
+      // 传入的可能是数字 2。若不归一，'2' -> 2 会被 watch 判定为「业务切换」，
+      // 从而误触发 initTopology() 让整棵拓扑树重新拉取并转圈（表现为首次返回刷新一次）。
+      const raw = this.$route.params.bizId
+      const num = parseInt(raw, 10)
+      return Number.isNaN(num) ? null : num
     }
   },
   watch: {
@@ -117,10 +136,25 @@ export default {
       }
       RouterQuery.setAll(query)
     },
-    bizId() {
+    bizId(value, oldValue) {
+      // 仅在「业务真正切换」时重建拓扑树；相同业务（含类型漂移导致的伪变化）直接忽略
+      if (value === null || value === oldValue) return
       this.$nextTick(() => {
         this.$refs.topologyTree?.initTopology()
       })
+    },
+    '$route'(to, from) {
+      // 复刻原项目 bk-cmdb 的业务拓扑交互：
+      // 主机详情(host/:id) 作为「业务拓扑(index)」的嵌套子路由，进入时父组件保持挂载、
+      // 拓扑树不刷新；而从主机详情【返回】业务拓扑时，应重新加载右侧「主机列表」数据
+      // （原项目返回即刷新列表，例如主机在详情页被编辑/转移后，回到列表能看到最新数据）。
+      // 由于嵌套路由下 host-list 组件不再随返回而 remount（created 不重跑），
+      // 此处显式在返回瞬间触发一次列表重载；拓扑树因父组件常驻不受影响。
+      if (to.name === MENU_BUSINESS_TOPOLOGY && from.name === MENU_BUSINESS_HOST_DETAILS) {
+        this.$nextTick(() => {
+          this.$refs.hostList?.loadHostList()
+        })
+      }
     }
   },
   async beforeRouteLeave(to, from, next) {
@@ -251,6 +285,24 @@ export default {
   width: 100%;
   overflow: hidden;
   background: #fff;
+  /* 作为主机详情浮层(.host-detail-subview)的定位上下文，
+     保证浮层相对业务拓扑视图全屏覆盖，而非相对更外层容器 */
+  position: relative;
+}
+
+/* 主机详情浮层：复刻原项目 bk-cmdb <router-subview> 的 overlay 样式。
+   绝对定位 + 白底 + z-index:100，仅在命中嵌套子路由 host/:id 时由
+   <router-view class="host-detail-subview"> 渲染 host-details/index.vue，
+   覆盖在拓扑视图之上；业务拓扑（含拓扑树）保持挂载不被卸载。 */
+.host-detail-subview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  background-color: #fff;
+  overflow: hidden;
 }
 
 .topology-layout {

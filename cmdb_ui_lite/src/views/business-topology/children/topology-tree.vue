@@ -72,6 +72,7 @@ import CreateSet from './create-set.vue'
 import CreateModule from './create-module.vue'
 import { topoAPI } from '@/api/topo'
 import RouterQuery from '@/utils/router-query'
+import { MENU_BUSINESS_TOPOLOGY } from '@/dictionary/menu-symbol'
 
 const MODEL_INFO = {
   biz: { bk_obj_name: '业务', icon_text: '业' },
@@ -331,6 +332,12 @@ export default {
     },
 
     setDefaultState() {
+      // 复刻原项目 bk-cmdb：仅在「业务拓扑主页面」(route === MENU_BUSINESS_TOPOLOGY) 才依据 URL 的
+      // node 参数定位 / 展开拓扑树。主机详情是嵌套子路由 (route === MENU_BUSINESS_HOST_DETAILS)，
+      // 进入详情时父组件（含拓扑树）仍常驻内存，若此处缺少路由名守卫，会在【详情页隐藏期间】因 node
+      // 变化而偷偷重定位树，返回业务拓扑时便表现为一次多余的"跳动 / 刷新"。
+      // 原项目 src/ui/.../topology-tree.vue 的 setDefaultState 即以此为前置条件，lite 此处对齐。
+      if (this.$route.name !== MENU_BUSINESS_TOPOLOGY) return
       console.log('[TopologyTree] setDefaultState: start')
       const queryNodeId = this.$route.query.node || ''
       const queryTopoPathArray = this.$route.query.topo_path ? this.$route.query.topo_path.split(',') : []

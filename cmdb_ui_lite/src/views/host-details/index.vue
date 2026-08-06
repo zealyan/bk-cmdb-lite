@@ -18,7 +18,16 @@
             <li :class="['topology-item']"
               v-for="(item, index) in topologyList"
               :key="index">
-              <span class="topology-path" v-bk-overflow-tips @click="handlePathClick(item)">{{ item.path }}</span>
+              <span class="topology-path">
+                <template v-for="(seg, segIndex) in item.nodes" :key="seg.id">
+                  <span
+                    class="topology-node"
+                    @click="handleNodeClick(seg, item)">{{ seg.name }}</span>
+                  <span
+                    class="topology-separator"
+                    v-if="segIndex < item.nodes.length - 1"> / </span>
+                </template>
+              </span>
             </li>
           </ul>
           <a class="action-btn view-all"
@@ -233,14 +242,22 @@ export default {
     topologyList() {
       const paths = []
       this.topologyData.forEach(biz => {
-        biz.sets.forEach(set => {
+          biz.sets.forEach(set => {
           set.modules.forEach(module => {
             paths.push({
               id: module.bk_module_id,
               path: `${biz.bk_biz_name} / ${set.bk_set_name} / ${module.bk_module_name}`,
               bizId: biz.bk_biz_id,
               setId: set.bk_set_id,
-              moduleId: module.bk_module_id
+              moduleId: module.bk_module_id,
+              // 复刻原项目 bk-cmdb：所属拓扑路径按 biz / set / module 拆成可单独点击的分段，
+              // 每段映射到一个 topo tree node（biz-<id> / set-<id> / module-<id>），
+              // 点击后在【新窗口】打开业务拓扑并定位展开到该 node。
+              nodes: [
+                { id: biz.bk_biz_id, name: biz.bk_biz_name, node: `biz-${biz.bk_biz_id}` },
+                { id: set.bk_set_id, name: set.bk_set_name, node: `set-${set.bk_set_id}` },
+                { id: module.bk_module_id, name: module.bk_module_name, node: `module-${module.bk_module_id}` }
+              ]
             })
           })
         })
@@ -489,9 +506,12 @@ export default {
 
         console.log('[host-details] navigating back with', { page, node, filter: this.$route.query.filter, ip: this.$route.query.ip })
 
+        // bizId 必须以字符串形式回传：路由 params 从 URL 解析时恒为字符串，
+        // 若这里回传数字会造成 params 类型漂移（'2' -> 2），被业务拓扑页的
+        // bizId watch 误判为业务切换而重建拓扑树。
         this.$router.replace({
           name: MENU_BUSINESS_TOPOLOGY,
-          params: { bizId: this.bizId },
+          params: { bizId: String(this.bizId) },
           query
         })
       } else {
@@ -504,17 +524,18 @@ export default {
       }
     },
 
-    handlePathClick(item) {
-      if (this.isBusinessHost) {
-        this.$router.push({
-          name: MENU_BUSINESS_TOPOLOGY,
-          params: { bizId: item.bizId },
-          query: {
-            node: `module-${item.id}`,
-            _t: Date.now()
-          }
-        })
+    handleNodeClick(seg, item) {
+      // 复刻原项目 bk-cmdb：所属拓扑路径分段可点击，点击在【新窗口】打开业务拓扑，
+      // 并定位展开到对应 node（biz / set / module）。原项目通过 this.$routerActions.open()
+      // 实现，其内部即 router.resolve(to).href + window.open(href)。
+      if (!this.isBusinessHost) return
+      const to = {
+        name: MENU_BUSINESS_TOPOLOGY,
+        params: { bizId: String(item.bizId) },
+        query: { node: seg.node }
       }
+      const { href } = this.$router.resolve(to)
+      window.open(href, '_blank')
     },
 
     viewAll() {
@@ -639,31 +660,47 @@ export default {
       }
     }
 
-    .topology-item {
-      flex: 0 1 50%;
-      width: 50%;
-      height: 20px;
-      font-size: 0;
-      margin: 0 0 9px 0;
-      padding: 0 15px 0 0;
-      line-height: 20px;
-      list-style: none;
+      .topology-item {
+        flex: 0 1 50%;
+        width: 50%;
+        height: 20px;
+        font-size: 0;
+        margin: 0 0 9px 0;
+        padding: 0 15px 0 0;
+        line-height: 20px;
+        list-style: none;
 
-      .topology-path {
-        display: inline-block;
-        vertical-align: middle;
-        font-size: 14px;
-        max-width: calc(100% - 30px);
-        cursor: pointer;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        .topology-path {
+          display: inline-block;
+          vertical-align: middle;
+          font-size: 14px;
+          max-width: calc(100% - 30px);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
 
-        &:hover {
-          color: #3a84ff;
+        .topology-node {
+          display: inline;
+          vertical-align: middle;
+          font-size: 14px;
+          cursor: pointer;
+          color: #63656e;
+
+          &:hover {
+            color: #3a84ff;
+          }
+        }
+
+        .topology-separator {
+          display: inline;
+          vertical-align: middle;
+          padding: 0 2px;
+          font-size: 14px;
+          color: #c4c6cc;
+          cursor: default;
         }
       }
-    }
   }
 
   .action-btn {
