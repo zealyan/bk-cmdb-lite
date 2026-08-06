@@ -20,12 +20,13 @@ class CCErrorCode:
     CCErrCommParamsInvalid = 1199006
     CCErrCommNotFound = 1199019
     CCErrCommInternalServerError = 1199999
+    CCErrTopoHasHostCheckFailed = 1101030
 
 
 class APIException(Exception):
     """API 异常基类 - 输出与原项目 BaseResp 格式一致"""
 
-    def __init__(self, message: str, status_code: int = 400, error_code: int = None):
+    def __init__(self, message: str, status_code: int = 200, error_code: int = None):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -40,10 +41,10 @@ class APIException(Exception):
 
 
 class NotFoundException(APIException):
-    """资源不存在异常"""
+    """资源不存在异常 - 返回 200 + BaseResp 格式，与原项目一致"""
 
     def __init__(self, message: str = "Resource not found"):
-        super().__init__(message, status_code=404, error_code=CCErrorCode.CCErrCommNotFound)
+        super().__init__(message, status_code=200, error_code=CCErrorCode.CCErrCommNotFound)
 
 
 class ValidationException(APIException):

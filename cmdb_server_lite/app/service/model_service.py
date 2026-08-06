@@ -1,4 +1,5 @@
-from app.db.executor import query_all, query_one
+from app.db.executor import query_all, query_one, execute
+from app.definitions import PROPERTY_TYPE_BOOL
 import json
 
 DEFAULT_OBJ_ICON = 'icon-cc-default'
@@ -60,11 +61,11 @@ class ModelService:
 
             if option is None or option == '':
                 # bool 类型的 option 默认为 false（作为默认值）
-                if prop_type == 'bool':
+                if prop_type == PROPERTY_TYPE_BOOL:
                     attr['option'] = False
                 continue
 
-            if prop_type == 'bool':
+            if prop_type == PROPERTY_TYPE_BOOL:
                 # bool 类型的 option 是布尔值本身（可能存储为字符串 'true'/'false'）
                 if isinstance(option, bool):
                     attr['option'] = option
@@ -155,6 +156,36 @@ class ModelService:
         
         return result is not None
     
+    @staticmethod
+    def update_model(model_id, data):
+        """更新模型元数据（如 bk_ispaused 停用/启用）
+
+        Args:
+            model_id: 模型 ID（bk_obj_id）
+            data: 需更新的字段字典，目前支持 bk_ispaused
+
+        Returns:
+            更新后的模型对象，若模型不存在则返回 None
+        """
+        model = ModelService.get_model_by_id(model_id)
+        if not model:
+            return None
+
+        allowed_fields = {'bk_ispaused'}
+        update_data = {}
+        for key, value in data.items():
+            if key in allowed_fields:
+                # SQLite boolean → 0/1
+                update_data[key] = 1 if value else 0
+
+        if update_data:
+            execute(
+                'UPDATE cc_ObjDes SET bk_ispaused = :bk_ispaused WHERE bk_obj_id = :model_id',
+                {'bk_ispaused': update_data.get('bk_ispaused', 0), 'model_id': model_id}
+            )
+
+        return ModelService.get_model_by_id(model_id)
+
     @staticmethod
     def delete_object_unique(model_id, unique_id):
         """删除模型的唯一约束"""

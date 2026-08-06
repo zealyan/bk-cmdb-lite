@@ -79,6 +79,8 @@ export default {
       const result = []
       this.classifications.forEach((classification) => {
         const models = classification.bk_objects.filter((model) => {
+          // 隐藏已停用的模型（与原项目 resource-manage 一致）
+          if (model.bk_ispaused) return false
           const isMatched = this.matchedModels ? this.matchedModels.includes(model.bk_obj_id) : true
           return isMatched
         })

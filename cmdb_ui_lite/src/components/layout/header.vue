@@ -24,11 +24,14 @@
 <script>
 import menu from '@/dictionary/menu'
 import {
+  MENU_BUSINESS,
+  MENU_BUSINESS_TOPOLOGY,
   MENU_RESOURCE,
   MENU_MODEL,
   MENU_RESOURCE_MANAGEMENT,
   MENU_MODEL_MANAGEMENT
 } from '@/dictionary/menu-symbol'
+import { getCachedBizId } from '@/utils/biz-cache'
 
 export default {
   name: 'CmdbHeader',
@@ -59,6 +62,13 @@ export default {
       return topRoute.name === nav.id
     },
     getHeaderLink(nav) {
+      // 对齐原项目 header.getHeaderLink：顶栏「业务」标签回到缓存/选中的业务
+      // （objectBiz/bizId，由路由守卫在进入业务时绑定），而非写死的固定 bizId
+      if (nav.id === MENU_BUSINESS) {
+        const storeBizId = this.$store.getters['objectBiz/bizId']
+        const bizId = (storeBizId && String(storeBizId) !== '0') ? String(storeBizId) : getCachedBizId()
+        return { name: MENU_BUSINESS_TOPOLOGY, params: { bizId } }
+      }
       const firstChild = nav.menu && nav.menu[0]
       if (firstChild && firstChild.route) {
         return firstChild.route
@@ -80,7 +90,7 @@ export default {
 }
 
 .logo {
-  flex: 292px 0 0;
+  flex: 130px 0 0;
   font-size: 0;
 
   .logo-link {

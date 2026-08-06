@@ -1,5 +1,6 @@
 <template>
   <bk-select
+    class="form-list-selector"
     v-model="localValue"
     :disabled="disabled || readonly"
     :clearable="true"
@@ -77,3 +78,9 @@ export default {
   }
 }
 </script>
+
+<style lang="scss" scoped>
+.form-list-selector {
+  width: 100%;
+}
+</style>

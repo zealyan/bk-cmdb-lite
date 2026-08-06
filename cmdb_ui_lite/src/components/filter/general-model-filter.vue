@@ -11,11 +11,12 @@
       <div class="filter-header">
         <div class="filter-operate">
           <condition-picker
-            :properties="properties"
+            :property-map="groupedPropertyMap"
             :selected="filterItems.map(item => item.property)"
             :disabled="!showAddButton"
-            :handler="handleAddConditions"
-          ></condition-picker>
+            :type="2"
+            @change="handleConditionPickerChange">
+          </condition-picker>
           <bk-button
             v-if="hasCondition"
             class="clear-btn"
@@ -84,15 +85,18 @@
                   size="small"
                   @enter="handleSearch">
                 </bk-input>
-                <bk-input
+                <bk-tag-input
                   v-else-if="isInOperator(item.operator)"
-                  v-model="item.valueText"
-                  type="textarea"
+                  v-model="item.valueTags"
                   :placeholder="getInPlaceholder(item)"
-                  :rows="1"
+                  :has-delete-icon="true"
+                  :allow-create="true"
+                  :allow-auto-match="true"
+                  :collapse-tags="true"
+                  :paste-fn="(val) => handleTagPaste(val, item)"
                   size="small"
-                  @enter="handleSearch">
-                </bk-input>
+                  @change="handleTagChange(item)">
+                </bk-tag-input>
                 <bk-input
                   v-else
                   v-model="item.valueText"
@@ -138,7 +142,7 @@ import DateSearch from '../search/date.vue'
 import TimeSearch from '../search/time.vue'
 import BoolSearch from '../search/bool.vue'
 import { transformGeneralModelCondition, getOperatorSideEffect } from './utils'
-import { setSearchQueryByCondition, buildSearchParams } from '@/utils/query-builder'
+import { buildSearchParams } from '@/utils/query-builder'
 
 const { EQ, NE, IN, NIN, GT, LT, GTE, LTE, RANGE, LIKE } = QUERY_OPERATOR
 
@@ -221,6 +225,26 @@ export default {
         return Math.floor(screenWidth * 0.85)
       }
       return Math.floor(screenWidth * 0.95)
+    },
+    /**
+     * 将平面属性数组转换为按模型分组的 propertyMap
+     * 与 condition-picker 组件的 propertyMap prop 兼容
+     */
+    groupedPropertyMap() {
+      const map = {}
+      const fallbackModelId = this.$route?.params?.modelId || 'default'
+      this.properties.forEach(property => {
+        const modelId = property.bk_obj_id || fallbackModelId
+        if (!map[modelId]) {
+          map[modelId] = []
+        }
+        // 确保每个属性都有 bk_obj_id，用于后续分组
+        if (!property.bk_obj_id) {
+          property = { ...property, bk_obj_id: modelId }
+        }
+        map[modelId].push(property)
+      })
+      return map
     },
     hasCondition() {
       return this.filterItems.some(item => {
@@ -310,12 +334,11 @@ export default {
         
         let valueText = ''
         let valueRange = ''
+        let valueTags = []
         
         if (isDateTime) {
-          // 对于日期时间类型，cmdb-search-date 和 cmdb-search-time 组件绑定的是 valueText
           valueText = Array.isArray(value) ? [...value] : (value ? [value] : [])
         } else if (isEnumOrList) {
-          // 枚举、布尔、列表类型使用 $in 操作符，值为数组
           const isInOp = this.isInOperator(operator)
           if (isInOp && typeof value === 'string') {
             valueText = value.split(',').map(v => v.trim()).filter(v => v)
@@ -325,11 +348,13 @@ export default {
         } else if (this.isRangeOperator(operator)) {
           valueRange = Array.isArray(value) ? value.join('\n') : value
         } else if (this.isInOperator(operator)) {
-          // in 操作符的值可能是数组，需要处理
           if (Array.isArray(value)) {
+            valueTags = [...value]
             valueText = value.join('\n')
           } else {
-            valueText = String(value)
+            const values = String(value).split(/[\n,，;；]/).map(v => v.trim()).filter(v => v.length > 0)
+            valueTags = values
+            valueText = value
           }
         } else {
           valueText = Array.isArray(value) ? value.join(',') : value
@@ -340,7 +365,8 @@ export default {
           property,
           operator,
           valueText,
-          valueRange
+          valueRange,
+          valueTags
         })
       })
       
@@ -375,7 +401,7 @@ export default {
       }
       
       if (this.isInOperator(item.operator)) {
-        return item.valueText || ''
+        return item.valueTags.length > 0 ? item.valueTags : item.valueText
       }
       
       return item.valueText || ''
@@ -522,7 +548,8 @@ export default {
         property,
         operator,
         valueText: isEnumOrList || isDateTime ? [] : (isBool ? '' : ''),
-        valueRange: ''
+        valueRange: '',
+        valueTags: []
       })
     },
     getDefaultOperator(property) {
@@ -556,6 +583,24 @@ export default {
         }
       })
     },
+    /**
+     * condition-picker 变更回调（与新版 condition-picker 兼容）
+     * 新版 condition-picker 通过 FilterStore 管理选中状态
+     */
+    handleConditionPickerChange() {
+      const FilterStore = require('@/components/filters/store').default
+      const selected = FilterStore.selected || []
+      // 找出新增的属性
+      const currentIds = this.filterItems.map(item => item.property.bk_property_id)
+      selected.forEach(property => {
+        if (!currentIds.includes(property.bk_property_id)) {
+          this.addItem(property)
+        }
+      })
+      // 找出移除的属性
+      const selectedIds = selected.map(p => p.bk_property_id)
+      this.filterItems = this.filterItems.filter(item => selectedIds.includes(item.property.bk_property_id))
+    },
     handleRemoveItem(index) {
       this.filterItems.splice(index, 1)
       if (this.filterItems.length === 0) {
@@ -575,6 +620,19 @@ export default {
       const isDateTime = ['date', 'time'].includes(item.property.bk_property_type)
       item.valueText = isEnumOrList || isDateTime ? [] : ''
       item.valueRange = ''
+      item.valueTags = []
+    },
+    handleTagPaste(val, item) {
+      if (!val) return item.valueTags
+      const values = val.split(/,|;|\n/)
+        .map(v => v.trim())
+        .filter(v => v.length > 0)
+      const newValue = [...new Set([...item.valueTags, ...values])]
+      item.valueTags = newValue
+      return newValue
+    },
+    handleTagChange(item) {
+      item.valueText = item.valueTags.join('\n')
     },
     handleSearch() {
       const conditionMap = {}
@@ -626,8 +684,6 @@ export default {
         pageSize: 20,
         sort: '-id'
       })
-
-      setSearchQueryByCondition(conditionMap, this.properties)
 
       this.$emit('search', {
         conditionMap,

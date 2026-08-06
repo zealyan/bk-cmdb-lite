@@ -31,12 +31,38 @@ http.interceptors.request.use(
   }
 )
 
-// 响应拦截器
+// 响应拦截器 - 统一处理原项目 BaseResp 格式
+// 与原项目一致：成功时返回 data 字段，错误时抛出包含 bk_error_msg 的异常
 http.interceptors.response.use(
   (response) => {
-    return response.data
+    const data = response.data
+    // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
+    if (data !== null && typeof data === 'object' && 'result' in data) {
+      if (data.result === false) {
+        // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
+        const error = new Error(data.bk_error_msg || '业务处理失败')
+        error.response = { data }
+        return Promise.reject(error)
+      }
+      // 成功：返回 data 字段内容
+      return data.data !== undefined ? data.data : data
+    }
+    // 非标准格式：直接返回原始数据（向后兼容）
+    return data
   },
   (error) => {
+    // HTTP 层错误（网络超时、状态码非 2xx 等）
+    // 统一处理：若响应体符合 BaseResp 格式（含 result:false），提取 bk_error_msg
+    // 作为错误信息，避免上层只拿到 "Request failed with status code 400" 这类传输层文案。
+    const resp = error.response
+    if (resp && resp.data && typeof resp.data === 'object'
+        && 'result' in resp.data && resp.data.result === false) {
+      const bizError = new Error(resp.data.bk_error_msg || '业务处理失败')
+      bizError.response = resp
+      bizError.bk_error_code = resp.data.bk_error_code
+      bizError.isBusinessError = true
+      return Promise.reject(bizError)
+    }
     return Promise.reject(error)
   }
 )
@@ -67,7 +93,12 @@ export const modelAPI = {
   getModel (modelId) {
     return http.get(`/api/v1/models/${modelId}`)
   },
-  
+
+  // 更新模型元数据（停用/启用等）
+  updateModel (modelId, data) {
+    return http.put(`/api/v1/models/${modelId}`, { data })
+  },
+
   // 获取模型属性
   getModelAttributes (modelId) {
     return http.get(`/api/v1/models/${modelId}/attributes`)
@@ -114,12 +145,21 @@ export const modelAPI = {
   },
 
   // 按实例ID列表查询实例（使用搜索接口 + $in 条件）
+  // 内置模型使用专用主键字段（如 host 用 bk_host_id），自定义模型用 bk_inst_id
   getInstancesByIds (modelId, ids = []) {
+    const idFieldMap = {
+      'host': 'bk_host_id',
+      'biz': 'bk_biz_id',
+      'set': 'bk_set_id',
+      'module': 'bk_module_id',
+      'bk_biz_set_obj': 'bk_biz_set_id'
+    }
+    const idField = idFieldMap[modelId] || 'bk_inst_id'
     return http.post(`/api/v1/models/${modelId}/instances/search`, {
       conditions: {
         condition: 'AND',
         rules: [{
-          field: 'bk_inst_id',
+          field: idField,
           operator: '$in',
           value: ids
         }]
@@ -156,7 +196,9 @@ export const modelAPI = {
 
   // 更新单个实例
   updateInstance (modelId, instanceId, data) {
-    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, data)
+    // 与 createInstance 保持一致：后端 update_instance 读取 data.get('data', {}),
+    // 必须将请求体包裹为 { data }，否则扁平 body 会被当成空 data，更新成为空操作。
+    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, { data })
   },
 
   // 批量更新实例（格式1：每个实例有不同数据）
@@ -172,6 +214,13 @@ export const modelAPI = {
   // 批量获取模型实例数量统计
   getInstanceCounts (objIds = []) {
     return http.post('/api/v1/models/instances/count', { obj_ids: objIds })
+  },
+
+  // 获取主机拓扑信息（业务拓扑下的主机详情）
+  getHostTopology (hostId, bizId) {
+    const params = {}
+    if (bizId) params.bk_biz_id = bizId
+    return http.get(`/api/v1/topo/host/${hostId}/topology`, { params })
   },
 
   // 查询模型的唯一约束

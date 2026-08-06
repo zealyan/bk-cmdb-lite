@@ -5,6 +5,25 @@ from app.utils.logger import get_logger
 logger = get_logger('api.user')
 user_bp = Blueprint('user', __name__)
 
+def error_response(message, error_code=1199999):
+    """统一错误响应格式 - 与原项目 BaseResp 一致"""
+    return jsonify({
+        'result': False,
+        'bk_error_code': error_code,
+        'bk_error_msg': message
+    }), 200
+
+def success_response(data=None, message=''):
+    """统一成功响应格式 - 与原项目 BaseResp 一致"""
+    if data is None:
+        data = {}
+    return jsonify({
+        'result': True,
+        'bk_error_code': 0,
+        'bk_error_msg': message,
+        'data': data
+    }), 200
+
 @user_bp.route('/api/usercustom/user/search', methods=['POST'])
 def search_user_custom():
     """获取用户配置"""
@@ -12,10 +31,10 @@ def search_user_custom():
         user_name = request.headers.get('x-user-name', 'admin')
         
         config = UserService.get_user_custom(user_name)
-        return jsonify(config)
+        return success_response(config)
     except Exception as e:
         logger.error(f"Error getting user custom: {e}")
-        return jsonify({'detail': str(e)}), 500
+        return error_response(f'获取用户配置失败: {str(e)}')
 
 @user_bp.route('/api/usercustom', methods=['POST'])
 def save_user_custom():
@@ -25,20 +44,20 @@ def save_user_custom():
         data = request.get_json() or {}
         
         result = UserService.save_user_custom(user_name, data)
-        return jsonify(result)
+        return success_response(result, '保存用户配置成功')
     except Exception as e:
         logger.error(f"Error saving user custom: {e}")
-        return jsonify({'detail': str(e)}), 500
+        return error_response(f'保存用户配置失败: {str(e)}')
 
 @user_bp.route('/api/users', methods=['GET'])
 def get_users():
     """获取用户列表"""
     try:
         users = UserService.get_users()
-        return jsonify({'users': users})
+        return success_response({'users': users})
     except Exception as e:
         logger.error(f"Error getting users: {e}")
-        return jsonify({'detail': str(e)}), 500
+        return error_response(f'获取用户列表失败: {str(e)}')
 
 @user_bp.route('/api/usercustom/model/<obj_id>', methods=['GET'])
 def get_model_columns(obj_id):
@@ -47,10 +66,10 @@ def get_model_columns(obj_id):
         user_name = request.headers.get('x-user-name', 'admin')
         
         columns = UserService.get_model_columns(user_name, obj_id)
-        return jsonify({'columns': columns})
+        return success_response({'columns': columns})
     except Exception as e:
         logger.error(f"Error getting model columns: {e}")
-        return jsonify({'detail': str(e)}), 500
+        return error_response(f'获取模型列配置失败: {str(e)}')
 
 @user_bp.route('/api/usercustom/model/<obj_id>', methods=['POST'])
 def save_model_columns(obj_id):
@@ -61,7 +80,7 @@ def save_model_columns(obj_id):
         columns = data.get('columns', [])
         
         result = UserService.save_model_columns(user_name, obj_id, columns)
-        return jsonify(result)
+        return success_response(result, '保存模型列配置成功')
     except Exception as e:
         logger.error(f"Error saving model columns: {e}")
-        return jsonify({'detail': str(e)}), 500
+        return error_response(f'保存模型列配置失败: {str(e)}')

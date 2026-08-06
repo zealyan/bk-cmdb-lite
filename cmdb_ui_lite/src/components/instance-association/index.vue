@@ -340,10 +340,42 @@ export default {
         'bk_slb': '负载均衡',
         'bk_slb_server': '后端服务器',
         'bk_slb_listener': '监听器',
-        'bk_host': '主机',
+        'host': '主机',
         'biz': '业务'
       }
       return modelNames[objId] || objId
+    },
+    // 获取模型的主键字段（内置模型使用专用字段，自定义模型用 bk_inst_id）
+    getIdFieldByModel(objId) {
+      const idFieldMap = {
+        'host': 'bk_host_id',
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'bk_biz_set_obj': 'bk_biz_set_id'
+      }
+      return idFieldMap[objId] || 'bk_inst_id'
+    },
+    // 获取模型名称字段（内置模型使用专用字段，自定义模型用 bk_inst_name）
+    getNameFieldByModel(objId) {
+      const nameFieldMap = {
+        'host': 'bk_host_name',
+        'biz': 'bk_biz_name',
+        'set': 'bk_set_name',
+        'module': 'bk_module_name',
+        'bk_biz_set_obj': 'bk_biz_set_name'
+      }
+      return nameFieldMap[objId] || 'bk_inst_name'
+    },
+    // 从行数据中提取实例ID（兼容内置模型专用字段）
+    getInstanceIdFromRow(row, objId) {
+      const idField = this.getIdFieldByModel(objId)
+      return row[idField] !== undefined ? row[idField] : (row.bk_inst_id !== undefined ? row.bk_inst_id : row.id)
+    },
+    // 从行数据中提取实例名称（兼容内置模型专用字段）
+    getInstanceNameFromRow(row, objId) {
+      const nameField = this.getNameFieldByModel(objId)
+      return row[nameField] || row.bk_inst_name || row.name || ''
     },
     getColumnsForModel(objId) {
       if (this.cachedProperties[objId] && this.cachedProperties[objId].length > 0) {
@@ -377,8 +409,18 @@ export default {
       try {
         const attrResponse = await modelAPI.getModelAttributes(modelId)
         if (attrResponse && attrResponse.attributes) {
+          // 系统字段过滤列表（包含内置模型专用ID/名称字段）
+          const systemFields = [
+            'id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account',
+            'create_time', 'last_time', 'bk_operate_time',
+            'bk_host_id', 'bk_host_name',
+            'bk_biz_id', 'bk_biz_name',
+            'bk_set_id', 'bk_set_name',
+            'bk_module_id', 'bk_module_name',
+            'bk_biz_set_id', 'bk_biz_set_name'
+          ]
           const sortedAttrs = attrResponse.attributes
-            .filter(p => p.bk_property_index !== -1 && !['id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account', 'create_time', 'last_time', 'bk_operate_time'].includes(p.bk_property_id))
+            .filter(p => p.bk_property_index !== -1 && !systemFields.includes(p.bk_property_id))
             .sort((a, b) => a.bk_property_index - b.bk_property_index)
             .slice(0, 5)
           this.$set(this.cachedProperties, modelId, sortedAttrs)
@@ -460,10 +502,10 @@ export default {
       this.$emit('association-change')
     },
     handleRowClick(row, event, column, item) {
-      const instId = row.bk_inst_id !== undefined ? row.bk_inst_id : row.id
       const objId = item.relatedObjId
+      const instId = this.getInstanceIdFromRow(row, objId)
       const modelName = this.getModelDisplayName(objId)
-      const instanceName = row.bk_inst_name || row.name || 'ID: ' + instId
+      const instanceName = this.getInstanceNameFromRow(row, objId) || ('ID: ' + instId)
 
       showInstanceDetails({
         bk_obj_id: objId,
@@ -472,7 +514,8 @@ export default {
       })
     },
     async handleRemoveAssociation(row, item) {
-      const instIdNum = Number(row.bk_inst_id !== undefined ? row.bk_inst_id : row.id)
+      const objId = item.relatedObjId
+      const instIdNum = Number(this.getInstanceIdFromRow(row, objId))
 
       const association = this.associations.find(asst => {
         const isSource = String(asst.bk_obj_id) === String(this.objId) &&
@@ -493,9 +536,10 @@ export default {
         return
       }
 
+      const instanceName = this.getInstanceNameFromRow(row, objId) || ('ID: ' + instIdNum)
       this.$bkInfo({
         title: '确认取消关联',
-        content: '确定要取消与 ' + (row.bk_inst_name || row.name || ('ID: ' + instIdNum)) + ' 的关联吗？',
+        content: '确定要取消与 ' + instanceName + ' 的关联吗？',
         confirmFn: async () => {
           try {
             await associationAPI.delete(this.objId, association.id)

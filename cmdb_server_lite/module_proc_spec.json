@@ -1,0 +1,284 @@
+{
+  "classification": {
+    "bk_classification_id": "bk_module_proc",
+    "bk_classification_name": "进程采集"
+  },
+  "model": {
+    "bk_obj_id": "module_proc",
+    "bk_obj_name": "进程实例",
+    "bk_classification_id": "bk_module_proc"
+  },
+  "groups": [
+    {
+      "bk_group_id": "default",
+      "bk_group_name": "默认",
+      "bk_group_index": 0
+    }
+  ],
+  "attributes": [
+    {
+      "bk_property_id": "user",
+      "bk_property_name": "运行用户",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "group",
+      "bk_property_name": "用户组",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "soft_name",
+      "bk_property_name": "软件名称",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "soft_tag",
+      "bk_property_name": "软件标签",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "pid",
+      "bk_property_name": "进程ID",
+      "bk_property_type": "int",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "proc_name",
+      "bk_property_name": "进程名",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "cmdline_raw",
+      "bk_property_name": "命令行原始",
+      "bk_property_type": "longchar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "cmdline_regex",
+      "bk_property_name": "命令行正则",
+      "bk_property_type": "longchar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "cmdline_keyword",
+      "bk_property_name": "命令行关键字",
+      "bk_property_type": "longchar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "as_container",
+      "bk_property_name": "是否容器",
+      "bk_property_type": "bool",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "start_time",
+      "bk_property_name": "启动时间",
+      "bk_property_type": "time",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "user_home",
+      "bk_property_name": "用户家目录",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "ip_addr",
+      "bk_property_name": "IP地址",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "ports",
+      "bk_property_name": "端口",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "cpu_v",
+      "bk_property_name": "CPU版本",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "mem_gb",
+      "bk_property_name": "内存GB",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "disk_gb",
+      "bk_property_name": "磁盘GB",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "java_home",
+      "bk_property_name": "Java目录",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "java_version",
+      "bk_property_name": "Java版本",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "java_exec_type",
+      "bk_property_name": "Java执行类型",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "java_soft_classpath",
+      "bk_property_name": "Java软类路径",
+      "bk_property_type": "longchar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "java_main_classname",
+      "bk_property_name": "Java主类名",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "fatjar_filename",
+      "bk_property_name": "FatJar文件名",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "fatjar_path",
+      "bk_property_name": "FatJar路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "metaspace_size",
+      "bk_property_name": "元空间大小",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "max_metaspace_size",
+      "bk_property_name": "最大元空间",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "xms",
+      "bk_property_name": "初始堆内存",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "xmx",
+      "bk_property_name": "最大堆内存",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "javaagent",
+      "bk_property_name": "JavaAgent",
+      "bk_property_type": "longchar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "fd_logfile",
+      "bk_property_name": "日志文件",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "tongweb_jar_version",
+      "bk_property_name": "TongWeb版本",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_tongweb_jar_lic_path",
+      "bk_property_name": "TongWeb许可路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_jdk_path",
+      "bk_property_name": "指定JDK路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_java_version",
+      "bk_property_name": "指定Java版本",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_app_path",
+      "bk_property_name": "应用路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_app_dirname",
+      "bk_property_name": "应用目录名",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_good_logpath",
+      "bk_property_name": "正常日志路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_bad_logpath",
+      "bk_property_name": "异常日志路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_deploy_logpath",
+      "bk_property_name": "部署日志路径",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_deploy_shbin_run",
+      "bk_property_name": "部署脚本运行",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_result",
+      "bk_property_name": "采集结果",
+      "bk_property_type": "singlechar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "spec_reason",
+      "bk_property_name": "采集原因",
+      "bk_property_type": "longchar",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "host_use_cname",
+      "bk_property_name": "主机使用CNAME",
+      "bk_property_type": "bool",
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "modify_utctime",
+      "bk_property_name": "修改时间",
+      "bk_property_type": "time",
+      "bk_property_group": "default"
+    }
+  ]
+}

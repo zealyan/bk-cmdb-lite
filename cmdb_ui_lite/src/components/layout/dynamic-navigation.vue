@@ -5,6 +5,37 @@
     @mouseleave="handleMouseLeave">
     <div class="nav-wrapper"
       :class="{ unfold: unfold, flexible: !navStick }">
+      <!-- 业务选择器（仅业务视图显示） -->
+      <div class="business-wrapper" v-if="isBusinessView">
+        <transition name="fade">
+          <div class="business-selector" v-show="unfold">
+            <bk-select
+              v-model="selectedBizId"
+              :loading="bizLoading"
+              :searchable="true"
+              :clearable="false"
+              placeholder="请选择业务"
+              popover-width="240"
+              ext-popover-cls="biz-selector-dropdown"
+              @selected="handleBizChange">
+              <bk-option
+                v-for="biz in bizList"
+                :key="biz.bk_biz_id"
+                :id="String(biz.bk_biz_id)"
+                :name="`${biz.bk_biz_name}(${biz.bk_biz_id})`">
+                <div class="biz-option-item">
+                  <span class="biz-name">{{ biz.bk_biz_name }}</span>
+                  <span class="biz-id">({{ biz.bk_biz_id }})</span>
+                </div>
+              </bk-option>
+            </bk-select>
+          </div>
+        </transition>
+        <transition name="fade">
+          <i class="business-flag bk-icon icon-angle-down" v-show="!unfold"
+            v-bk-tooltips.right="currentBizName"></i>
+        </transition>
+      </div>
       <div class="menu-list">
         <template v-for="(menu, index) in currentMenus">
           <router-link
@@ -39,13 +70,25 @@
 <script>
 import { mapGetters, mapActions } from 'vuex'
 import MENU_DICTIONARY from '@/dictionary/menu'
-import { MENU_RESOURCE, MENU_MODEL, MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
+import {
+  MENU_BUSINESS,
+  MENU_RESOURCE,
+  MENU_MODEL,
+  MENU_RESOURCE_INSTANCE,
+  MENU_BUSINESS_TOPOLOGY
+} from '@/dictionary/menu-symbol'
+import { modelAPI } from '@/api/client'
+import { topoAPI } from '@/api/topo'
+import { getCachedBizId } from '@/utils/biz-cache'
 
 export default {
   name: 'DynamicNavigation',
   data() {
     return {
-      timer: null
+      timer: null,
+      bizList: [],
+      bizLoading: false,
+      selectedBizId: ''
     }
   },
   computed: {
@@ -55,9 +98,21 @@ export default {
     unfold() {
       return this.navStick || !this.navFold
     },
+    isBusinessView() {
+      const [topRoute] = this.$route.matched
+      return topRoute?.name === MENU_BUSINESS
+    },
+    currentBizId() {
+      const bizId = this.$route.params.bizId
+      return bizId ? String(bizId) : ''
+    },
+    currentBizName() {
+      const biz = this.bizList.find(b => String(b.bk_biz_id) === this.currentBizId)
+      return biz ? biz.bk_biz_name : ''
+    },
     owner() {
       const [topRoute] = this.$route.matched
-      return topRoute?.name || MENU_RESOURCE
+      return topRoute?.name || MENU_BUSINESS
     },
     collectionMenus() {
       return this.resourceCollection.map((id) => {
@@ -77,7 +132,30 @@ export default {
     },
     currentMenus() {
       const target = MENU_DICTIONARY.find(menu => menu.id === this.owner)
-      const menus = [...((target && target.menu) || [])]
+      let menus = [...((target && target.menu) || [])]
+      if (this.owner === MENU_BUSINESS) {
+        menus = menus.map(menu => {
+          if (menu.id === MENU_BUSINESS_TOPOLOGY) {
+            // 对齐原项目 getMenuLink：菜单链接的 bizId 取自 store 的 objectBiz/bizId
+            // （由路由守卫在进入业务时绑定），缺失时回退到全局默认缓存的业务 ID，
+            // 保证菜单链接本身指向一个合法业务，而非 /business/0/index
+            const storeBizId = this.$store.getters['objectBiz/bizId']
+            const effectiveBizId = (storeBizId && String(storeBizId) !== '0')
+              ? String(storeBizId)
+              : getCachedBizId()
+            return {
+              ...menu,
+              route: {
+                name: MENU_BUSINESS_TOPOLOGY,
+                params: {
+                  bizId: effectiveBizId
+                }
+              }
+            }
+          }
+          return menu
+        })
+      }
       if (this.owner === MENU_RESOURCE && this.collectionMenus.length > 0) {
         menus.splice(1, 0, ...this.collectionMenus)
       }
@@ -102,6 +180,68 @@ export default {
         fold: !this.navFold,
         stick: !this.navStick
       })
+    },
+    async loadBizList() {
+      if (this.bizList.length > 0) return
+      this.bizLoading = true
+      try {
+        const res = await topoAPI.getBizList()
+        if (res) {
+          this.bizList = res.filter(b => b.default !== 1)
+        }
+      } catch (e) {
+        console.error('[DynamicNavigation] 加载业务列表失败:', e)
+      } finally {
+        this.bizLoading = false
+      }
+    },
+    handleBizChange(value) {
+      if (!value) return
+      const targetBizId = value
+      // 保存与数据绑定由路由守卫（beforeEach）在进入目标业务路由时统一处理，
+      // 这里仅负责导航到目标业务（守卫会写入 localStorage['selectedBusiness'] 并提交 store）
+      const currentPath = this.$route.path
+      const bizIdPattern = /^\/business\/(\d+)(\/.*)?$/
+      if (bizIdPattern.test(currentPath)) {
+        const newPath = currentPath.replace(bizIdPattern, `/business/${targetBizId}$2`)
+        this.$router.replace(newPath)
+      } else {
+        this.$router.push({
+          name: MENU_BUSINESS_TOPOLOGY,
+          params: { bizId: targetBizId }
+        })
+      }
+    },
+    syncSelectedBiz() {
+      if (this.isBusinessView && this.currentBizId && this.currentBizId !== '0') {
+        // 选择器默认选中当前业务：优先取 store 中由守卫绑定的 objectBiz/bizId，
+        // 与导航栏菜单链接、业务内容保持一致（原项目的数据绑定方式）
+        const storeBizId = this.$store.getters['objectBiz/bizId']
+        this.selectedBizId = (storeBizId && String(storeBizId) !== '0')
+          ? String(storeBizId)
+          : this.currentBizId
+      }
+    }
+  },
+  watch: {
+    isBusinessView: {
+      immediate: true,
+      handler(val) {
+        if (val) {
+          this.loadBizList()
+        }
+      }
+    },
+    '$route': {
+      immediate: true,
+      handler() {
+        this.syncSelectedBiz()
+      }
+    },
+    // 业务列表异步加载完成后，重新同步选择器默认选中，
+    // 避免「路由已就绪但选项尚未渲染」导致下拉框显示为空
+    bizList() {
+      this.syncSelectedBiz()
     }
   },
   async mounted() {
@@ -150,6 +290,50 @@ $color: #63656E;
       left: 100%;
       top: 0;
     }
+  }
+}
+
+.business-wrapper {
+  border-bottom: 1px solid #DCDEE5;
+
+  .business-selector {
+    width: 100%;
+    padding: 10px 16px;
+
+    .bk-select {
+      width: 100%;
+    }
+  }
+
+  .business-flag {
+    display: block;
+    width: 100%;
+    padding: 10px 0;
+    text-align: center;
+    font-size: 16px;
+    color: #979BA5;
+    cursor: pointer;
+    line-height: 20px;
+  }
+}
+
+.biz-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  .biz-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .biz-id {
+    color: #979BA5;
+    font-size: 12px;
+    margin-left: 8px;
+    flex-shrink: 0;
   }
 }
 

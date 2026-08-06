@@ -23,6 +23,12 @@ from sqlglot import parse_one, transpile
 from sqlalchemy import text
 from app.db.engine import get_connection
 from app.config.settings import get_config
+from app.definitions import (
+    get_sql_type,
+    VALID_PROPERTY_TYPES,
+    ASSOCIATION_PROPERTY_TYPES,
+    LEGACY_PROPERTY_TYPE_ALIAS,
+)
 
 
 # 配置日志
@@ -193,10 +199,175 @@ SYSTEM_PROPERTIES = [
     }
 ]
 
+# 内置模型定义（biz/set/module）
+# 这些模型有独立的表（cc_ApplicationBase/cc_SetBase/cc_ModuleBase）
+# 需要在 cc_ObjDes 和 cc_ObjAttDes 中注册，以便前端正常显示属性
+BUILTIN_MODELS = [
+    {
+        "bk_obj_id": "biz",
+        "bk_obj_name": "业务",
+        "bk_obj_icon": "icon-cc-business",
+        "bk_classification_id": "bk_biz_topo",
+        "ispre": True,
+        "obj_sort_number": -3
+    },
+    {
+        "bk_obj_id": "set",
+        "bk_obj_name": "集群",
+        "bk_obj_icon": "icon-cc-set",
+        "bk_classification_id": "bk_biz_topo",
+        "ispre": True,
+        "obj_sort_number": -2
+    },
+    {
+        "bk_obj_id": "module",
+        "bk_obj_name": "模块",
+        "bk_obj_icon": "icon-cc-module",
+        "bk_classification_id": "bk_biz_topo",
+        "ispre": True,
+        "obj_sort_number": -1
+    }
+]
+
+# 内置模型属性定义
+BUILTIN_MODEL_ATTRIBUTES = {
+    "biz": [
+        {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "default"},
+        {"bk_property_id": "bk_biz_name", "bk_property_name": "业务名称", "bk_property_type": "singlechar",
+         "isrequired": True, "isreadonly": False, "isonly": True, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "default"},
+        {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 10, "bk_property_group": "default"},
+        {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "default"},
+        {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "default"},
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "default"},
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "default"},
+    ],
+    "set": [
+        {"bk_property_id": "bk_set_id", "bk_property_name": "集群ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "default"},
+        {"bk_property_id": "bk_set_name", "bk_property_name": "集群名称", "bk_property_type": "singlechar",
+         "isrequired": True, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "default"},
+        {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 2, "bk_property_group": "default"},
+        {"bk_property_id": "bk_parent_id", "bk_property_name": "父节点ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 3, "bk_property_group": "default"},
+        {"bk_property_id": "bk_set_desc", "bk_property_name": "集群描述", "bk_property_type": "longchar",
+         "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 5, "bk_property_group": "default"},
+        {"bk_property_id": "bk_set_env", "bk_property_name": "环境类型", "bk_property_type": "enum",
+         "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 6, "bk_property_group": "default",
+         "option": [
+             {"id": "1", "name": "测试环境", "type": "text", "is_default": False},
+             {"id": "2", "name": "体验环境", "type": "text", "is_default": False},
+             {"id": "3", "name": "正式环境", "type": "text", "is_default": True}
+         ]},
+        {"bk_property_id": "bk_service_status", "bk_property_name": "服务状态", "bk_property_type": "enum",
+         "isrequired": False, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 7, "bk_property_group": "default",
+         "option": [
+             {"id": "1", "name": "开放", "type": "text", "is_default": True},
+             {"id": "2", "name": "关闭", "type": "text", "is_default": False}
+         ]},
+        {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 10, "bk_property_group": "default"},
+        {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "default"},
+        {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "default"},
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "default"},
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "default"},
+    ],
+    "module": [
+        {"bk_property_id": "bk_module_id", "bk_property_name": "模块ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": True, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": True, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 0, "bk_property_group": "default"},
+        {"bk_property_id": "bk_module_name", "bk_property_name": "模块名称", "bk_property_type": "singlechar",
+         "isrequired": True, "isreadonly": False, "isonly": False, "editable": True,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 1, "bk_property_group": "default"},
+        {"bk_property_id": "bk_biz_id", "bk_property_name": "业务ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 2, "bk_property_group": "default"},
+        {"bk_property_id": "bk_set_id", "bk_property_name": "集群ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 3, "bk_property_group": "default"},
+        {"bk_property_id": "bk_parent_id", "bk_property_name": "父节点ID", "bk_property_type": "int",
+         "isrequired": True, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 4, "bk_property_group": "default"},
+        {"bk_property_id": "default", "bk_property_name": "默认", "bk_property_type": "int",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": True, "bk_isapi": False, "bk_issystem": True,
+         "ispre": True, "bk_property_index": 10, "bk_property_group": "default"},
+        {"bk_property_id": "creator", "bk_property_name": "创建人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 20, "bk_property_group": "default"},
+        {"bk_property_id": "modifier", "bk_property_name": "修改人", "bk_property_type": "singlechar",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 21, "bk_property_group": "default"},
+        {"bk_property_id": "create_time", "bk_property_name": "创建时间", "bk_property_type": "time",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 22, "bk_property_group": "default"},
+        {"bk_property_id": "last_time", "bk_property_name": "最后修改时间", "bk_property_type": "time",
+         "isrequired": False, "isreadonly": True, "isonly": False, "editable": False,
+         "bk_ispassword": False, "bk_ishidden": False, "bk_isapi": False, "bk_issystem": False,
+         "ispre": True, "bk_property_index": 23, "bk_property_group": "default"},
+    ]
+}
+
 # 模型分类映射
 MODEL_CLASSIFICATION_MAP = {
     "bk_switch": "bk_network",
-    "bk_host": "bk_host_manage",
+    "host": "bk_host_manage",
     "bk_slb": "bk_loadbalance",
     "bk_slb_server": "bk_loadbalance",
     "bk_slb_listener": "bk_loadbalance",
@@ -209,25 +380,64 @@ CLASSIFICATIONS = [
     {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True},
 ]
 
-# 属性分组定义
+# 属性分组定义（对齐上游 bk-cmdb）
+#
+# 术语澄清（易错点）：
+#   bk_group_id / bk_property_group  = 分组【ID】，上游 NewGroupID(true) 固定返回小写 "default"
+#                                      （src/scene_server/topo_server/logics/model/group.go:335-341）
+#   bk_group_name                    = 分组【显示名】，中文语境为「基础信息」
+#                                      （admin_server/common/definitions.go:22 BaseInfoName）
+#   首字母大写的 "Default" 只是上游自定义模型的显示名硬编码（logics/model/object.go:150），
+#   属于 bk_group_name 而非 ID，切勿写进 bk_property_group。
+#
+# 上游内置模型只有 default 一个通用分组（addPresetObjects.go:242-268），
+# 不存在 base 分组；host 的自动发现分组 ID 是 auto 而非 agent。
 PROPERTY_GROUPS = [
-    {"id": 1, "bk_group_id": "default", "bk_group_name": "默认", "bk_isdefault": True, "is_collapse": False, "ispre": True, "bk_group_index": 0},
-    {"id": 2, "bk_group_id": "base", "bk_group_name": "基础信息", "bk_isdefault": False, "is_collapse": False, "ispre": True, "bk_group_index": 1},
+    {"id": 1, "bk_group_id": "default", "bk_group_name": "基础信息", "bk_isdefault": True,
+     "is_collapse": False, "ispre": True, "bk_group_index": -1},
 ]
 
+# 非通用分组定义：仅在特定模型上出现，由属性实际引用反推补全时取此处的名称与序号。
+# 对齐 admin_server/common/definitions.go 与 addPresetObjects.go 的 GroupIndex。
+EXTRA_GROUP_DEFS = {
+    "auto": {"bk_group_name": "自动发现信息（需要安装agent）", "bk_group_index": 3},
+    "role": {"bk_group_name": "角色", "bk_group_index": 2},
+    "proc_port": {"bk_group_name": "监听信息", "bk_group_index": 2},
+}
+
+# 历史分组 ID 归并规则：旧值 -> 上游标准值。
+# base 是 lite 早期自造的分组，上游内置模型的「基础信息」分组 ID 就是 default，故并回 default；
+# agent 是 lite 对上游 auto（HostAutoFields）的误写，直接改名。
+GROUP_ID_MIGRATION = {
+    "base": "default",
+    "agent": "auto",
+}
+
 # 需要更新分组的属性映射（属性ID -> 分组ID）
+# 全部归入 default：对齐上游各 *Row() 中标注为 groupBaseInfo（= mCommon.BaseInfo = "default"）的属性，
+# 见 objAttDescData.go:29 `groupBaseInfo = mCommon.BaseInfo` 及 HostRow() 的「基本信息分组」注释。
 PROPERTY_GROUP_UPDATE_MAP = {
-    "name": "base",
-    "bk_inst_name": "base",
-    "bk_host_innerip": "base",
-    "bk_host_outerip": "base",
-    "bk_cloud_id": "base",
-    "bk_switch_name": "base",
-    "bk_switch_ip": "base",
-    "bk_lb_name": "base",
-    "bk_server_name": "base",
-    "bk_listener_name": "base",
-    "description": "base",
+    "name": "default",
+    "bk_inst_name": "default",
+    "bk_host_innerip": "default",
+    "bk_host_outerip": "default",
+    "bk_cloud_id": "default",
+    "bk_switch_name": "default",
+    "bk_switch_ip": "default",
+    "bk_lb_name": "default",
+    "bk_server_name": "default",
+    "bk_listener_name": "default",
+    "description": "default",
+    "operator": "default",
+    "bk_bak_operator": "default",
+    "bk_asset_id": "default",
+    "bk_sn": "default",
+    "bk_comment": "default",
+    "bk_service_term": "default",
+    "bk_sla": "default",
+    "bk_state_name": "default",
+    "bk_province_name": "default",
+    "bk_isp_name": "default",
 }
 
 
@@ -283,33 +493,168 @@ class DatabaseMigrator:
         """迁移属性分组数据"""
         # 先获取所有模型
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
-        
-        group_id = 1
+
         for model in models:
             model_id = model['bk_obj_id']
             for group in PROPERTY_GROUPS:
+                # 去重写入：cc_PropertyGroup 主键为自增 id，_id 非唯一，
+                # 旧版 INSERT OR REPLACE 仅按 id 判重，会在「模型已存在 default 行」
+                # 时插入第二条同名分组（如旧的「默认」与新的「基础信息」并存）。
+                # 这里改为先查后更：复用既有 id 把分组定义刷新为规范值，
+                # 并删除该 (bk_obj_id, bk_group_id) 下的其他残留行，保证每组唯一。
+                existing = self.execute_query(
+                    "SELECT id FROM cc_PropertyGroup "
+                    "WHERE bk_obj_id = :mid AND bk_group_id = :gid ORDER BY id",
+                    {'mid': model_id, 'gid': group['bk_group_id']}
+                )
+                if existing:
+                    canonical_id = existing[0]['id']
+                    self.execute_sql("""
+                        UPDATE cc_PropertyGroup
+                        SET _id = :_id, bk_group_name = :bk_group_name,
+                            bk_group_index = :bk_group_index, bk_isdefault = :bk_isdefault,
+                            is_collapse = :is_collapse, ispre = :ispre,
+                            modifier = 'admin', bk_supplier_account = '0',
+                            last_time = CURRENT_TIMESTAMP
+                        WHERE id = :id
+                    """, {
+                        '_id': f"{model_id}.{group['bk_group_id']}",
+                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_index': group['bk_group_index'],
+                        'bk_isdefault': group['bk_isdefault'],
+                        'is_collapse': group['is_collapse'],
+                        'ispre': group['ispre'],
+                        'id': canonical_id,
+                    })
+                    if len(existing) > 1:
+                        extra_ids = [r['id'] for r in existing[1:]]
+                        placeholders = ", ".join(f":eid_{i}" for i in range(len(extra_ids)))
+                        del_params = {f"eid_{i}": v for i, v in enumerate(extra_ids)}
+                        self.execute_sql(
+                            f"DELETE FROM cc_PropertyGroup WHERE id IN ({placeholders})",
+                            del_params
+                        )
+                        logger.info(
+                            f"清理重复分组 {group['bk_group_id']} "
+                            f"（模型 {model_id}）：{len(extra_ids)} 行"
+                        )
+                else:
+                    # 省略 id 列，由 SQLite 对 INTEGER PRIMARY KEY 自动取 MAX(id)+1，
+                    # 避免复用既有 id 触发主键冲突。
+                    self.execute_sql("""
+                        INSERT INTO cc_PropertyGroup
+                        (_id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index,
+                         bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
+                         creator, modifier)
+                        VALUES (:_id, :bk_obj_id, :bk_group_id, :bk_group_name,
+                                :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
+                                0, '0', 'admin', 'admin')
+                    """, {
+                        '_id': f"{model_id}.{group['bk_group_id']}",
+                        'bk_obj_id': model_id,
+                        'bk_group_id': group['bk_group_id'],
+                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_index': group['bk_group_index'],
+                        'bk_isdefault': group['bk_isdefault'],
+                        'is_collapse': group['is_collapse'],
+                        'ispre': group['ispre']
+                    })
+
+        # 空值规范化：对齐上游 bk-cmdb 的 checkAttributeGroupExist —
+        # 当属性未指定分组时，落库值固定为 common.BKDefaultField（即小写 "default"），
+        # 而不是留空串。留空会在 cc_PropertyGroup 上形成悬空引用，
+        # 前端只能靠 `bk_property_group || 'default'` 兜底，数据层不干净。
+        blank_rows = self.execute_query(
+            "SELECT COUNT(*) AS n FROM cc_ObjAttDes "
+            "WHERE bk_property_group IS NULL OR TRIM(bk_property_group) = ''"
+        )
+        blank_cnt = blank_rows[0]['n'] if blank_rows else 0
+        if blank_cnt:
+            self.execute_sql(
+                "UPDATE cc_ObjAttDes SET bk_property_group = 'default' "
+                "WHERE bk_property_group IS NULL OR TRIM(bk_property_group) = ''"
+            )
+            logger.info(f"规范化空 bk_property_group -> 'default'，共 {blank_cnt} 条")
+
+        # 历史分组 ID 归并：把 lite 自造的 base / agent 收敛到上游标准 default / auto。
+        # 先迁移属性引用，再清理 cc_PropertyGroup 中的旧分组行，避免出现悬空引用。
+        for old_gid, new_gid in GROUP_ID_MIGRATION.items():
+            moved = self.execute_query(
+                "SELECT COUNT(*) AS n FROM cc_ObjAttDes WHERE bk_property_group = :g",
+                {'g': old_gid}
+            )
+            moved_cnt = moved[0]['n'] if moved else 0
+            if moved_cnt:
+                self.execute_sql(
+                    "UPDATE cc_ObjAttDes SET bk_property_group = :new "
+                    "WHERE bk_property_group = :old",
+                    {'new': new_gid, 'old': old_gid}
+                )
+                logger.info(f"归并分组 {old_gid} -> {new_gid}，迁移属性 {moved_cnt} 条")
+            # 旧分组定义行一并删除，其属性已迁走
+            stale = self.execute_query(
+                "SELECT COUNT(*) AS n FROM cc_PropertyGroup WHERE bk_group_id = :g",
+                {'g': old_gid}
+            )
+            if stale and stale[0]['n']:
+                self.execute_sql(
+                    "DELETE FROM cc_PropertyGroup WHERE bk_group_id = :g", {'g': old_gid}
+                )
+                logger.info(f"清理旧分组定义 {old_gid}，共 {stale[0]['n']} 行")
+
+        existing_groups = {
+            (row['bk_obj_id'], row['bk_group_id'])
+            for row in self.execute_query(
+                "SELECT bk_obj_id, bk_group_id FROM cc_PropertyGroup"
+            )
+        }
+        # 该模型属性上实际出现的分组集合（去重，跳过空串）
+        used_groups = {}
+        for row in self.execute_query(
+            "SELECT bk_obj_id, bk_property_group FROM cc_ObjAttDes"
+        ):
+            mid = row['bk_obj_id']
+            gid = row['bk_property_group'] or 'default'
+            if not gid or gid.strip() == '':
+                gid = 'default'
+            used_groups.setdefault(mid, set()).add(gid)
+
+        fixed_defs = {g['bk_group_id']: g for g in PROPERTY_GROUPS}
+        for model_id, groups in used_groups.items():
+            for gid in groups:
+                if (model_id, gid) in existing_groups:
+                    continue
+                # 先查通用分组定义，再查上游已知的非通用分组（auto/role/proc_port），
+                # 都未命中才回退为「首字母大写的 group_id」
+                spec = fixed_defs.get(gid) or EXTRA_GROUP_DEFS.get(gid)
+                group_name = (
+                    spec['bk_group_name'] if spec
+                    else gid[:1].upper() + gid[1:]
+                )
+                group_index = spec['bk_group_index'] if spec else 99
+                # 此处仅处理 existing_groups 中不存在的分组（上面已 continue 跳过已存在的），
+                # 属全新分组，省略 id 列交由 SQLite 自动取 MAX(id)+1。
                 self.execute_sql("""
-                    INSERT OR REPLACE INTO cc_PropertyGroup
-                    (_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, 
+                    INSERT INTO cc_PropertyGroup
+                    (_id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index,
                      bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account,
                      creator, modifier)
-                    VALUES (:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, 
+                    VALUES (:_id, :bk_obj_id, :bk_group_id, :bk_group_name,
                             :bk_group_index, :bk_isdefault, :is_collapse, :ispre,
                             0, '0', 'admin', 'admin')
                 """, {
-                    '_id': f"{model_id}.{group['bk_group_id']}",
-                    'id': group_id,
+                    '_id': f"{model_id}.{gid}",
                     'bk_obj_id': model_id,
-                    'bk_group_id': group['bk_group_id'],
-                    'bk_group_name': group['bk_group_name'],
-                    'bk_group_index': group['bk_group_index'],
-                    'bk_isdefault': group['bk_isdefault'],
-                    'is_collapse': group['is_collapse'],
-                    'ispre': group['ispre']
+                    'bk_group_id': gid,
+                    'bk_group_name': group_name,
+                    'bk_group_index': group_index,
+                    'bk_isdefault': False,
+                    'is_collapse': False,
+                    'ispre': True
                 })
-                group_id += 1
-        
-        logger.info(f"迁移了 {len(models) * len(PROPERTY_GROUPS)} 个属性分组")
+                logger.info(f"补全分组定义: {model_id} / {gid} ({group_name})")
+
+        logger.info(f"迁移了 {len(models) * len(PROPERTY_GROUPS)} 个固定属性分组（含缺失分组补全）")
     
     def update_attributes_group(self):
         """更新现有属性的分组"""
@@ -340,9 +685,215 @@ class DatabaseMigrator:
             updated_count = len(PROPERTY_GROUP_UPDATE_MAP)
             logger.info(f"更新了 {updated_count} 个属性的分组")
     
+    def create_hostbase_indexes(self):
+        """创建 cc_HostBase 表索引（参考原项目 hostbase.go）
+        
+        注意：原项目使用 MongoDB 的 partialFilterExpression 创建部分唯一索引，
+        只有满足特定条件（如 bk_host_innerip 不为空）的记录才需要满足唯一性。
+        SQLite 不支持部分索引，因此将可能导致冲突的唯一索引改为普通索引。
+        """
+        indexes = [
+            {
+                "name": "bkcc_idx_bkHostInnerIP_bkCloudID",
+                "columns": ["bk_host_innerip", "bk_cloud_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bkHostInnerIPv6_bkCloudID",
+                "columns": ["bk_host_inneripv6", "bk_cloud_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bkAgentID",
+                "columns": ["bk_agent_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_cloud_inst_id",
+                "columns": ["bk_cloud_inst_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_supplier_account",
+                "columns": ["bk_supplier_account"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_cloud_id",
+                "columns": ["bk_cloud_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_os_type",
+                "columns": ["bk_os_type"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_asset_id",
+                "columns": ["bk_asset_id"],
+                "unique": False
+            }
+        ]
+        
+        for idx in indexes:
+            unique_str = "UNIQUE" if idx["unique"] else ""
+            columns_str = ", ".join(f'"{col}"' for col in idx["columns"])
+            sql = f"CREATE {unique_str} INDEX IF NOT EXISTS {idx['name']} ON cc_HostBase ({columns_str})"
+            try:
+                self.execute_sql(sql)
+                logger.info(f"创建索引: {idx['name']}")
+            except Exception as e:
+                logger.warning(f"创建索引 {idx['name']} 失败: {e}")
+    
+    def create_module_host_config_indexes(self):
+        """创建 cc_ModuleHostConfig 表索引（参考原项目 modulehostconfig.go）"""
+        indexes = [
+            {
+                "name": "bkcc_idx_bkBizID_bkHostID",
+                "columns": ["bk_biz_id", "bk_host_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_module_id",
+                "columns": ["bk_module_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_set_id",
+                "columns": ["bk_set_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_module_id_bk_biz_id",
+                "columns": ["bk_module_id", "bk_biz_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_idx_bk_set_id_bk_biz_id",
+                "columns": ["bk_set_id", "bk_biz_id"],
+                "unique": False
+            },
+            {
+                "name": "bkcc_unique_moduleID_hostID",
+                "columns": ["bk_module_id", "bk_host_id"],
+                "unique": True
+            }
+        ]
+        
+        for idx in indexes:
+            unique_str = "UNIQUE" if idx["unique"] else ""
+            columns_str = ", ".join(f'"{col}"' for col in idx["columns"])
+            sql = f"CREATE {unique_str} INDEX IF NOT EXISTS {idx['name']} ON cc_ModuleHostConfig ({columns_str})"
+            try:
+                self.execute_sql(sql)
+                logger.info(f"创建索引: {idx['name']}")
+            except Exception as e:
+                logger.warning(f"创建索引 {idx['name']} 失败: {e}")
+    
     def init_core_tables(self):
         """初始化核心表结构"""
         core_tables_sql = {
+            # 主线拓扑核心表（对应原项目 MongoDB collections）
+            # 参考：/workspace/cmdb_server_lite/docs/原项目/bk-cmdb-主线拓扑与业务拓扑树分析.md
+            "cc_ApplicationBase": """
+                CREATE TABLE IF NOT EXISTS cc_ApplicationBase (
+                    _id TEXT,
+                    bk_biz_id INTEGER PRIMARY KEY,
+                    bk_biz_name VARCHAR NOT NULL,
+                    "default" INTEGER DEFAULT 0,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_SetBase": """
+                CREATE TABLE IF NOT EXISTS cc_SetBase (
+                    _id TEXT,
+                    bk_set_id INTEGER PRIMARY KEY,
+                    bk_set_name VARCHAR NOT NULL,
+                    bk_parent_id INTEGER NOT NULL,
+                    bk_biz_id INTEGER NOT NULL,
+                    "default" INTEGER DEFAULT 0,
+                    bk_set_desc VARCHAR,
+                    bk_set_env VARCHAR DEFAULT '3',
+                    bk_service_status VARCHAR DEFAULT '1',
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_ModuleBase": """
+                CREATE TABLE IF NOT EXISTS cc_ModuleBase (
+                    _id TEXT,
+                    bk_module_id INTEGER PRIMARY KEY,
+                    bk_module_name VARCHAR NOT NULL,
+                    bk_parent_id INTEGER NOT NULL,
+                    bk_set_id INTEGER NOT NULL,
+                    bk_biz_id INTEGER NOT NULL,
+                    "default" INTEGER DEFAULT 0,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_HostBase": """
+                CREATE TABLE IF NOT EXISTS cc_HostBase (
+                    _id TEXT,
+                    bk_host_id INTEGER PRIMARY KEY,
+                    bk_host_name VARCHAR,
+                    bk_host_innerip VARCHAR,
+                    bk_host_outerip VARCHAR,
+                    bk_host_inneripv6 VARCHAR,
+                    bk_host_outeripv6 VARCHAR,
+                    bk_cloud_id INTEGER DEFAULT 0,
+                    bk_cloud_inst_id VARCHAR,
+                    bk_agent_id VARCHAR,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    operator VARCHAR,
+                    bk_bak_operator VARCHAR,
+                    bk_asset_id VARCHAR,
+                    bk_sn VARCHAR,
+                    bk_comment TEXT,
+                    bk_service_term INTEGER,
+                    bk_sla VARCHAR,
+                    bk_state_name VARCHAR,
+                    bk_province_name VARCHAR,
+                    bk_isp_name VARCHAR,
+                    bk_os_type VARCHAR,
+                    bk_os_name VARCHAR,
+                    bk_os_version VARCHAR,
+                    bk_os_bit VARCHAR,
+                    bk_cpu INTEGER,
+                    bk_cpu_mhz INTEGER,
+                    bk_cpu_module VARCHAR,
+                    bk_mem INTEGER,
+                    bk_disk INTEGER,
+                    bk_mac VARCHAR,
+                    bk_outer_mac VARCHAR,
+                    import_from VARCHAR,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    creator VARCHAR DEFAULT 'admin',
+                    modifier VARCHAR DEFAULT 'admin'
+                )
+            """,
+            "cc_ModuleHostConfig": """
+                CREATE TABLE IF NOT EXISTS cc_ModuleHostConfig (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bk_biz_id INTEGER NOT NULL,
+                    bk_host_id INTEGER NOT NULL,
+                    bk_module_id INTEGER NOT NULL,
+                    bk_set_id INTEGER NOT NULL,
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    UNIQUE(bk_host_id, bk_module_id)
+                )
+            """,
             "cc_ObjClassification": """
                 CREATE TABLE IF NOT EXISTS cc_ObjClassification (
                     id INTEGER PRIMARY KEY,
@@ -355,7 +906,7 @@ class DatabaseMigrator:
             """,
             "cc_ObjDes": """
                 CREATE TABLE IF NOT EXISTS cc_ObjDes (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_obj_name VARCHAR NOT NULL,
@@ -374,7 +925,7 @@ class DatabaseMigrator:
             """,
             "cc_PropertyGroup": """
                 CREATE TABLE IF NOT EXISTS cc_PropertyGroup (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER PRIMARY KEY,
                     bk_obj_id VARCHAR,
                     bk_group_id VARCHAR NOT NULL,
@@ -393,7 +944,7 @@ class DatabaseMigrator:
             """,
             "cc_ObjAttDes": """
                 CREATE TABLE IF NOT EXISTS cc_ObjAttDes (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL,
                     bk_property_id VARCHAR NOT NULL,
@@ -424,7 +975,7 @@ class DatabaseMigrator:
             """,
             "cc_AsstDes": """
                 CREATE TABLE IF NOT EXISTS cc_AsstDes (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_asst_id VARCHAR NOT NULL PRIMARY KEY,
                     bk_asst_name VARCHAR NOT NULL,
@@ -442,7 +993,7 @@ class DatabaseMigrator:
             """,
             "cc_ObjAsst": """
                 CREATE TABLE IF NOT EXISTS cc_ObjAsst (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL,
                     target_obj_id VARCHAR NOT NULL,
@@ -459,9 +1010,11 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
+            # 兼容性单表（已废弃，实际使用按模型分表 cc_InstAsst_0_pub_{obj_id}）
+            # 保留此表用于旧版本数据迁移和历史兼容，新业务逻辑请勿使用
             "cc_InstAsst_0_pub": """
                 CREATE TABLE IF NOT EXISTS cc_InstAsst_0_pub (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER PRIMARY KEY,
                     bk_obj_id VARCHAR NOT NULL,
                     bk_inst_id INTEGER NOT NULL,
@@ -472,9 +1025,11 @@ class DatabaseMigrator:
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
+            # 实例关联分表（动态创建，格式: cc_InstAsst_0_pub_{obj_id}，与原项目保持一致）
+            # 详见 create_instance_association_table() 方法
             "cc_ObjectUnique": """
                 CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
-                    _id VARCHAR,
+                    _id TEXT,
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_template_id INTEGER DEFAULT 0,
                     bk_obj_id VARCHAR NOT NULL,
@@ -535,6 +1090,76 @@ class DatabaseMigrator:
         
         logger.info(f"迁移了 {len(data.get('models', []))} 个模型")
     
+    def migrate_builtin_models(self):
+        """迁移内置模型（biz/set/module）到 cc_ObjDes"""
+        for model in BUILTIN_MODELS:
+            model_id = model["bk_obj_id"]
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjDes 
+                (_id, id, bk_obj_id, bk_obj_name, bk_obj_icon, bk_classification_id, ispre,
+                 bk_supplier_account, creator, modifier, obj_sort_number)
+                VALUES (:_id, :id, :bk_obj_id, :bk_obj_name, :bk_obj_icon, :bk_classification_id,
+                        :ispre, '0', 'admin', 'admin', :obj_sort_number)
+            """, {
+                '_id': model_id,
+                'id': model["obj_sort_number"] + 100,
+                'bk_obj_id': model_id,
+                'bk_obj_name': model["bk_obj_name"],
+                'bk_obj_icon': model["bk_obj_icon"],
+                'bk_classification_id': model["bk_classification_id"],
+                'ispre': model["ispre"],
+                'obj_sort_number': model["obj_sort_number"]
+            })
+        logger.info(f"迁移了 {len(BUILTIN_MODELS)} 个内置模型")
+    
+    def migrate_builtin_model_attributes(self):
+        """迁移内置模型的属性定义到 cc_ObjAttDes"""
+        attr_id = 10000
+        total_attrs = 0
+        
+        for model_id, attributes in BUILTIN_MODEL_ATTRIBUTES.items():
+            for attr in attributes:
+                prop_type = attr.get("bk_property_type", "singlechar")
+                option = attr.get("option")
+                option = self.process_option(prop_type, option)
+                
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjAttDes
+                    (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                     bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                     bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
+                     bk_property_index, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                            :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                            :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
+                            :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
+                """, {
+                    '_id': f"{model_id}.{attr['bk_property_id']}",
+                    'id': attr_id,
+                    'bk_obj_id': model_id,
+                    'bk_property_id': attr['bk_property_id'],
+                    'bk_property_name': attr['bk_property_name'],
+                    'bk_property_type': prop_type,
+                    'bk_property_group': attr['bk_property_group'],
+                    'isrequired': attr['isrequired'],
+                    'bk_ispassword': attr.get('bk_ispassword', False),
+                    'bk_ishidden': attr['bk_ishidden'],
+                    'isreadonly': attr['isreadonly'],
+                    'isonly': attr['isonly'],
+                    'bk_isapi': attr['bk_isapi'],
+                    'bk_issystem': attr['bk_issystem'],
+                    'option': option,
+                    'unit': attr.get('unit', ''),
+                    'placeholder': attr.get('placeholder', ''),
+                    'editable': attr['editable'],
+                    'ispre': attr['ispre'],
+                    'bk_property_index': attr['bk_property_index']
+                })
+                attr_id += 1
+                total_attrs += 1
+        
+        logger.info(f"迁移了 {total_attrs} 个内置模型属性")
+    
     def process_option(self, prop_type, option):
         """
         处理属性选项值，根据类型进行转换
@@ -556,20 +1181,30 @@ class DatabaseMigrator:
         # 枚举类型（单选）
         if prop_type == 'enum':
             if isinstance(option, list):
-                # 将简单数组转换为原项目标准格式
+                # 已是标准结构（元素为 {"id":..,"name":..}）时原样存储，
+                # 避免 convert_enum_option 把 dict 当字符串再序列化导致嵌套字符串化。
+                if self._is_structured_enum(option):
+                    return json.dumps(option, ensure_ascii=False)
+                # 简单字符串数组（如 ["Linux","Windows"]）转换为原项目标准格式
                 return convert_enum_option(option)
             return option
-        
+
         # 多选枚举类型
         if prop_type == 'enummulti':
             if isinstance(option, list):
-                # 将简单数组转换为原项目标准格式
+                if self._is_structured_enum(option):
+                    return json.dumps(option, ensure_ascii=False)
                 return convert_enum_option(option)
             return option
-        
+
         # 列表类型
         if prop_type == 'list':
             if isinstance(option, list):
+                # 元素为字符串时直接序列化（["北京","上海"]）；
+                # 元素为对象（极少见）时按原项目 list 规范提取为字符串数组。
+                if option and isinstance(option[0], dict):
+                    str_list = [str(o.get('name', o.get('id', ''))) for o in option]
+                    return json.dumps(str_list, ensure_ascii=False)
                 return json.dumps(option, ensure_ascii=False)
             return option
         
@@ -587,7 +1222,21 @@ class DatabaseMigrator:
         
         # 其他类型转为JSON字符串
         return json.dumps(option, ensure_ascii=False)
-    
+
+    @staticmethod
+    def _is_structured_enum(option_list):
+        """
+        判断枚举选项是否已是原项目标准结构（元素为 {"id":..,"name":..} 对象）。
+        用于兼容 host 等模型中 source option 已是结构化 dict 的情况，
+        避免 convert_enum_option 将其当纯字符串再次序列化造成嵌套字符串化。
+        """
+        if not isinstance(option_list, list) or len(option_list) == 0:
+            return False
+        return all(
+            isinstance(item, dict) and 'id' in item and 'name' in item
+            for item in option_list
+        )
+
     def migrate_attributes(self):
         """迁移属性数据"""
         ui_project = self.workspace_root / "cmdb_ui_lite" / "src" / "assets" / "api"
@@ -622,7 +1271,7 @@ class DatabaseMigrator:
                     option = self.process_option(prop_type, option)
                     
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes
+                        INSERT OR REPLACE INTO cc_ObjAttDes
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
                          bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
@@ -678,7 +1327,7 @@ class DatabaseMigrator:
                     bk_ishidden = prop.get("bk_ishidden", False)
 
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes
+                        INSERT OR REPLACE INTO cc_ObjAttDes
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
                          bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre,
@@ -720,7 +1369,7 @@ class DatabaseMigrator:
         logger.info(f"总共迁移 {total_attrs} 个属性")
     
     def create_instance_table(self, model_id):
-        """为模型创建实例表"""
+        """为模型创建实例表和实例关联分表"""
         table_name = f"cc_ObjectBase_0_pub_{model_id}"
         
         # 先查询模型的属性定义
@@ -733,7 +1382,7 @@ class DatabaseMigrator:
         
         # 构建表结构
         columns = [
-            '_id VARCHAR',
+            '_id TEXT',
             'id INTEGER PRIMARY KEY',
             'bk_inst_id INTEGER NOT NULL',
             'bk_inst_name VARCHAR NOT NULL',
@@ -748,44 +1397,52 @@ class DatabaseMigrator:
         for attr in attributes:
             prop_id = attr['bk_property_id']
             prop_type = attr['bk_property_type']
-            
+
             if prop_id in SYSTEM_FIELDS:
                 continue
-            
-            sql_type = self.get_sql_type(prop_type)
+
+            # 关联类型（singleasst/multiasst/foreignkey）：与原 Go 项目一致，
+            # 不作为实例表物理列，关联数据存于 cc_InstAsst 分表，直接跳过。
+            if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                continue
+
+            # lite 历史命名（如 user）先归一为 Go 类型（objuser）再映射。
+            prop_type = LEGACY_PROPERTY_TYPE_ALIAS.get(prop_type, prop_type)
+
+            # 其余必须是 Go definitions.go 的 16 种合法类型，未知类型直接抛错。
+            sql_type = get_sql_type(prop_type)
             columns.append(f'"{prop_id}" {sql_type}')
         
         create_sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({", ".join(columns)})'
         self.execute_sql(create_sql)
         logger.info(f"创建实例表: {table_name}")
+        
+        # 同时创建实例关联分表（与原项目保持一致）
+        self.create_instance_association_table(model_id)
     
-    def get_sql_type(self, prop_type):
-        """获取属性类型对应的 SQL 类型"""
-        type_mapping = {
-            'int': 'INTEGER',
-            'long': 'BIGINT',
-            'singlechar': 'VARCHAR',
-            'shortchar': 'VARCHAR',
-            'longchar': 'TEXT',
-            'char': 'VARCHAR',
-            'text': 'TEXT',
-            'float': 'FLOAT',
-            'double': 'DOUBLE',
-            'date': 'DATE',
-            'time': 'TIME',
-            'datetime': 'TIMESTAMP',
-            'bool': 'BOOLEAN',
-            'boolean': 'BOOLEAN',
-            'objuser': 'TEXT',
-            'list': 'TEXT',
-            'enum': 'TEXT',
-            'enummulti': 'TEXT',
-            'enumquote': 'TEXT',
-            'textarea': 'TEXT',
-            'array': 'TEXT',
-            'object': 'TEXT'
-        }
-        return type_mapping.get(prop_type, 'TEXT')
+    def create_instance_association_table(self, model_id):
+        """
+        为模型创建实例关联分表
+        格式: cc_InstAsst_0_pub_{obj_id}
+        与原项目 tablenames.go GetObjectInstAsstTableName 一致
+        """
+        asst_table_name = f"cc_InstAsst_0_pub_{model_id}"
+        
+        create_sql = f"""
+            CREATE TABLE IF NOT EXISTS "{asst_table_name}" (
+                _id TEXT,
+                id INTEGER PRIMARY KEY,
+                bk_obj_id VARCHAR NOT NULL,
+                bk_inst_id INTEGER NOT NULL,
+                bk_asst_obj_id VARCHAR NOT NULL,
+                bk_asst_inst_id INTEGER NOT NULL,
+                bk_obj_asst_id VARCHAR NOT NULL,
+                bk_relation_type_id VARCHAR NOT NULL,
+                bk_supplier_account VARCHAR DEFAULT '0'
+            )
+        """
+        self.execute_sql(create_sql)
+        logger.info(f"创建实例关联分表: {asst_table_name}")
     
     def migrate_instances(self):
         """迁移实例数据"""
@@ -796,6 +1453,11 @@ class DatabaseMigrator:
         
         for model in data["models"]:
             model_id = model.get("bk_obj_id")
+            
+            if model_id == "host":
+                logger.info(f"跳过 host 模型实例迁移（由 migrate_mainline_topo 统一管理）")
+                continue
+                
             table_name = f"cc_ObjectBase_0_pub_{model_id}"
             inst_file_path = ui_project / "models" / "instances" / f"{model_id}.json"
             
@@ -859,7 +1521,11 @@ class DatabaseMigrator:
                             placeholders.append(f":{key}")
                             # 根据属性类型处理值
                             prop_type = attr_type_map.get(key)
-                            if prop_type in ['list', 'enum', 'enummulti', 'array', 'object'] and isinstance(value, (list, dict)):
+                            # organization（部门 ID 数组）按 JSON 文本落库，与 MongoDB 数组结构一致；
+                            # objuser 为纯逗号拼接字符串（非数组），走 else 原样保存为字符串。
+                            if prop_type == 'organization' and isinstance(value, (list, dict)):
+                                values.append(json.dumps(value, ensure_ascii=False))
+                            elif prop_type in ['list', 'enum', 'enummulti', 'array', 'object'] and isinstance(value, (list, dict)):
                                 values.append(json.dumps(value, ensure_ascii=False))
                             else:
                                 values.append(value)
@@ -999,11 +1665,11 @@ class DatabaseMigrator:
                 "on_delete": "none"
             },
             {
-                "bk_obj_id": "bk_host",
+                "bk_obj_id": "host",
                 "target_obj_id": "bk_slb",
                 "target_obj_name": "负载均衡",
                 "bk_asst_id": "install",
-                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_id": "host_install_slb",
                 "bk_obj_asst_name": "主机安装SLB",
                 "bk_supplier_account": "0",
                 "mapping": "1:1",
@@ -1035,7 +1701,10 @@ class DatabaseMigrator:
         
         logger.info(f"迁移了 {len(obj_associations)} 个对象关联")
 
-        # 3. 迁移实例关联数据
+        # 3. 创建所有模型的实例关联分表（在迁移数据前）
+        self._ensure_all_inst_asst_tables_exist()
+
+        # 4. 迁移实例关联数据（按模型分表，与原项目保持一致）
         inst_assoc_file = ui_project / "models" / "associations" / "index.json"
         if inst_assoc_file.exists():
             with open(inst_assoc_file, 'r', encoding='utf-8') as f:
@@ -1043,6 +1712,8 @@ class DatabaseMigrator:
             
             associations = inst_assoc_data.get("associations", [])
             
+            from app.service.instance_service import InstanceService
+            skipped = 0
             for assoc in associations:
                 # 确定 bk_obj_asst_id 和 bk_relation_type_id
                 # 格式: {源模型ID}_{AsstKindID}_{目标模型ID}
@@ -1053,63 +1724,114 @@ class DatabaseMigrator:
                 bk_relation_type_id = assoc.get("bk_relation_type_id")
                 # bk_obj_asst_id 格式: {源}_{类型}_{目标}
                 bk_obj_asst_id = f"{bk_obj_id}_{bk_relation_type_id}_{bk_asst_obj_id}"
-                
-                self.execute_sql("""
-                    INSERT OR REPLACE INTO cc_InstAsst_0_pub 
-                    (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
-                     bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
-                    VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
-                            :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
-                """, {
+
+                # 遵循原项目 bk-cmdb 逻辑：两端实例必须存在才允许创建关联，
+                # 跳过指向不存在实例的孤儿关联（种子数据不一致时的防护）。
+                if not InstanceService.get_instance(bk_obj_id, assoc.get("bk_inst_id")):
+                    logger.warning(f"跳过孤儿关联（源实例不存在）: {bk_obj_id}/{assoc.get('bk_inst_id')} -> {bk_asst_obj_id}/{assoc.get('bk_asst_inst_id')}")
+                    skipped += 1
+                    continue
+                if not InstanceService.get_instance(bk_asst_obj_id, assoc.get("bk_asst_inst_id")):
+                    logger.warning(f"跳过孤儿关联（目标实例不存在）: {bk_obj_id}/{assoc.get('bk_inst_id')} -> {bk_asst_obj_id}/{assoc.get('bk_asst_inst_id')}")
+                    skipped += 1
+                    continue
+
+                assoc_data = {
                     "id": assoc.get("id"),
                     "bk_obj_id": bk_obj_id,
                     "bk_inst_id": assoc.get("bk_inst_id"),
                     "bk_asst_obj_id": bk_asst_obj_id,
                     "bk_asst_inst_id": assoc.get("bk_asst_inst_id"),
                     "bk_obj_asst_id": bk_obj_asst_id,
-                    "bk_relation_type_id": assoc.get("bk_relation_type_id"),
+                    "bk_relation_type_id": bk_relation_type_id,
                     "bk_supplier_account": "0"
-                })
+                }
+
+                # 按源模型和目标模型分表插入（与原项目一致）
+                self._insert_instance_association_to_sharding_tables(assoc_data)
+
+            if skipped:
+                logger.warning(f"已跳过 {skipped} 条孤儿关联（源/目标实例不存在）")
             
             logger.info(f"迁移了 {len(associations)} 个实例关联")
         else:
             logger.warning("未找到实例关联数据文件")
         
-        # 4. 添加模拟的 bk_host_install_slb 实例关联数据 (mapping: 1:1)
+        # 4. 添加模拟的 host_install_slb 实例关联数据 (mapping: 1:1)
         # 模拟主机 1 安装了 SLB 实例 1
         mock_host_slb_associations = [
             {
                 "id": 117,
-                "bk_obj_id": "bk_host",
+                "bk_obj_id": "host",
                 "bk_inst_id": 1,
                 "bk_asst_obj_id": "bk_slb",
                 "bk_asst_inst_id": 1,
-                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_id": "host_install_slb",
                 "bk_relation_type_id": "install",
                 "bk_supplier_account": "0"
             },
             {
                 "id": 118,
-                "bk_obj_id": "bk_host",
+                "bk_obj_id": "host",
                 "bk_inst_id": 2,
                 "bk_asst_obj_id": "bk_slb",
                 "bk_asst_inst_id": 2,
-                "bk_obj_asst_id": "bk_host_install_slb",
+                "bk_obj_asst_id": "host_install_slb",
                 "bk_relation_type_id": "install",
                 "bk_supplier_account": "0"
             }
         ]
         
         for assoc in mock_host_slb_associations:
-            self.execute_sql("""
-                INSERT OR REPLACE INTO cc_InstAsst_0_pub 
-                (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
-                 bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
-                VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
-                        :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
-            """, assoc)
+            self._insert_instance_association_to_sharding_tables(assoc)
         
         logger.info(f"添加了 {len(mock_host_slb_associations)} 个模拟主机-SLB实例关联")
+
+    def _insert_instance_association_to_sharding_tables(self, assoc_data):
+        """
+        将实例关联数据插入到源模型和目标模型的分表
+        与原项目 instance.go save() 方法保持一致
+        """
+        bk_obj_id = assoc_data.get("bk_obj_id")
+        bk_asst_obj_id = assoc_data.get("bk_asst_obj_id")
+        
+        # 插入到源模型的关联分表
+        src_table = f"cc_InstAsst_0_pub_{bk_obj_id}"
+        self._insert_association_to_table(src_table, assoc_data)
+        
+        # 如果源模型和目标模型不同，同时插入到目标模型的关联分表
+        if bk_obj_id != bk_asst_obj_id:
+            dst_table = f"cc_InstAsst_0_pub_{bk_asst_obj_id}"
+            self._insert_association_to_table(dst_table, assoc_data)
+
+    def _insert_association_to_table(self, table_name, assoc_data):
+        """插入关联数据到指定分表"""
+        self.execute_sql(f"""
+            INSERT OR REPLACE INTO "{table_name}" 
+            (id, bk_obj_id, bk_inst_id, bk_asst_obj_id, bk_asst_inst_id, 
+             bk_obj_asst_id, bk_relation_type_id, bk_supplier_account)
+            VALUES (:id, :bk_obj_id, :bk_inst_id, :bk_asst_obj_id, :bk_asst_inst_id, 
+                    :bk_obj_asst_id, :bk_relation_type_id, :bk_supplier_account)
+        """, assoc_data)
+
+    def _ensure_all_inst_asst_tables_exist(self):
+        """
+        确保所有模型的实例关联分表都存在
+        包括 cc_ObjDes 中的所有模型 + host 模型
+        """
+        # 查询所有模型
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        model_ids = [m['bk_obj_id'] for m in models]
+        
+        # 确保包含 host 模型（即使不在 cc_ObjDes 中）
+        if 'host' not in model_ids:
+            model_ids.append('host')
+        
+        # 为每个模型创建实例关联分表
+        for model_id in model_ids:
+            self.create_instance_association_table(model_id)
+        
+        logger.info(f"创建了 {len(model_ids)} 个实例关联分表")
 
     def migrate(self):
         """执行完整的迁移"""
@@ -1118,14 +1840,24 @@ class DatabaseMigrator:
         # 步骤1: 初始化核心表
         self.init_core_tables()
 
+        # 步骤1.1: 创建 cc_HostBase 和 cc_ModuleHostConfig 表索引
+        self.create_hostbase_indexes()
+        self.create_module_host_config_indexes()
+
         # 步骤2: 迁移分类
         self.migrate_classifications()
 
         # 步骤3: 迁移模型
         self.migrate_models()
 
+        # 步骤3.1: 迁移内置模型（biz/set/module）
+        self.migrate_builtin_models()
+
         # 步骤4: 迁移属性
         self.migrate_attributes()
+
+        # 步骤4.1: 迁移内置模型属性
+        self.migrate_builtin_model_attributes()
 
         # 步骤5: 迁移属性分组
         self.migrate_property_groups()
@@ -1133,10 +1865,13 @@ class DatabaseMigrator:
         # 步骤6: 更新属性分组
         self.update_attributes_group()
 
-        # 步骤7: 创建实例表
+        # 步骤7: 创建实例表（跳过内置模型和 host 模型，它们有专用表）
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+        builtin_model_ids = {m["bk_obj_id"] for m in BUILTIN_MODELS}
+        builtin_model_ids.add("host")
         for model in models:
-            self.create_instance_table(model['bk_obj_id'])
+            if model['bk_obj_id'] not in builtin_model_ids:
+                self.create_instance_table(model['bk_obj_id'])
 
         # 步骤8: 迁移实例数据
         self.migrate_instances()
@@ -1146,6 +1881,9 @@ class DatabaseMigrator:
 
         # 步骤10: 迁移唯一约束数据
         self.migrate_object_unique()
+
+        # 步骤11: 迁移主线拓扑数据（5个核心表）
+        self.migrate_mainline_topo()
 
         logger.info("数据库初始化迁移完成!")
 
@@ -1218,7 +1956,7 @@ class DatabaseMigrator:
         # 为主机添加外网IP唯一约束
         host_outer_ip_result = self.execute_query("""
             SELECT id FROM cc_ObjAttDes 
-            WHERE bk_obj_id = 'bk_host' AND bk_property_id = 'bk_host_outerip'
+            WHERE bk_obj_id = 'host' AND bk_property_id = 'bk_host_outerip'
         """)
         
         if host_outer_ip_result:
@@ -1233,9 +1971,9 @@ class DatabaseMigrator:
                 (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
                 VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
             """, {
-                '_id': "bk_host_bk_host_outerip",
+                '_id': "host_bk_host_outerip",
                 'id': unique_id,
-                'bk_obj_id': 'bk_host',
+                'bk_obj_id': 'host',
                 'keys': outer_ip_keys,
                 'ispre': True
             })
@@ -1243,6 +1981,337 @@ class DatabaseMigrator:
             logger.info("为主机模型添加了外网IP唯一约束")
         
         logger.info(f"迁移了 {unique_id - 1} 个唯一约束")
+
+    def migrate_mainline_topo(self):
+        """
+        迁移主线拓扑数据
+        
+        根据原项目分析文档，初始化主线拓扑的核心实例数据：
+        - cc_ApplicationBase: 业务实例（含资源池/空闲机池）
+        - cc_SetBase: 集群实例
+        - cc_ModuleBase: 模块实例
+        - cc_HostBase: 主机实例
+        - cc_ModuleHostConfig: 主机-模块挂载关系
+        
+        bk_supplier_account 统一使用 '0'
+        """
+        logger.info("开始迁移主线拓扑数据...")
+        
+        # 1. 创建默认业务（资源池/空闲机池）
+        # 原项目 default=1 表示内置资源池业务
+        default_biz = {
+            "bk_biz_id": 1,
+            "bk_biz_name": "资源池",
+            "default": 1,
+            "bk_supplier_account": "0"
+        }
+        
+        self.execute_sql("""
+            INSERT OR REPLACE INTO cc_ApplicationBase
+            (bk_biz_id, bk_biz_name, "default", bk_supplier_account)
+            VALUES (:bk_biz_id, :bk_biz_name, :default, :bk_supplier_account)
+        """, default_biz)
+        
+        # 创建示例业务
+        demo_biz_list = [
+            {"bk_biz_id": 2, "bk_biz_name": "蓝鲸平台", "default": 0, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_biz_name": "正式环境", "default": 0, "bk_supplier_account": "0"},
+            {"bk_biz_id": 4, "bk_biz_name": "测试环境", "default": 0, "bk_supplier_account": "0"},
+            {"bk_biz_id": 5, "bk_biz_name": "预发布环境", "default": 0, "bk_supplier_account": "0"},
+        ]
+        
+        for biz in demo_biz_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ApplicationBase
+                (_id, bk_biz_id, bk_biz_name, "default", bk_supplier_account)
+                VALUES (:_id, :bk_biz_id, :bk_biz_name, :default, :bk_supplier_account)
+            """, biz | {"_id": f"biz_{biz['bk_biz_id']}"})
+        
+        logger.info(f"创建了 {1 + len(demo_biz_list)} 个业务实例")
+        
+        # 2. 创建集群（空闲机池集群 + 示例集群）
+        # 原项目规则：
+        # - 每个业务都有一个空闲机池集群（default=1）
+        # - 集群的 bk_parent_id 指向业务的 bk_biz_id
+        # - 空闲机池的 default=1（表示内置集群）
+        set_list = [
+            # 空闲机池集群（属于资源池业务 bk_biz_id=1）
+            {"bk_set_id": 1, "bk_set_name": "空闲机池", "bk_parent_id": 1, "bk_biz_id": 1, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于蓝鲸平台业务 bk_biz_id=2）
+            {"bk_set_id": 2, "bk_set_name": "空闲机池", "bk_parent_id": 2, "bk_biz_id": 2, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于正式环境业务 bk_biz_id=3）
+            {"bk_set_id": 3, "bk_set_name": "空闲机池", "bk_parent_id": 3, "bk_biz_id": 3, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于测试环境业务 bk_biz_id=4）
+            {"bk_set_id": 4, "bk_set_name": "空闲机池", "bk_parent_id": 4, "bk_biz_id": 4, "default": 1, "bk_supplier_account": "0"},
+            # 空闲机池集群（属于预发布环境业务 bk_biz_id=5）
+            {"bk_set_id": 5, "bk_set_name": "空闲机池", "bk_parent_id": 5, "bk_biz_id": 5, "default": 1, "bk_supplier_account": "0"},
+            # 蓝鲸平台业务下的普通集群
+            {"bk_set_id": 10, "bk_set_name": "广州一区", "bk_parent_id": 2, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            {"bk_set_id": 11, "bk_set_name": "广州二区", "bk_parent_id": 2, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            # 正式环境业务下的普通集群
+            {"bk_set_id": 20, "bk_set_name": "生产集群", "bk_parent_id": 3, "bk_biz_id": 3, "default": 0, "bk_supplier_account": "0"},
+            # 测试环境业务下的普通集群
+            {"bk_set_id": 30, "bk_set_name": "测试集群", "bk_parent_id": 4, "bk_biz_id": 4, "default": 0, "bk_supplier_account": "0"},
+        ]
+        
+        for s in set_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_SetBase
+                (_id, bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default", bk_supplier_account)
+                VALUES (:_id, :bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default, :bk_supplier_account)
+            """, s | {"_id": f"set_{s['bk_set_id']}"})
+        
+        logger.info(f"创建了 {len(set_list)} 个集群实例（含空闲机池）")
+        
+        # 3. 创建模块
+        # 原项目规则：
+        # - 模块的 bk_parent_id 指向集群的 bk_set_id
+        # - default 字段值：
+        #   - 0: 普通模块
+        #   - 1: 空闲机模块
+        #   - 2: 故障机模块
+        #   - 3: 待回收模块
+        # - 每个空闲机池集群（default=1）都包含空闲机、故障机、待回收三个模块
+        module_list = [
+            # 资源池空闲机池集群的模块
+            {"bk_module_id": 1, "bk_module_name": "空闲机", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 2, "bk_module_name": "故障机", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 3, "bk_module_name": "待回收", "bk_parent_id": 1, "bk_set_id": 1, "bk_biz_id": 1, "default": 3, "bk_supplier_account": "0"},
+            # 蓝鲸平台空闲机池集群的模块
+            {"bk_module_id": 4, "bk_module_name": "空闲机", "bk_parent_id": 2, "bk_set_id": 2, "bk_biz_id": 2, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 5, "bk_module_name": "故障机", "bk_parent_id": 2, "bk_set_id": 2, "bk_biz_id": 2, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 6, "bk_module_name": "待回收", "bk_parent_id": 2, "bk_set_id": 2, "bk_biz_id": 2, "default": 3, "bk_supplier_account": "0"},
+            # 正式环境空闲机池集群的模块
+            {"bk_module_id": 7, "bk_module_name": "空闲机", "bk_parent_id": 3, "bk_set_id": 3, "bk_biz_id": 3, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 8, "bk_module_name": "故障机", "bk_parent_id": 3, "bk_set_id": 3, "bk_biz_id": 3, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 9, "bk_module_name": "待回收", "bk_parent_id": 3, "bk_set_id": 3, "bk_biz_id": 3, "default": 3, "bk_supplier_account": "0"},
+            # 测试环境空闲机池集群的模块
+            {"bk_module_id": 10, "bk_module_name": "空闲机", "bk_parent_id": 4, "bk_set_id": 4, "bk_biz_id": 4, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 11, "bk_module_name": "故障机", "bk_parent_id": 4, "bk_set_id": 4, "bk_biz_id": 4, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 12, "bk_module_name": "待回收", "bk_parent_id": 4, "bk_set_id": 4, "bk_biz_id": 4, "default": 3, "bk_supplier_account": "0"},
+            # 预发布环境空闲机池集群的模块
+            {"bk_module_id": 13, "bk_module_name": "空闲机", "bk_parent_id": 5, "bk_set_id": 5, "bk_biz_id": 5, "default": 1, "bk_supplier_account": "0"},
+            {"bk_module_id": 14, "bk_module_name": "故障机", "bk_parent_id": 5, "bk_set_id": 5, "bk_biz_id": 5, "default": 2, "bk_supplier_account": "0"},
+            {"bk_module_id": 15, "bk_module_name": "待回收", "bk_parent_id": 5, "bk_set_id": 5, "bk_biz_id": 5, "default": 3, "bk_supplier_account": "0"},
+            # 广州一区下的普通模块
+            {"bk_module_id": 100, "bk_module_name": "web", "bk_parent_id": 10, "bk_set_id": 10, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            {"bk_module_id": 101, "bk_module_name": "api", "bk_parent_id": 10, "bk_set_id": 10, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            # 广州二区下的普通模块
+            {"bk_module_id": 110, "bk_module_name": "db", "bk_parent_id": 11, "bk_set_id": 11, "bk_biz_id": 2, "default": 0, "bk_supplier_account": "0"},
+            # 生产集群下的普通模块
+            {"bk_module_id": 200, "bk_module_name": "app", "bk_parent_id": 20, "bk_set_id": 20, "bk_biz_id": 3, "default": 0, "bk_supplier_account": "0"},
+            # 测试集群下的普通模块
+            {"bk_module_id": 300, "bk_module_name": "test", "bk_parent_id": 30, "bk_set_id": 30, "bk_biz_id": 4, "default": 0, "bk_supplier_account": "0"},
+        ]
+        
+        for m in module_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ModuleBase
+                (_id, bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id, "default", bk_supplier_account)
+                VALUES (:_id, :bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id, :default, :bk_supplier_account)
+            """, m | {"_id": f"module_{m['bk_module_id']}"})
+        
+        logger.info(f"创建了 {len(module_list)} 个模块实例")
+        
+        # 4. 创建主机（共21条，用于开发测试分页）
+        host_list = [
+            {"bk_host_id": 1, "bk_host_name": "web-server-01", "bk_host_innerip": "192.168.1.1", "bk_host_outerip": "10.0.1.1", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-001", "bk_sn": "SN-2024-001",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:01", "bk_outer_mac": "00:11:22:33:44:02", "import_from": "2"},
+            {"bk_host_id": 2, "bk_host_name": "web-server-02", "bk_host_innerip": "192.168.1.2", "bk_host_outerip": "10.0.1.2", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-002", "bk_sn": "SN-2024-002",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:03", "bk_outer_mac": "00:11:22:33:44:04", "import_from": "2"},
+            {"bk_host_id": 3, "bk_host_name": "api-server-01", "bk_host_innerip": "192.168.1.3", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "api_admin", "bk_bak_operator": "api_backup", "bk_asset_id": "ASSET-003", "bk_sn": "SN-2024-003",
+             "bk_comment": "API服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "20.04", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2670", "bk_mem": 16384, "bk_disk": 300,
+             "bk_mac": "00:11:22:33:44:05", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 4, "bk_host_name": "db-server-01", "bk_host_innerip": "192.168.1.4", "bk_host_outerip": "10.0.1.4", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "dba_admin", "bk_bak_operator": "dba_backup", "bk_asset_id": "ASSET-004", "bk_sn": "SN-2024-004",
+             "bk_comment": "数据库服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "2",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "22.04", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 6248", "bk_mem": 32768, "bk_disk": 1000,
+             "bk_mac": "00:11:22:33:44:06", "bk_outer_mac": "00:11:22:33:44:07", "import_from": "3"},
+            {"bk_host_id": 5, "bk_host_name": "app-server-01", "bk_host_innerip": "192.168.1.5", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "app_admin", "bk_bak_operator": "app_backup", "bk_asset_id": "ASSET-005", "bk_sn": "SN-2024-005",
+             "bk_comment": "应用服务器", "bk_service_term": 3, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "8.0", "bk_os_bit": "64位",
+             "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1270", "bk_mem": 8192, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:08", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 6, "bk_host_name": "app-server-02", "bk_host_innerip": "192.168.1.6", "bk_host_outerip": "10.0.1.6", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "app_admin", "bk_bak_operator": "app_backup", "bk_asset_id": "ASSET-006", "bk_sn": "SN-2024-006",
+             "bk_comment": "应用服务器", "bk_service_term": 3, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "8.0", "bk_os_bit": "64位",
+             "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1270", "bk_mem": 8192, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:09", "bk_outer_mac": "00:11:22:33:44:10", "import_from": "2"},
+            {"bk_host_id": 7, "bk_host_name": "job-server-01", "bk_host_innerip": "192.168.1.7", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "job_admin", "bk_bak_operator": "job_backup", "bk_asset_id": "ASSET-007", "bk_sn": "SN-2024-007",
+             "bk_comment": "作业服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "320000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 5218", "bk_mem": 32768, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:11", "bk_outer_mac": "", "import_from": "3"},
+            {"bk_host_id": 8, "bk_host_name": "idle-host-01", "bk_host_innerip": "192.168.1.8", "bk_host_outerip": "10.0.1.8", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-008", "bk_sn": "SN-2024-008",
+             "bk_comment": "空闲主机", "bk_service_term": 3, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "110000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 4, "bk_cpu_mhz": 2200000, "bk_cpu_module": "Intel Xeon E3-1240", "bk_mem": 8192, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:12", "bk_outer_mac": "00:11:22:33:44:13", "import_from": "1"},
+            # 新增主机 9-21 用于分页测试
+            {"bk_host_id": 9, "bk_host_name": "web-server-03", "bk_host_innerip": "192.168.1.9", "bk_host_outerip": "10.0.1.9", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-009", "bk_sn": "SN-2024-009",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:14", "bk_outer_mac": "00:11:22:33:44:15", "import_from": "2"},
+            {"bk_host_id": 10, "bk_host_name": "web-server-04", "bk_host_innerip": "192.168.1.10", "bk_host_outerip": "10.0.1.10", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-010", "bk_sn": "SN-2024-010",
+             "bk_comment": "Web服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:16", "bk_outer_mac": "00:11:22:33:44:17", "import_from": "2"},
+            {"bk_host_id": 11, "bk_host_name": "api-server-02", "bk_host_innerip": "192.168.1.11", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "api_admin", "bk_bak_operator": "api_backup", "bk_asset_id": "ASSET-011", "bk_sn": "SN-2024-011",
+             "bk_comment": "API服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "20.04", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2670", "bk_mem": 16384, "bk_disk": 300,
+             "bk_mac": "00:11:22:33:44:18", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 12, "bk_host_name": "api-server-03", "bk_host_innerip": "192.168.1.12", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "api_admin", "bk_bak_operator": "api_backup", "bk_asset_id": "ASSET-012", "bk_sn": "SN-2024-012",
+             "bk_comment": "API服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "20.04", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2670", "bk_mem": 16384, "bk_disk": 300,
+             "bk_mac": "00:11:22:33:44:19", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 13, "bk_host_name": "db-server-02", "bk_host_innerip": "192.168.1.13", "bk_host_outerip": "10.0.1.13", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "dba_admin", "bk_bak_operator": "dba_backup", "bk_asset_id": "ASSET-013", "bk_sn": "SN-2024-013",
+             "bk_comment": "数据库服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "2",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "22.04", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 6248", "bk_mem": 32768, "bk_disk": 1000,
+             "bk_mac": "00:11:22:33:44:20", "bk_outer_mac": "00:11:22:33:44:21", "import_from": "3"},
+            {"bk_host_id": 14, "bk_host_name": "db-server-03", "bk_host_innerip": "192.168.1.14", "bk_host_outerip": "10.0.1.14", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "dba_admin", "bk_bak_operator": "dba_backup", "bk_asset_id": "ASSET-014", "bk_sn": "SN-2024-014",
+             "bk_comment": "数据库服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "310000", "bk_isp_name": "2",
+             "bk_os_type": "1", "bk_os_name": "Ubuntu", "bk_os_version": "22.04", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 6248", "bk_mem": 32768, "bk_disk": 1000,
+             "bk_mac": "00:11:22:33:44:22", "bk_outer_mac": "00:11:22:33:44:23", "import_from": "3"},
+            {"bk_host_id": 15, "bk_host_name": "cache-server-01", "bk_host_innerip": "192.168.1.15", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "cache_admin", "bk_bak_operator": "cache_backup", "bk_asset_id": "ASSET-015", "bk_sn": "SN-2024-015",
+             "bk_comment": "缓存服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "320000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 32768, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:24", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 16, "bk_host_name": "cache-server-02", "bk_host_innerip": "192.168.1.16", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "cache_admin", "bk_bak_operator": "cache_backup", "bk_asset_id": "ASSET-016", "bk_sn": "SN-2024-016",
+             "bk_comment": "缓存服务器", "bk_service_term": 3, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "320000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 32768, "bk_disk": 200,
+             "bk_mac": "00:11:22:33:44:25", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 17, "bk_host_name": "mq-server-01", "bk_host_innerip": "192.168.1.17", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "mq_admin", "bk_bak_operator": "mq_backup", "bk_asset_id": "ASSET-017", "bk_sn": "SN-2024-017",
+             "bk_comment": "消息队列服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:26", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 18, "bk_host_name": "mq-server-02", "bk_host_innerip": "192.168.1.18", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "mq_admin", "bk_bak_operator": "mq_backup", "bk_asset_id": "ASSET-018", "bk_sn": "SN-2024-018",
+             "bk_comment": "消息队列服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "330000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:27", "bk_outer_mac": "", "import_from": "2"},
+            {"bk_host_id": 19, "bk_host_name": "log-server-01", "bk_host_innerip": "192.168.1.19", "bk_host_outerip": "10.0.1.19", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "log_admin", "bk_bak_operator": "log_backup", "bk_asset_id": "ASSET-019", "bk_sn": "SN-2024-019",
+             "bk_comment": "日志服务器", "bk_service_term": 5, "bk_sla": "2", "bk_state_name": "CN", "bk_province_name": "110000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 16, "bk_cpu_mhz": 2600000, "bk_cpu_module": "Intel Xeon Gold 5218", "bk_mem": 65536, "bk_disk": 2000,
+             "bk_mac": "00:11:22:33:44:28", "bk_outer_mac": "00:11:22:33:44:29", "import_from": "2"},
+            {"bk_host_id": 20, "bk_host_name": "monitor-server-01", "bk_host_innerip": "192.168.1.20", "bk_host_outerip": "10.0.1.20", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "monitor_admin", "bk_bak_operator": "monitor_backup", "bk_asset_id": "ASSET-020", "bk_sn": "SN-2024-020",
+             "bk_comment": "监控服务器", "bk_service_term": 5, "bk_sla": "1", "bk_state_name": "CN", "bk_province_name": "110000", "bk_isp_name": "0",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 500,
+             "bk_mac": "00:11:22:33:44:30", "bk_outer_mac": "00:11:22:33:44:31", "import_from": "2"},
+            {"bk_host_id": 21, "bk_host_name": "backup-server-01", "bk_host_innerip": "192.168.1.21", "bk_host_outerip": "", "bk_cloud_id": 0, "bk_supplier_account": "0",
+             "operator": "backup_admin", "bk_bak_operator": "backup_admin", "bk_asset_id": "ASSET-021", "bk_sn": "SN-2024-021",
+             "bk_comment": "备份服务器", "bk_service_term": 5, "bk_sla": "3", "bk_state_name": "CN", "bk_province_name": "440000", "bk_isp_name": "1",
+             "bk_os_type": "1", "bk_os_name": "CentOS", "bk_os_version": "7.9", "bk_os_bit": "64位",
+             "bk_cpu": 8, "bk_cpu_mhz": 2400000, "bk_cpu_module": "Intel Xeon E5-2680", "bk_mem": 16384, "bk_disk": 4000,
+             "bk_mac": "00:11:22:33:44:32", "bk_outer_mac": "", "import_from": "2"},
+        ]
+        
+        for h in host_list:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_HostBase
+                (_id, bk_host_id, bk_host_name, bk_host_innerip, bk_host_outerip, bk_host_inneripv6, bk_host_outeripv6,
+                 bk_cloud_id, bk_cloud_inst_id, bk_agent_id, bk_supplier_account,
+                 operator, bk_bak_operator, bk_asset_id, bk_sn, bk_comment, bk_service_term, bk_sla,
+                 bk_state_name, bk_province_name, bk_isp_name, bk_os_type, bk_os_name, bk_os_version, bk_os_bit,
+                 bk_cpu, bk_cpu_mhz, bk_cpu_module, bk_mem, bk_disk, bk_mac, bk_outer_mac, import_from)
+                VALUES (:_id, :bk_host_id, :bk_host_name, :bk_host_innerip, :bk_host_outerip, :bk_host_inneripv6, :bk_host_outeripv6,
+                        :bk_cloud_id, :bk_cloud_inst_id, :bk_agent_id, :bk_supplier_account,
+                        :operator, :bk_bak_operator, :bk_asset_id, :bk_sn, :bk_comment, :bk_service_term, :bk_sla,
+                        :bk_state_name, :bk_province_name, :bk_isp_name, :bk_os_type, :bk_os_name, :bk_os_version, :bk_os_bit,
+                        :bk_cpu, :bk_cpu_mhz, :bk_cpu_module, :bk_mem, :bk_disk, :bk_mac, :bk_outer_mac, :import_from)
+            """, h | {"_id": f"host_{h['bk_host_id']}", "bk_host_inneripv6": "", "bk_host_outeripv6": "", "bk_cloud_inst_id": "", "bk_agent_id": ""})
+        
+        logger.info(f"创建了 {len(host_list)} 个主机实例（存储在 cc_HostBase）")
+        
+        # 5. 创建主机-模块挂载关系
+        # 主机挂载到模块
+        module_host_config = [
+            # 主机1-2 挂载到 web 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 1, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 2, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机3 挂载到 api 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 3, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机4 挂载到 db 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 4, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
+            # 主机5-6 挂载到生产集群的 app 模块 (bk_biz_id=3)
+            {"bk_biz_id": 3, "bk_host_id": 5, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_host_id": 6, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            # 主机7 挂载到测试集群的 test 模块 (bk_biz_id=4)
+            {"bk_biz_id": 4, "bk_host_id": 7, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
+            # 主机8 挂载到空闲机池 (bk_biz_id=1)
+            {"bk_biz_id": 1, "bk_host_id": 8, "bk_module_id": 1, "bk_set_id": 1, "bk_supplier_account": "0"},
+            # 新增主机挂载关系（主机9-21）
+            # 主机9-10 挂载到 web 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 9, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 10, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机11-12 挂载到 api 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 11, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 12, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
+            # 主机13-14 挂载到 db 模块 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 13, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
+            {"bk_biz_id": 2, "bk_host_id": 14, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
+            # 主机15-16 挂载到生产集群的 app 模块 (bk_biz_id=3)
+            {"bk_biz_id": 3, "bk_host_id": 15, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_host_id": 16, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            # 主机17-18 挂载到生产集群的 app 模块 (bk_biz_id=3)
+            {"bk_biz_id": 3, "bk_host_id": 17, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            {"bk_biz_id": 3, "bk_host_id": 18, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
+            # 主机19 挂载到测试集群的 test 模块 (bk_biz_id=4)
+            {"bk_biz_id": 4, "bk_host_id": 19, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
+            # 主机20 挂载到测试集群的 test 模块 (bk_biz_id=4)
+            {"bk_biz_id": 4, "bk_host_id": 20, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
+            # 主机21 挂载到蓝鲸平台的空闲机池 (bk_biz_id=2)
+            {"bk_biz_id": 2, "bk_host_id": 21, "bk_module_id": 4, "bk_set_id": 2, "bk_supplier_account": "0"},
+        ]
+        
+        for mhc in module_host_config:
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ModuleHostConfig
+                (bk_biz_id, bk_host_id, bk_module_id, bk_set_id, bk_supplier_account)
+                VALUES (:bk_biz_id, :bk_host_id, :bk_module_id, :bk_set_id, :bk_supplier_account)
+            """, mhc)
+        
+        logger.info(f"创建了 {len(module_host_config)} 个主机-模块挂载关系")
+        
+        logger.info("主线拓扑数据迁移完成!")
 
 
 if __name__ == "__main__":

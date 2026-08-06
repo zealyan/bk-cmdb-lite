@@ -23,7 +23,7 @@ $PROJECT_ROOT/                          # 项目根目录
 │   │   ├── common/      # 公共模块
 │   │   └── ui/          # 原项目 UI
 ├── cmdb_ui_lite/         # 前端子项目 (Vue 2 + bk-magic-vue + Vue CLI)
-└── cmdb_server_lite/    # 后端子项目 (Python 3.14.4 + Flask 2.3.3 + SQLAlchemy)
+└── cmdb_server_lite/    # 后端子项目 (Python 3.11 ~ 3.14 + Flask 2.3.3 + SQLAlchemy)
 ```
 
 ---
@@ -43,7 +43,7 @@ $PROJECT_ROOT/                          # 项目根目录
 
 | 项目 | 说明 |
 |------|------|
-| 技术栈 | Python 3.14.4 + Flask 2.3.3 + SQLAlchemy >=2.0.35 |
+| 技术栈 | Python 3.11 ~ 3.14 + Flask 2.3.3 + SQLAlchemy >=2.0.35 |
 | 数据库 | SQLite (开发) / PostgreSQL (生产) / MySQL (可选) / DuckDB (兼容) |
 | 方言处理 | sqlglot 19.8.0 |
 | 端口 | 5000 |
@@ -58,7 +58,7 @@ $PROJECT_ROOT/                          # 项目根目录
 
 | 组件 | 技术 | 版本 | 说明 |
 |------|------|------|------|
-| **Python** | Python | 3.14.4（`.python-version` 固定） | Python 版本 |
+| **Python** | Python | 3.11 ~ 3.14（可选范围，已移除 `.python-version` 硬编码） | Python 版本 |
 | **Web 框架** | Flask | 2.3.3 | 轻量级 Web 框架 |
 | **数据库连接池** | SQLAlchemy | >=2.0.35 | 仅使用连接池与原生 SQL 执行，**禁用 ORM Model** |
 | **方言转换** | sqlglot | 19.8.0 | 多数据库 SQL 方言处理 |
@@ -143,7 +143,7 @@ cmdb_server_lite/
 │   └── logs/                    # 运行日志（app.log）
 ├── tests/                       # 单元测试
 ├── .env / .env.prod / .env.test # 环境变量
-├── .python-version              # 3.14.4（关键！必须匹配）
+# Python 版本：3.11 ~ 3.14（可选范围，已移除 .python-version 硬性约束）
 ├── requirements.txt             # Python 依赖清单
 ├── run.py                       # 后端启动入口（重要！不是 main.py）
 └── cmdb_dev.db                  # 开发数据库文件（运行 migrate 后生成）
@@ -687,7 +687,7 @@ curl -s http://localhost:5000/api/v1/common/health
 ## 十七、注意事项
 
 1. **后端启动**：必须使用 `python3 run.py`，不要使用 `python3 main.py`
-2. **Python 版本**：`.python-version` 固定为 `3.14.4`，SQLAlchemy 需 `>=2.0.35` 才支持
+2. **Python 版本**：支持 `3.11` ~ `3.14`（可选范围，已移除 `.python-version` 硬性约束），SQLAlchemy 需 `>=2.0.35` 才支持
 3. **数据库迁移**：`python3 -m app.migrate.migrate`；变更数据模型后，删除旧 `cmdb_dev.db` 重新迁移更干净
 4. **前端构建**：预览前必须先执行 `npm run build`，否则 `dist/` 为空，预览全 404
 5. **API 端口**：后端 5000，前端代理 3000，Vue CLI dev 模式 8080；所有 API 最终都发往后端 5000
@@ -698,9 +698,384 @@ curl -s http://localhost:5000/api/v1/common/health
    - 关联描述：`src_des`（源→目标）、`dest_des`（目标→源）、`direction`（方向）
 8. **路由前缀**：v1 主要 API 使用 `/api/v1/*`，旧版兼容路由 `/find|/create|/delete` 无前缀，用户自定义走 `/api/usercustom/*`
 9. **依赖版本**：所有依赖版本见 `requirements.txt` 和 `package.json`，禁止随意升级（尤其是 Flask / SQLAlchemy / Vue / bk-magic-vue）
+10. **API 响应格式**：所有 API 必须使用 BaseResp 规范，业务错误不使用 HTTP 404/400，详见第十八节
+11. **前端 HTTP 请求**：禁止直接使用 `this.$http`、`axios` 或 `fetch`，必须通过 `src/api/` 下的公共 API 模块，详见第十九节
+
+---
+
+## 十八、API 规范（BaseResp）
+
+### 概述
+
+与原项目蓝鲸 CMDB 保持一致，所有 API 响应必须使用 **BaseResp** 统一格式，业务逻辑错误通过 `result: false` 区分，不依赖 HTTP 状态码。
+
+### 响应格式
+
+```json
+// 成功响应
+{
+    "result": true,
+    "bk_error_code": 0,
+    "bk_error_msg": "",
+    "data": { ... }  // 业务数据
+}
+
+// 错误响应
+{
+    "result": false,
+    "bk_error_code": 1199019,  // 错误码
+    "bk_error_msg": "模型不存在"  // 错误信息
+}
+```
+
+### HTTP 状态码规则
+
+| 场景 | HTTP 状态码 | 说明 |
+|------|------------|------|
+| 业务成功 | 200 | `result: true` |
+| 业务错误 | 200 | `result: false` + `bk_error_code` |
+| 认证失败 | 401 | 未登录或 Token 失效 |
+| 权限不足 | 403 | 无操作权限 |
+| 路由不存在 | 200 | `result: false` + `bk_error_code: 1199019` |
+
+**禁止**：业务逻辑错误使用 HTTP 404、400、500 等状态码。
+
+### 后端实现
+
+#### 统一响应辅助函数
+
+每个 API 模块必须提供 `success_response` 和 `error_response` 辅助函数：
+
+```python
+# app/api/v1/model.py
+
+def success_response(data=None, message=''):
+    """统一成功响应格式 - 与原项目 BaseResp 一致"""
+    if data is None:
+        data = {}
+    return jsonify({
+        'result': True,
+        'bk_error_code': 0,
+        'bk_error_msg': message,
+        'data': data
+    }), 200
+
+def error_response(message, error_code=1199999):
+    """统一错误响应格式 - 与原项目 BaseResp 一致"""
+    return jsonify({
+        'result': False,
+        'bk_error_code': error_code,
+        'bk_error_msg': message
+    }), 200
+```
+
+#### 异常类定义
+
+```python
+# app/utils/exceptions.py
+
+class APIException(Exception):
+    """API 异常基类 - 输出与原项目 BaseResp 格式一致"""
+
+    def __init__(self, message: str, status_code: int = 200, error_code: int = None):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.error_code = error_code or CCErrorCode.CCErrCommParamsInvalid
+
+    def to_dict(self):
+        return {
+            'result': False,
+            'bk_error_code': self.error_code,
+            'bk_error_msg': self.message
+        }
+
+class NotFoundException(APIException):
+    """资源不存在异常 - 返回 200 + BaseResp 格式"""
+    def __init__(self, message: str = "Resource not found"):
+        super().__init__(message, status_code=200, error_code=CCErrorCode.CCErrCommNotFound)
+```
+
+#### 全局错误处理
+
+```python
+# app/__init__.py
+
+@app.errorhandler(APIException)
+def handle_api_exception(e):
+    return jsonify(e.to_dict()), e.status_code
+
+@app.errorhandler(404)
+def handle_not_found(e):
+    return jsonify({
+        'result': False,
+        'bk_error_code': 1199019,
+        'bk_error_msg': '请求路径不存在'
+    }), 200
+
+@app.errorhandler(500)
+def handle_server_error(e):
+    return jsonify({
+        'result': False,
+        'bk_error_code': 1199999,
+        'bk_error_msg': '服务器内部错误'
+    }), 200
+```
+
+### 前端响应拦截器
+
+```javascript
+// src/api/client.js
+
+http.interceptors.response.use(
+  (response) => {
+    const data = response.data
+    if (data !== null && typeof data === 'object' && 'result' in data) {
+      if (data.result === false) {
+        // 业务错误：抛出异常
+        const error = new Error(data.bk_error_msg || '业务处理失败')
+        error.response = { data }
+        return Promise.reject(error)
+      }
+      // 成功：返回 data 字段内容
+      return data.data !== undefined ? data.data : data
+    }
+    return data
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+```
+
+### 错误码规范
+
+| 错误码范围 | 说明 |
+|-----------|------|
+| 0 | 成功 |
+| 1199000 - 1199999 | 通用错误 |
+| 1199001 | 参数错误 |
+| 1199006 | 请求格式错误 |
+| 1199019 | 资源不存在 |
+| 1199999 | 服务器内部错误 |
+
+---
+
+## 十九、前端 HTTP 请求规范
+
+### 概述
+
+前端项目统一使用 `src/api/` 下的公共 API 模块进行 HTTP 请求，**禁止**在组件中直接使用 `this.$http`、`axios` 或 `fetch`。
+
+### API 模块职责划分
+
+| API 模块 | 文件路径 | 职责 |
+|---------|---------|------|
+| `modelAPI` | `src/api/client.js` | 模型管理、实例 CRUD、分类、属性 |
+| `topoAPI` | `src/api/topo.js` | 业务列表、拓扑树、主机转移 |
+| `associationAPI` | `src/api/association.js` | 实例关联、对象关联 |
+| `instanceAPI` | `src/api/instance.js` | 实例查询（旧版兼容） |
+| `userCustomAPI` | `src/api/user-custom.js` | 用户自定义配置 |
+
+### 使用规范
+
+#### ✅ 正确示例
+
+```javascript
+// 在组件中使用公共 API
+import { modelAPI } from '@/api/client'
+import { topoAPI } from '@/api/topo'
+
+export default {
+  methods: {
+    async loadModels() {
+      const data = await modelAPI.getModels()
+      this.models = data.models
+    },
+    async loadBizList() {
+      const data = await topoAPI.getBizList()
+      this.bizList = data
+    }
+  }
+}
+```
+
+#### ❌ 错误示例
+
+```javascript
+// 禁止直接使用 this.$http
+async loadBizList() {
+  const data = await this.$http.get('biz/simplify')  // ❌ 错误
+}
+
+// 禁止直接导入 axios
+import axios from 'axios'
+async loadBizList() {
+  const res = await axios.get('/api/v1/topo/biz')  // ❌ 错误
+}
+
+// 禁止使用 fetch
+async loadBizList() {
+  const res = await fetch('/api/v1/topo/biz')  // ❌ 错误
+}
+```
+
+### 新增 API 流程
+
+1. **确定 API 模块**：根据功能选择合适的 API 模块文件
+2. **添加 API 方法**：在模块中新增方法，复用 `http` 实例
+3. **组件调用**：导入并调用新增的 API 方法
+
+```javascript
+// 步骤 1-2: 在 src/api/topo.js 中添加新方法
+export const topoAPI = {
+  // ... 现有方法
+
+  // 新增：获取业务详情
+  getBizDetail(bizId) {
+    return http.get(`/api/v1/topo/biz/${bizId}`)
+  }
+}
+
+// 步骤 3: 在组件中调用
+import { topoAPI } from '@/api/topo'
+
+async loadBizDetail() {
+  const data = await topoAPI.getBizDetail(this.bizId)
+  this.bizDetail = data
+}
+```
+
+### Vuex Store 中使用 API
+
+```javascript
+// src/store/modules/objectModelClassify.js
+import { modelAPI } from '@/api/client'
+
+const actions = {
+  async getClassifications({ commit }) {
+    try {
+      const data = await modelAPI.getClassifications()
+      commit('setClassifications', data.classifications)
+    } catch (error) {
+      console.error(error.message)
+    }
+  }
+}
+```
+
+### 错误处理
+
+响应拦截器会自动处理 BaseResp 格式，业务错误会抛出异常：
+
+```javascript
+async loadData() {
+  try {
+    const data = await modelAPI.getModel(this.modelId)
+    this.model = data
+  } catch (error) {
+    // error.message 包含 bk_error_msg
+    this.$bkMessage({ message: error.message, theme: 'error' })
+  }
+}
+```
+
+---
+
+## 二十、Store 规范（Vuex）
+
+### 概述
+
+使用 Vuex 进行状态管理，将全局状态和业务状态统一存放在 `src/store/` 目录下。
+
+### Store 目录结构
+
+```
+src/store/
+├── modules/              # 业务模块
+│   ├── global.js        # 全局状态（业务列表等）
+│   ├── object-biz.js    # 业务相关状态
+│   ├── objectModelClassify.js  # 模型分类状态
+│   └── userCustom.js    # 用户自定义配置
+├── filter-store.js      # 筛选状态管理
+└── index.js             # Store 入口
+```
+
+### 模块规范
+
+```javascript
+// src/store/modules/example.js
+
+const state = {
+  items: [],
+  loading: false
+}
+
+const mutations = {
+  setItems(state, items) {
+    state.items = items
+  },
+  setLoading(state, loading) {
+    state.loading = loading
+  }
+}
+
+const actions = {
+  async fetchItems({ commit }) {
+    commit('setLoading', true)
+    try {
+      const data = await modelAPI.getItems()
+      commit('setItems', data.items)
+    } catch (error) {
+      console.error(error.message)
+    } finally {
+      commit('setLoading', false)
+    }
+  }
+}
+
+const getters = {
+  itemCount: state => state.items.length
+}
+
+export default {
+  namespaced: true,
+  state,
+  mutations,
+  actions,
+  getters
+}
+```
+
+### 在组件中使用 Store
+
+```javascript
+import { mapState, mapGetters, mapActions } from 'vuex'
+
+export default {
+  computed: {
+    ...mapState('example', ['items', 'loading']),
+    ...mapGetters('example', ['itemCount'])
+  },
+  methods: {
+    ...mapActions('example', ['fetchItems'])
+  },
+  created() {
+    this.fetchItems()
+  }
+}
+```
+
+### Store 与 API 的关系
+
+- **Store** 负责状态管理和缓存
+- **API** 负责实际的 HTTP 请求
+- Store 的 actions 调用 API 模块，不直接发起 HTTP 请求
 
 ---
 
 **文档维护**：本文档随代码更新，请保持同步。
-- **最后更新**：2026-06-08
-- **更新内容**：修正 Python 版本为 3.14.4，更正前后端目录结构与实际一致，补充 Blueprint 路由注册结构与 API 端点，修正端口说明、迁移命令、关联 ID 格式等。
+- **最后更新**：2026-07-20
+- **更新内容**：
+  - 2026-07-20：新增 API 规范（BaseResp）、Store 规范、HTTP 请求规范
+  - 2026-06-08：修正 Python 版本为 3.14.4，更正前后端目录结构与实际一致，补充 Blueprint 路由注册结构与 API 端点，修正端口说明、迁移命令、关联 ID 格式等。

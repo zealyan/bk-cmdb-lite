@@ -210,8 +210,8 @@ export default {
           this.propertyGroups = [{
             id: 1,
             bk_group_id: 'default',
-            bk_group_name: '默认',
-            bk_group_index: 0,
+            bk_group_name: '基础信息',
+            bk_group_index: 1,
             bk_isdefault: true
           }]
         }
@@ -297,10 +297,7 @@ export default {
           enable: true,
           title: title,
           backward: () => {
-            this.$router.push({
-              name: MENU_RESOURCE_INSTANCE,
-              params: { objId }
-            })
+            this.$router.go(-1)
           }
         })
       })
@@ -335,15 +332,6 @@ export default {
       } catch (error) {
         console.error('更新属性失败:', error)
         let errorMsg = error.message || '未知错误'
-        // 适配原项目 BaseResp 错误格式
-        if (error.response && error.response.data) {
-          const errorData = error.response.data
-          if (errorData.bk_error_msg) {
-            errorMsg = errorData.bk_error_msg
-          } else if (errorData.detail) {
-            errorMsg = errorData.detail
-          }
-        }
         this.$bkMessage({
           message: errorMsg,
           theme: 'error'
@@ -363,7 +351,7 @@ export default {
 }
 
 .details-layout {
-  overflow: hidden;
+  overflow: visible;
   min-height: 100vh;
   box-sizing: border-box;
   background-color: #fff;
@@ -372,10 +360,15 @@ export default {
     min-height: 400px;
     background-color: transparent;
 
+    // 属性/关联 tab 栏：在 .main-scroller 滚动时吸顶，
+    // 效果与顶部面包屑一致（不随虚拟滚动条下滑而移出视口）
     :deep(.bk-tab-header) {
+      position: sticky;
+      top: 0;
+      z-index: 10;
       padding: 0 20px;
       height: 58px;
-      background-color: transparent !important;
+      background-color: #fff !important;
       background-image: none !important;
       border-bottom: 1px solid #dcdee5;
 

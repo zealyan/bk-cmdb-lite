@@ -1,22 +1,83 @@
 from app.db.executor import query_all, query_one, execute
-from app.db.engine import get_session
+from app.db.engine import get_session, get_engine
 from app.utils.tools import generate_id
 from app.utils.exceptions import ValidationException
+from app.definitions import (
+    PROPERTY_TYPE_BOOL,
+    PROPERTY_TYPE_INT,
+    PROPERTY_TYPE_LIST,
+    NUMERIC_PROPERTY_TYPES,
+    OBJUSER_PROPERTY_TYPES,
+    JSON_VALUE_PROPERTY_TYPES,
+    ASSOCIATION_PROPERTY_TYPES,
+)
+from sqlalchemy import inspect
 from datetime import datetime
 import json
 
+
+# 表真实列名缓存（SQLAlchemy 反射，数据库无关；SQLite/PostgreSQL/MySQL 通用）
+_table_columns_cache = {}
+
+
+def get_table_columns(table_name):
+    """获取目标表的真实列名集合；带缓存，避免每次写入都反射。"""
+    if table_name not in _table_columns_cache:
+        try:
+            cols = inspect(get_engine()).get_columns(table_name)
+            _table_columns_cache[table_name] = {c['name'] for c in cols}
+        except Exception:
+            # 反射失败（如表尚未创建）时返回空集合，由后续 SQL 执行暴露真实错误
+            _table_columns_cache[table_name] = set()
+    return _table_columns_cache[table_name]
+
 class InstanceService:
+    
+    # 内置模型表名映射（与蓝鲸CMDB原项目保持一致）
+    BUILTIN_TABLE_MAP = {
+        'biz': 'cc_ApplicationBase',
+        'set': 'cc_SetBase',
+        'module': 'cc_ModuleBase',
+        'host': 'cc_HostBase',
+        'bk_host': 'cc_HostBase'
+    }
+    
+    # 内置模型主键字段映射
+    BUILTIN_ID_FIELD_MAP = {
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'host': 'bk_host_id',
+        'bk_host': 'bk_host_id'
+    }
+
+    @staticmethod
+    def list_models():
+        """获取所有模型列表"""
+        return query_all("SELECT * FROM cc_ObjDes ORDER BY obj_sort_number")
     
     @staticmethod
     def _get_table_name(model_id):
-        """获取实例表名"""
+        """获取实例表名（内置模型使用专用表，自定义模型使用 ObjectBase 分表）"""
+        # 检查是否为内置模型
+        if model_id in InstanceService.BUILTIN_TABLE_MAP:
+            return InstanceService.BUILTIN_TABLE_MAP[model_id]
+        # 自定义模型使用 ObjectBase 分表
         return f"cc_ObjectBase_0_pub_{model_id}"
     
     @staticmethod
+    def _get_id_field(model_id):
+        """获取模型的主键字段名"""
+        if model_id in InstanceService.BUILTIN_ID_FIELD_MAP:
+            return InstanceService.BUILTIN_ID_FIELD_MAP[model_id]
+        return 'bk_inst_id'
+    
+    @staticmethod
     def get_instance(model_id, instance_id):
-        """获取单个实例（使用 bk_inst_id 作为标准实例ID，与蓝鲸原项目保持一致）"""
+        """获取单个实例"""
         table_name = InstanceService._get_table_name(model_id)
-        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id = :instance_id'
+        id_field = InstanceService._get_id_field(model_id)
+        sql = f'SELECT * FROM "{table_name}" WHERE "{id_field}" = :instance_id'
         instance = query_one(sql, {'instance_id': instance_id})
         if instance:
             instance = InstanceService._parse_json_fields(instance, model_id)
@@ -26,6 +87,7 @@ class InstanceService:
     def get_instances(model_id, page=1, page_size=20, conditions=None):
         """获取模型实例列表（分页）"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
         offset = (page - 1) * page_size
         
         sql_parts = [f'SELECT * FROM "{table_name}"']
@@ -39,7 +101,7 @@ class InstanceService:
             if where_clauses:
                 sql_parts.append('WHERE ' + ' AND '.join(where_clauses))
         
-        sql_parts.append('ORDER BY id')
+        sql_parts.append(f'ORDER BY "{id_field}"')
         sql_parts.append('LIMIT :limit OFFSET :offset')
         params['limit'] = page_size
         params['offset'] = offset
@@ -75,6 +137,7 @@ class InstanceService:
     def get_instances_by_ids(model_id, instance_ids):
         """按实例ID列表批量查询实例"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
         
         if not instance_ids:
             return []
@@ -82,7 +145,7 @@ class InstanceService:
         placeholders = ','.join([':id_' + str(i) for i in range(len(instance_ids))])
         params = {'id_' + str(i): int(instance_ids[i]) for i in range(len(instance_ids))}
         
-        sql = f'SELECT * FROM "{table_name}" WHERE bk_inst_id IN ({placeholders})'
+        sql = f'SELECT * FROM "{table_name}" WHERE "{id_field}" IN ({placeholders})'
         instances = query_all(sql, params)
         
         for i in range(len(instances)):
@@ -162,10 +225,10 @@ class InstanceService:
                 is_fuzzy = cond.get('fuzzy', False) or fuzzy
 
                 field_type = attr_type_map.get(field, '')
-                if field_type == 'bool':
+                if field_type == PROPERTY_TYPE_BOOL:
                     value = InstanceService._parse_bool_value_for_search(value)
 
-                # 映射前端操作符
+                # 映射前端操作符（语义操作符 → MongoDB 风格操作符）
                 op_mapping = {
                     'contains': '$regex',
                     'equal': '$eq',
@@ -175,7 +238,13 @@ class InstanceService:
                     'greater_than': '$gt',
                     'less_than': '$lt',
                     'greater_or_equal': '$gte',
-                    'less_or_equal': '$lte'
+                    'less_or_equal': '$lte',
+                    'between': '$range',
+                    'not_between': '$nrange',
+                    'datetime_greater_or_equal': '$gte',
+                    'datetime_less_or_equal': '$lte',
+                    'datetime_greater_than': '$gt',
+                    'datetime_less_than': '$lt'
                 }
                 if op in op_mapping:
                     op = op_mapping[op]
@@ -191,16 +260,16 @@ class InstanceService:
         # 处理单条件搜索（兼容旧接口）
         elif search_field and (search_value or search_values or search_start or search_end):
             safe_field = search_field.strip()
-            is_bool_field = attr_type_map.get(safe_field, '') == 'bool'
+            is_bool_field = attr_type_map.get(safe_field, '') == PROPERTY_TYPE_BOOL
 
             # 处理日期范围
             if search_start or search_end:
                 field_type = attr_type_map.get(safe_field, '')
-                is_numeric = field_type in ('int', 'long', 'float', 'double')
+                is_numeric = field_type in NUMERIC_PROPERTY_TYPES
                 if search_start:
                     if is_numeric:
                         try:
-                            if field_type in ('int', 'long'):
+                            if field_type == PROPERTY_TYPE_INT:
                                 params['search_start'] = int(search_start)
                             else:
                                 params['search_start'] = float(search_start)
@@ -212,7 +281,7 @@ class InstanceService:
                 if search_end:
                     if is_numeric:
                         try:
-                            if field_type in ('int', 'long'):
+                            if field_type == PROPERTY_TYPE_INT:
                                 params['search_end'] = int(search_end)
                             else:
                                 params['search_end'] = float(search_end)
@@ -224,7 +293,7 @@ class InstanceService:
             else:
                 # 处理普通搜索
                 field_type = attr_type_map.get(safe_field, '')
-                is_numeric_field = field_type in ('int', 'long', 'float', 'double')
+                is_numeric_field = field_type in NUMERIC_PROPERTY_TYPES
                 if search_values:
                     # 兼容字符串（逗号分隔）和列表两种输入形式
                     if isinstance(search_values, str):
@@ -245,7 +314,7 @@ class InstanceService:
                             if v is None or v == '':
                                 continue
                             try:
-                                if field_type in ('int', 'long'):
+                                if field_type == PROPERTY_TYPE_INT:
                                     val_list.append(int(v))
                                 else:
                                     val_list.append(float(v))
@@ -259,7 +328,7 @@ class InstanceService:
                         val_list = [parsed] if parsed is not None else []
                     elif is_numeric_field:
                         try:
-                            if field_type in ('int', 'long'):
+                            if field_type == PROPERTY_TYPE_INT:
                                 val_list = [int(search_value)]
                             else:
                                 val_list = [float(search_value)]
@@ -352,7 +421,8 @@ class InstanceService:
             if sort_field.replace('_', '').replace('-', '').isalnum():
                 sort_clause = f' ORDER BY "{sort_field}" {sort_dir}'
         else:
-            sort_clause = ' ORDER BY id'
+            id_field = InstanceService._get_id_field(model_id)
+            sort_clause = f' ORDER BY "{id_field}"'
         
         sql_parts.append(sort_clause)
         sql_parts.append(f' LIMIT :limit OFFSET :offset')
@@ -403,11 +473,16 @@ class InstanceService:
             prop_id = attr.get('bk_property_id')
             prop_type = attr.get('bk_property_type')
 
+            # 关联类型（singleasst/multiasst/foreignkey）：不落实例表列，
+            # 关联数据存于 cc_InstAsst，跳过不解析。
+            if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                continue
+
             if prop_id and prop_id in instance:
                 value = instance[prop_id]
 
                 # bool 类型：SQLite可能存储为 0/1 或 'true'/'false' 字符串
-                if prop_type == 'bool':
+                if prop_type == PROPERTY_TYPE_BOOL:
                     if value is None:
                         instance[prop_id] = False
                     elif isinstance(value, bool):
@@ -426,6 +501,19 @@ class InstanceService:
                         instance[prop_id] = bool(value)
                     continue
 
+                # objuser（MongoDB 为纯逗号拼接字符串）：落库即纯字符串，读取原样返回，不做 JSON 解析
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：落库为 JSON 文本，读取解析回数组
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is not None and isinstance(value, str):
+                        try:
+                            instance[prop_id] = json.loads(value)
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    continue
+
                 # 其他类型：按 JSON 解析
                 if value is not None and isinstance(value, str) and value.strip().startswith(('[', '{')):
                     try:
@@ -433,7 +521,7 @@ class InstanceService:
                         instance[prop_id] = parsed
 
                         # 对于list类型，如果解包是双重编码，则再解一次
-                        if prop_type == 'list' and isinstance(parsed, str) and parsed.strip().startswith(('[', '{')):
+                        if prop_type == PROPERTY_TYPE_LIST and isinstance(parsed, str) and parsed.strip().startswith(('[', '{')):
                             try:
                                 instance[prop_id] = json.loads(parsed)
                             except (json.JSONDecodeError, ValueError):
@@ -471,7 +559,7 @@ class InstanceService:
         if not safe_field.replace('_', '').replace('-', '').isalnum():
             return None, param_counter
 
-        numeric_types = ('int', 'long', 'float', 'double')
+        numeric_types = NUMERIC_PROPERTY_TYPES
         is_numeric = field_type in numeric_types
 
         # 解析多个值。如果值已经是整数/布尔类型，保持原样（避免 bool 的 1/0 被转成字符串）
@@ -486,7 +574,7 @@ class InstanceService:
                     val_list.append(v)
                 elif is_numeric:
                     try:
-                        if field_type in ('int', 'long'):
+                        if field_type == PROPERTY_TYPE_INT:
                             val_list.append(int(v))
                         else:
                             val_list.append(float(v))
@@ -504,7 +592,7 @@ class InstanceService:
                 val_list = []
                 for v in raw_values:
                     try:
-                        if field_type in ('int', 'long'):
+                        if field_type == PROPERTY_TYPE_INT:
                             val_list.append(int(v))
                         else:
                             val_list.append(float(v))
@@ -569,6 +657,31 @@ class InstanceService:
                 like_parts.append(f'LOWER(CAST("{safe_field}" AS TEXT)) LIKE LOWER(:{param_name})')
                 params[param_name] = f'%{v}%'
             return '(' + ' OR '.join(like_parts) + ')', param_counter
+        elif op == '$range':
+            # $range: value 为 [start, end]，生成 field >= start AND field <= end
+            if len(val_list) >= 2:
+                p1 = f'cond_{param_counter}'
+                param_counter += 1
+                p2 = f'cond_{param_counter}'
+                param_counter += 1
+                params[p1] = val_list[0]
+                params[p2] = val_list[1]
+                return f'("{safe_field}" >= :{p1} AND "{safe_field}" <= :{p2})', param_counter
+            elif len(val_list) == 1:
+                param_name = f'cond_{param_counter}'
+                param_counter += 1
+                params[param_name] = val_list[0]
+                return f'"{safe_field}" >= :{param_name}', param_counter
+        elif op == '$nrange':
+            # $nrange: value 为 [start, end]，生成 NOT (field >= start AND field <= end)
+            if len(val_list) >= 2:
+                p1 = f'cond_{param_counter}'
+                param_counter += 1
+                p2 = f'cond_{param_counter}'
+                param_counter += 1
+                params[p1] = val_list[0]
+                params[p2] = val_list[1]
+                return f'NOT ("{safe_field}" >= :{p1} AND "{safe_field}" <= :{p2})', param_counter
         else:
             if len(val_list) == 1:
                 param_name = f'cond_{param_counter}'
@@ -683,6 +796,7 @@ class InstanceService:
         if not unique_constraints:
             return []
 
+        id_field = InstanceService._get_id_field(model_id)
         duplicates = []
         for constraint in unique_constraints:
             constraint_attrs = constraint.get('keys', [])
@@ -718,7 +832,7 @@ class InstanceService:
             sql_parts.append(' AND '.join(where_clauses))
             
             if exclude_instance_id is not None:
-                sql_parts.append('AND bk_inst_id != :exclude_id')
+                sql_parts.append(f'AND "{id_field}" != :exclude_id')
                 params['exclude_id'] = exclude_instance_id
 
             sql = ' '.join(sql_parts)
@@ -748,15 +862,26 @@ class InstanceService:
     @staticmethod
     def create_instance(model_id, data):
         """创建实例"""
+        # 检查模型是否已停用
+        from app.service.model_service import ModelService
+        model = ModelService.get_model_by_id(model_id)
+        if model and model.get('bk_ispaused'):
+            raise ValidationException(f'模型 {model.get("bk_obj_name", model_id)} 已停用，无法创建实例')
+
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        instance_id = generate_id()
-        data['id'] = instance_id
-        data['_id'] = instance_id
-        data['bk_inst_id'] = instance_id
-        data['bk_obj_id'] = model_id
+        # 全局唯一 ID（单一计数器覆盖所有序列域，数据库无关）
+        instance_id = generate_id(model_id=model_id)
+        # 内置模型表无 id/bk_obj_id 列，只有业务主键列（bk_host_id 等）
+        # 自定义模型表有 id（PK）+ bk_inst_id + bk_obj_id 列
+        is_builtin = model_id in InstanceService.BUILTIN_ID_FIELD_MAP
+        if not is_builtin:
+            data['id'] = instance_id
+            data['bk_obj_id'] = model_id
+        data[id_field] = instance_id
         data.setdefault('bk_supplier_account', '0')
         data.setdefault('create_time', now)
         data.setdefault('last_time', now)
@@ -784,11 +909,38 @@ class InstanceService:
             if key in valid_fields:
                 prop_type = attr_type_map.get(key, '')
 
+                # 关联类型不落实例表列，跳过
+                if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                    continue
+
+                # objuser（MongoDB 为纯逗号拼接字符串）：原样保存为纯字符串，不 JSON 化
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    if value is None:
+                        clean_data[key] = None
+                    elif isinstance(value, str):
+                        clean_data[key] = value
+                    elif isinstance(value, (list, tuple)):
+                        # UI 传入数组时按 MongoDB 规则用逗号拼接为英文名串
+                        clean_data[key] = ",".join(str(v).strip() for v in value)
+                    else:
+                        clean_data[key] = str(value)
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：以 JSON 文本保存，读取时解析回数组
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is None:
+                        clean_data[key] = None
+                    elif isinstance(value, str):
+                        clean_data[key] = value
+                    else:
+                        clean_data[key] = json.dumps(value)
+                    continue
+
                 if isinstance(value, (dict, list)):
                     clean_data[key] = json.dumps(value)
                 elif value is None:
                     clean_data[key] = None
-                elif prop_type == 'bool':
+                elif prop_type == PROPERTY_TYPE_BOOL:
                     # bool 类型保持原生布尔值
                     if isinstance(value, bool):
                         clean_data[key] = value
@@ -802,6 +954,13 @@ class InstanceService:
                     clean_data[key] = value
                 else:
                     clean_data[key] = str(value)
+
+        # 只保留目标表真实存在的列，过滤内置模型无对应列的元数据字段
+        # （如 host 表的 bk_inst_name / id / bk_obj_id / bk_inst_id）。
+        # 这些字段被 cc_ObjAttDes 列为属性，但内置表不含该列，写入会触发
+        # "table cc_HostBase has no column named ..."，故在此按真实表结构收敛。
+        real_cols = get_table_columns(table_name)
+        clean_data = {k: v for k, v in clean_data.items() if k in real_cols}
 
         if not clean_data:
             raise ValidationException('No valid data to update')
@@ -818,6 +977,7 @@ class InstanceService:
     def update_instance(model_id, instance_id, data):
         """更新实例"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
 
         data['last_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -845,14 +1005,42 @@ class InstanceService:
         params = {'instance_id': instance_id}
 
         for key, value in data.items():
-            if key in valid_fields and key not in system_fields_to_exclude:
-                update_fields.append(f'"{key}" = :{key}')
+            if key in valid_fields and key not in system_fields_to_exclude and key in get_table_columns(table_name):
                 prop_type = attr_type_map.get(key, '')
+
+                # 关联类型不落实例表列，跳过
+                if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                    continue
+
+                update_fields.append(f'"{key}" = :{key}')
+                # objuser（MongoDB 为纯逗号拼接字符串）：原样保存为纯字符串，不 JSON 化
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    if value is None:
+                        params[key] = None
+                    elif isinstance(value, str):
+                        params[key] = value
+                    elif isinstance(value, (list, tuple)):
+                        # UI 传入数组时按 MongoDB 规则用逗号拼接为英文名串
+                        params[key] = ",".join(str(v).strip() for v in value)
+                    else:
+                        params[key] = str(value)
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：以 JSON 文本保存，读取时解析回数组
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is None:
+                        params[key] = None
+                    elif isinstance(value, str):
+                        params[key] = value
+                    else:
+                        params[key] = json.dumps(value)
+                    continue
+
                 if isinstance(value, (dict, list)):
                     params[key] = json.dumps(value)
                 elif value is None:
                     params[key] = None
-                elif prop_type == 'bool':
+                elif prop_type == PROPERTY_TYPE_BOOL:
                     # bool 类型保持原生布尔值
                     if isinstance(value, bool):
                         params[key] = value
@@ -870,7 +1058,7 @@ class InstanceService:
         if not update_fields:
             return InstanceService.get_instance(model_id, instance_id)
 
-        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id = :instance_id'
+        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE "{id_field}" = :instance_id'
         execute(sql, params)
 
         return InstanceService.get_instance(model_id, instance_id)
@@ -883,6 +1071,10 @@ class InstanceService:
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data['last_time'] = now
+
+        # 获取模型属性（与 update_instance 一致）
+        from app.service.model_service import ModelService
+        attributes = ModelService.get_model_attributes(model_id)
 
         # 检查是否更新了唯一字段（与原项目保持一致，禁止批量更新唯一字段）
         unique_constraints = InstanceService.get_object_unique_constraints(model_id)
@@ -899,6 +1091,7 @@ class InstanceService:
                 raise ValidationException('不允许批量更新唯一字段')
 
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
 
         # 构建属性ID到属性类型的映射
         attr_type_map = {}
@@ -917,16 +1110,45 @@ class InstanceService:
         param_idx = 0
 
         for key, value in data.items():
-            if key in valid_fields and key not in system_fields_to_exclude:
+            if key in valid_fields and key not in system_fields_to_exclude and key in get_table_columns(table_name):
+                prop_type = attr_type_map.get(key, '')
+
+                # 关联类型不落实例表列，跳过
+                if prop_type in ASSOCIATION_PROPERTY_TYPES:
+                    continue
+
                 param_name = f'val_{param_idx}'
                 update_fields.append(f'"{key}" = :{param_name}')
-                prop_type = attr_type_map.get(key, '')
+                # objuser（MongoDB 为纯逗号拼接字符串）：原样保存为纯字符串，不 JSON 化
+                if prop_type in OBJUSER_PROPERTY_TYPES:
+                    if value is None:
+                        params[param_name] = None
+                    elif isinstance(value, str):
+                        params[param_name] = value
+                    elif isinstance(value, (list, tuple)):
+                        # UI 传入数组时按 MongoDB 规则用逗号拼接为英文名串
+                        params[param_name] = ",".join(str(v).strip() for v in value)
+                    else:
+                        params[param_name] = str(value)
+                    param_idx += 1
+                    continue
+
+                # organization（MongoDB 为部门 ID 数组）：以 JSON 文本保存，读取时解析回数组
+                if prop_type in JSON_VALUE_PROPERTY_TYPES:
+                    if value is None:
+                        params[param_name] = None
+                    elif isinstance(value, str):
+                        params[param_name] = value
+                    else:
+                        params[param_name] = json.dumps(value)
+                    param_idx += 1
+                    continue
 
                 if isinstance(value, (dict, list)):
                     params[param_name] = json.dumps(value)
                 elif value is None:
                     params[param_name] = None
-                elif prop_type == 'bool':
+                elif prop_type == PROPERTY_TYPE_BOOL:
                     # bool 类型保持原生布尔值
                     if isinstance(value, bool):
                         params[param_name] = value
@@ -952,7 +1174,7 @@ class InstanceService:
             id_params.append(f':{param_name}')
             params[param_name] = inst_id
 
-        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE bk_inst_id IN ({",".join(id_params)})'
+        sql = f'UPDATE "{table_name}" SET {",".join(update_fields)} WHERE "{id_field}" IN ({",".join(id_params)})'
         execute(sql, params)
 
         return len(ids)
@@ -961,24 +1183,70 @@ class InstanceService:
     def delete_instances(model_id, ids):
         """删除实例（支持批量）"""
         table_name = InstanceService._get_table_name(model_id)
+        id_field = InstanceService._get_id_field(model_id)
         
         if not ids:
             return 0
         
-        # 先删除关联表中的记录（使用命名参数）
+        # 先删除关联表中的记录（按模型分表，与原项目一致）
+        # 1. 从该模型的分表删除作为源实例的关联
+        # 2. 从该模型的分表删除作为目标实例的关联
+        # 3. 从关联的对端模型分表清理冗余记录
         id_params = {f'id_{idx}': inst_id for idx, inst_id in enumerate(ids)}
         id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
         
-        delete_assoc_src_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
-        params_src = {'model_id': model_id, **id_params}
-        execute(delete_assoc_src_sql, params_src)
+        # 获取该模型的实例关联分表名
+        from app.service.association_service import get_inst_asst_table_name
+        model_asst_table = get_inst_asst_table_name(model_id)
         
-        delete_assoc_dest_sql = f'DELETE FROM cc_InstAsst_0_pub WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
-        execute(delete_assoc_dest_sql, params_src)
+        # 先查出涉及的对端模型（用于清理对端分表冗余记录）
+        try:
+            related_models_sql = f'''
+                SELECT DISTINCT bk_asst_obj_id FROM "{model_asst_table}"
+                WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})
+            '''
+            related_dest_models = query_all(related_models_sql, {'model_id': model_id, **id_params})
+            
+            related_src_models_sql = f'''
+                SELECT DISTINCT bk_obj_id FROM "{model_asst_table}"
+                WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})
+            '''
+            related_src_models = query_all(related_src_models_sql, {'model_id': model_id, **id_params})
+        except Exception:
+            related_dest_models = []
+            related_src_models = []
+        
+        # 从该模型分表删除（源 + 目标）
+        delete_src_sql = f'DELETE FROM "{model_asst_table}" WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
+        execute(delete_src_sql, {'model_id': model_id, **id_params})
+        
+        delete_dest_sql = f'DELETE FROM "{model_asst_table}" WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
+        execute(delete_dest_sql, {'model_id': model_id, **id_params})
+        
+        # 从对端模型分表清理冗余记录
+        for item in related_dest_models:
+            dest_model_id = item.get('bk_asst_obj_id')
+            if dest_model_id and dest_model_id != model_id:
+                dest_table = get_inst_asst_table_name(dest_model_id)
+                try:
+                    sql = f'DELETE FROM "{dest_table}" WHERE bk_obj_id = :model_id AND bk_inst_id IN ({id_placeholders})'
+                    execute(sql, {'model_id': model_id, **id_params})
+                except Exception:
+                    pass
+        
+        for item in related_src_models:
+            src_model_id = item.get('bk_obj_id')
+            if src_model_id and src_model_id != model_id:
+                src_table = get_inst_asst_table_name(src_model_id)
+                try:
+                    sql = f'DELETE FROM "{src_table}" WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id IN ({id_placeholders})'
+                    execute(sql, {'model_id': model_id, **id_params})
+                except Exception:
+                    pass
         
         # 删除实例表中的记录
         id_placeholders = ','.join([f':id_{idx}' for idx in range(len(ids))])
-        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE bk_inst_id IN ({id_placeholders})'
+        delete_instance_sql = f'DELETE FROM "{table_name}" WHERE "{id_field}" IN ({id_placeholders})'
         execute(delete_instance_sql, id_params)
         
         return len(ids)
@@ -1029,5 +1297,16 @@ SYSTEM_FIELDS = {
     'bk_created_at',
     'bk_updated_by',
     'bk_updated_at',
-    'modifier'
+    'modifier',
+    # 内置模型专用ID/名称字段
+    'bk_host_id',
+    'bk_host_name',
+    'bk_biz_id',
+    'bk_biz_name',
+    'bk_set_id',
+    'bk_set_name',
+    'bk_module_id',
+    'bk_module_name',
+    'bk_biz_set_id',
+    'bk_biz_set_name'
 }

@@ -1,6 +1,12 @@
 cmdb_ui_lite/node_modules
 cmdb_ui_lite/dist
 
+cmdb_server_lite/__pycache__
+cmdb_server_lite/**/__pycache__
+cmdb_server_lite/app/logs
+*.pyc
+*.pyo
+
 
 bk-cmdb/src/bin/*
 bk-cmdb/src/*/*/cmdb_*
@@ -17,5 +23,9 @@ bk-cmdb/src/web*/cmdb_*
 
 .DS_Store
 .vscode
+
+# ID 序列持久化状态文件（运行时生成，随数据管理）
+cmdb_server_lite/id_seq.state
+cmdb_server_lite/id_seq.state.tmp
 
 
