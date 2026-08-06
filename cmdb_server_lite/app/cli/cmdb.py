@@ -1339,6 +1339,182 @@ def cmd_scaffold_apply(args):
 
 
 # ---------------------------------------------------------------------------
+# 实例表系统/保留列（见 SQLITE_SYSTEM_COLS）；bk_inst_name 是实例名（放行），
+# 其余命中则自动加前缀 u_ 区分（避免 ALTER/upsert 覆盖系统列）。
+_FROM_CSV_RESERVED = SQLITE_SYSTEM_COLS - {'bk_inst_name'}
+_FROM_CSV_PREFIX = 'u_'
+
+# 13 列 seed 属性模板（与 _seed_content 同构；from-csv 用此而非 17 列 export 模板，§5.6.3）
+_FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
+               '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
+_FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
+               '布尔', '布尔', '布尔', '布尔', '整型']
+_FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
+               'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+               'isreadonly', 'isonly', 'bk_property_index']
+
+
+def _from_csv_build_plan(args):
+    """解析 + 校验 + 推导，返回 (plan, problems)。
+
+    - plan：含 model_id / cls_id / cls_name / model_name / attr_rows / inst_header / inst_rows / src
+    - problems：规则 1/2/5 命中的全部问题；非空时调用方据此中断（退出码 2，零落盘）
+    校验流程严格对应 §5.6.3：规则 1（模型名）、规则 2（属性名正则）、规则 2.1（保留列前缀）、
+    规则 3（默认 singlechar + 中文名同源）、规则 3.1（缺 bk_inst_name 自动补）、规则 5（去重）。
+    """
+    problems = []
+    src = os.path.abspath(args.csv)
+    stem = os.path.splitext(os.path.basename(args.csv))[0]
+
+    # 规则 1：模型名 = 文件名 stem
+    try:
+        validate_identifier(stem)
+    except InvalidIdentifierError:
+        problems.append(f"[规则1] 文件名 stem '{stem}' 不符合 ^[a-z][a-z0-9_]*$（需小写字母开头、仅含小写字母/数字/下划线）")
+
+    rows = read_csv_rows(args.csv)
+    if not rows:
+        problems.append("[规则4] 文件无有效表头（空文件）")
+        return None, problems
+    header_raw = rows[0]
+    data_rows = rows[1:]
+    if not header_raw or all(c.strip() == '' for c in header_raw):
+        problems.append("[规则4] 文件无有效表头")
+        return None, problems
+    if not data_rows:
+        problems.append("[规则4] 实例 CSV 无数据行（预检失败）")
+        return None, problems
+
+    # 归一（strip）+ 规则 5（去重）+ 规则 2（正则）+ 规则 2.1（保留列前缀）
+    header = [c.strip() for c in header_raw]
+    seen = {}
+    for k in header:
+        seen[k] = seen.get(k, 0) + 1
+    for k, n in seen.items():
+        if n > 1:
+            problems.append(f"[重复] 表头重复列 '{k}'")
+
+    key_map = {}          # 原 key -> 最终属性 id（= 实例列名）
+    assigned = set()      # 已分配的最终 id
+    has_name = 'bk_inst_name' in header
+    for i, k in enumerate(header):
+        try:
+            validate_identifier(k)
+        except InvalidIdentifierError:
+            problems.append(f"[规则2] 第 {i + 1} 列 '{k}' 不符合属性 ID 正则")
+            continue
+        if k == 'bk_inst_name':
+            final = 'bk_inst_name'                       # 规则 2.1：实例名，原样保留
+        elif k in _FROM_CSV_RESERVED:
+            cand = _FROM_CSV_PREFIX + k                  # 规则 2.1：其余保留列加前缀区分
+            base_cols = set(header)
+            if cand in assigned or cand in base_cols:
+                j = 2
+                while f"{cand}_{j}" in assigned or f"{cand}_{j}" in base_cols:
+                    j += 1
+                cand = f"{cand}_{j}"
+            final = cand
+        else:
+            final = k
+        key_map[k] = final
+        assigned.add(final)
+
+    if problems:
+        return None, problems
+
+    # 最终列顺序：bk_inst_name 置首（缺则由规则 3.1 补）
+    others = [k for k in header if k != 'bk_inst_name']
+    ordered_keys = (['bk_inst_name'] + others) if has_name else (['bk_inst_name'] + header)
+
+    attr_rows = []
+    inst_header = []
+    idx = 10
+    for k in ordered_keys:
+        if k == 'bk_inst_name':
+            final, is_req = 'bk_inst_name', 'true'        # 规则 3.1：必填
+        else:
+            final, is_req = key_map[k], 'false'
+        # 规则 3：singlechar + 中文名默认取英文 key 原值（保留列前缀下仍为原 key）
+        attr_rows.append([final, k, 'singlechar', 'default', '', '', '', '',
+                          'true', is_req, 'false', 'false', str(idx)])
+        inst_header.append(final)
+        idx += 1
+
+    # 实例数据行：按 inst_header 顺序从原数据取列；bk_inst_name 缺列则占位 bk_<model>_<行号>
+    src_idx = {k: i for i, k in enumerate(header)}
+    name_src = src_idx.get('bk_inst_name')
+    inst_rows = []
+    for r_i, drow in enumerate(data_rows):
+        out = []
+        for col in inst_header:
+            if col == 'bk_inst_name':
+                if has_name:
+                    out.append(drow[name_src] if name_src < len(drow) else '')
+                else:
+                    out.append(f"bk_{stem}_{r_i + 1}")     # 规则 3.1 占位
+            else:
+                orig = next((ok for ok, fv in key_map.items() if fv == col), None)
+                oi = src_idx.get(orig) if orig else None
+                out.append(drow[oi] if (oi is not None and oi < len(drow)) else '')
+        inst_rows.append(out)
+
+    cls_id = args.classification_id
+    cls_name = args.classification_name or f"分类-{cls_id}"
+    model_name = args.model_name or f"模型-{stem}"
+    plan = {
+        'model_id': stem, 'cls_id': cls_id, 'cls_name': cls_name, 'model_name': model_name,
+        'attr_rows': attr_rows, 'inst_header': inst_header, 'inst_rows': inst_rows, 'src': src,
+    }
+    return plan, problems
+
+
+def cmd_scaffold_from_csv(args):
+    plan, problems = _from_csv_build_plan(args)
+    # 规则 4：校验失败 → 输出问题记录报告、退出码 2、不生成任何文件
+    if problems:
+        report = ("[from-csv] 校验未通过，已中断（退出码 2），未生成任何文件。\n"
+                  f"源文件: {os.path.abspath(args.csv)}\n问题记录:\n"
+                  + "\n".join(f"  {p}" for p in problems)
+                  + "\n请修正后重试。")
+        raise CliError(EXIT_PARAM, report, "validation")
+
+    ts = time.strftime('%y%m%d%H%M%S')
+    out_dir = os.path.join(args.out_dir, ts)
+    model_id = plan['model_id']
+
+    cls_header = ['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre']
+    cls_rows = [[plan['cls_id'], plan['cls_name'], 'icon-cc-default', 'false']]
+    model_header = ['bk_obj_id', 'bk_obj_name', 'bk_classification_id', 'bk_obj_icon',
+                    'ispre', 'bk_ishidden', 'bk_ispaused', 'obj_sort_number']
+    model_rows = [[model_id, plan['model_name'], plan['cls_id'], 'icon-cc-default',
+                   'false', 'false', 'false', '0']]
+    # attributes_<oid>.csv：3 行表头（zh 作为 write_seed_csv 的 header，rows 含 tp/en + 数据行）
+    attr_rows = [_FC_ATTR_TP, _FC_ATTR_EN] + plan['attr_rows']
+
+    if getattr(args, 'dry_run', False):
+        print(f"[dry-run] from-csv 将生成目录: {out_dir}")
+        print(f"  模型: {model_id}（{plan['model_name']}）  分类: {plan['cls_id']}")
+        print(f"  属性数: {len(plan['attr_rows'])}  实例数据行: {len(plan['inst_rows'])}")
+        print(f"  属性 id: {[r[0] for r in plan['attr_rows']]}")
+        print(f"  实例表头: {plan['inst_header']}")
+        emit_result({'action': 'from-csv', 'dry_run': True, 'dir': out_dir, 'model_id': model_id,
+                     'attributes': [r[0] for r in plan['attr_rows']],
+                     'instance_columns': plan['inst_header'], 'instance_rows': len(plan['inst_rows']),
+                     'human': f"from-csv(预演) {model_id}：属性 {len(plan['attr_rows'])} / 实例 {len(plan['inst_rows'])} -> {out_dir}"},
+                    getattr(args, 'json', False))
+        return EXIT_OK
+
+    write_seed_csv(os.path.join(out_dir, 'classifications.csv'), cls_header, cls_rows)
+    write_seed_csv(os.path.join(out_dir, 'models.csv'), model_header, model_rows)
+    write_seed_csv(os.path.join(out_dir, f'attributes_{model_id}.csv'), _FC_ATTR_ZH, attr_rows)
+    write_seed_csv(os.path.join(out_dir, f'instances_{model_id}.csv'), plan['inst_header'], plan['inst_rows'])
+    emit_result({'action': 'from-csv', 'dir': out_dir, 'model_id': model_id,
+                 'attributes': len(plan['attr_rows']), 'instance_rows': len(plan['inst_rows']),
+                 'human': f"已生成 from-csv 目录: {out_dir}（模型 {model_id}，属性 {len(plan['attr_rows'])}，实例 {len(plan['inst_rows'])}）"},
+                getattr(args, 'json', False))
+    return EXIT_OK
+
+# ---------------------------------------------------------------------------
 # argparse
 # ---------------------------------------------------------------------------
 def build_parser():
@@ -1513,6 +1689,14 @@ def build_parser():
     x.add_argument('--verbose', action='store_true')
     x.add_argument('--manifest-out', default=None)
     x.set_defaults(func=cmd_scaffold_apply)
+    x = scs.add_parser('from-csv',
+                       help='从实例 CSV（首行英文表头+实例数据）反向生成 seed 同构目录（§5.6.3）')
+    x.add_argument('--csv', required=True, help='输入实例 CSV（首行英文表头，其余为实例数据）')
+    x.add_argument('--out-dir', default='./seed', help='输出根目录（默认 ./seed，内部建 12 位时间戳子目录）')
+    x.add_argument('--classification-id', default='bk_import', help='生成 classifications.csv 的分类 ID')
+    x.add_argument('--classification-name', default=None, help='分类中文名（缺省 分类-<id>）')
+    x.add_argument('--model-name', default=None, help='模型中文名 bk_obj_name（缺省 模型-<模型id>）')
+    x.set_defaults(func=cmd_scaffold_from_csv)
 
     return p
 

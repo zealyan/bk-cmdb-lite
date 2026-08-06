@@ -514,6 +514,151 @@ python3 -m app.cli.cmdb scaffold apply --dir ./seed/260729001336 --atomic
 
 ---
 
+#### 5.6.3 `cmdb scaffold from-csv`（从实例 CSV 反向生成 seed 目录）
+
+**背景**：面向"我手里已有一份现成的实例数据表（Excel 导出 / 外部系统 dump / 手填台账），想直接转成可 `apply` 的 CMDB 规格"的场景。用户给出一份 **首行为英文表头、其余行为实例数据** 的单模型 CSV，`from-csv` 据此**反向推导模型与属性规格**，生成与 `seed` 同构（§5.6.1）的 CSV 目录，用户可在生成结果上增改（如把某列类型从 `singlechar` 改为 `enum`、补 `option`、改 `isrequired`、`bk_obj_name`）后，直接 `scaffold apply`（§5.6.2）落库。与 §5.6.1 的区别：`seed` 提供"预填示例模板"，`from-csv` 提供"真实数据 + 自动推导的列规格"。
+
+**命令与参数**
+
+```bash
+cmdb scaffold from-csv --csv <实例数据.csv> [options]
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--csv` | 是 | 输入实例 CSV；**首行必须是英文表头，其余行为实例数据**；文件名 stem（去 `.csv` 后缀）作为模型 `bk_obj_id` |
+| `--out-dir` | 否 | 输出根目录（默认 `./seed`），内部再建 12 位时间戳子目录（同 §5.6.1） |
+| `--classification-id` | 否 | 生成的 `classifications.csv` 所用分类 ID；缺省 `bk_import` |
+| `--classification-name` | 否 | 分类中文名；缺省 `分类-<id>` |
+| `--model-name` | 否 | 模型中文名（`bk_obj_name`）；缺省 `模型-<bk_obj_id>` |
+| `--dry-run` | 否 | 仅执行校验与推导、打印将生成的文件清单与样本，**不写盘**；**仍执行规则 1/2/2.1/4 全部校验，失败同样退出码 2** |
+| `--json` | 否 | 以 JSON 输出问题报告 / 推导结果 |
+
+**5 条硬性规则（全部满足才生成，否则中断零落盘）**
+
+| # | 规则 | 校验器 | 失败处理 |
+|---|------|--------|----------|
+| 1 | CSV 文件名 stem → 模型名 `bk_obj_id`，**必须英文且匹配 `^[a-z][a-z0-9_]*$`** | `validate_identifier()`（同 §5.10 模型 ID 校验） | 计入问题记录，中断 |
+| 2 | 表头每个英文 key → 属性 `bk_property_id`，**必须逐一匹配同一正则 `^[a-z][a-z0-9_]*$`**；不匹配即按规则 4 逐条记录并中断 | `validate_identifier()`（同 §5.7 属性 ID 校验） | 逐列出错点计入问题记录，中断 |
+| 2.1 | **系统/保留列处理**（key 已通过规则 2 正则后判定）：`bk_inst_name` 属实例名，**允许原样保留**（既作属性 id 又作实例列，满足实例导入必填，不触发规则 4）；其余系统保留 id（`id`/`_id`/`bk_inst_id`/`bk_obj_id`/`bk_supplier_account`/`create_time`/`last_time`/`bk_operate_time`，见 `cmdb.py` 的 `SQLITE_SYSTEM_COLS`）**不拒绝**，而是对生成的 `bk_property_id` 与实例列**自动加前缀 `u_`** 区分（`u_`+原 key），避免 ALTER/upsert 覆盖系统列或类型冲突；若 `u_<key>` 仍与某表头 key 冲突则追加序号（`_2`/`_3`…） | 前缀映射表（key→`u_<key>`） | 属默认行为，不触发失败（`bk_inst_name` 例外、原样） |
+| 3 | 推导出的每个属性 `bk_property_type` **默认为 `singlechar`**（不解析数据内容去推断类型；类型修正留给用户编辑后再 `apply`）；**中文属性名 `bk_property_name` 默认用同一英文 key 原值补填**（同源填充，便于后续改中文） | 固定写 `singlechar` + `bk_property_name=英文key` | 属默认行为，不触发失败 |
+| 3.1 | 实例表必填列 `bk_inst_name` 若不在表头中，则**强制补入**：属性表加一条 `singlechar / isrequired=true`，并在生成 `instances_<oid>.csv` 表头前置 `bk_inst_name` 列、数据行以 `bk_<obj_id>_<行号>` 占位，确保 `apply` 的实例导入不报必填缺失 | — | 属默认行为，不触发失败 |
+| 4 | 规则 1/2 任一不通过 → **全量扫描收集全部问题 → 输出问题记录报告 → 退出码 2，不生成任何文件** | 先校验再写盘 | 中断、零落盘 |
+| 5 | 校验通过 → 输出与 `seed` 同构的目录（12 位时间戳子目录 + 同名 CSV 文件），可被 `scaffold apply` 直接消费 | 复用 §5.6.1 文件契约 | 落盘 |
+
+> **关键约束（C2，标识符同源）**：`bk_obj_id` 与 `bk_property_id` 共用同一个白名单正则 `IDENTIFIER_RE = re.compile(r'^[a-z][a-z0-9_]*$')`（见 `app/cli/safety.py`），因此规则 1、2 本质是"同一校验器分别作用于文件名 stem 与每个表头列"。校验为**严格匹配、不做隐式转换**（大写不自动转小写、非法字符不自动剔除），不通过即按规则 4 中断，由用户改名/改列后重试。
+
+> **生成契约（C1，RFC 4180）**：与 §5.6.1 一致，`from-csv` 写入端**必须**用合规 CSV 库以 `QUOTE_ALL` 包裹每个单元格，确保 `apply` 的 RFC 4180 reader 原样读回（§5.6.2）。
+
+**校验与中断流程**
+
+1. **解析 CSV**：以 RFC 4180 读入（同 `read_csv_rows`，`utf-8-sig` 兼容带 BOM）；若无法解析或无数据行则按规则 4 出报告。
+2. **表头存在性 / 归一**：首行必须非空且全部为英文标识；空表头行 → 问题记录 `文件无有效表头`；每个 key 先 `strip()` 首尾空格（避免 `' ip'` 之类因空格触发规则 2 失败）。
+3. **模型名校验（规则 1）**：对文件名 stem 调 `validate_identifier()`，失败记 `文件名 stem '<stem>' 不符合 ^[a-z][a-z0-9_]*$`。
+4. **属性名正则校验（规则 2）**：对表头每个 key 调 `validate_identifier()`，失败按 `第 N 列 '<key>' 不符合属性 ID 正则` 逐条记录（含列序号，便于定位）。
+4.1 **系统/保留列处理（规则 2.1）**：key 通过规则 2 后，`bk_inst_name` 原样保留；其余命中 `SQLITE_SYSTEM_COLS` 的 key（`id`/`_id`/`bk_inst_id`/`bk_obj_id`/`bk_supplier_account`/`create_time`/`last_time`/`bk_operate_time`）生成前缀映射 `u_<key>`，并记录到「前缀映射表」（用于生成阶段同时改写属性 id 与实例列名）；若 `u_<key>` 仍与某表头 key 冲突则追加序号。
+5. **去重校验**：表头存在重复 key（同一英文 key 出现 ≥2 次）→ 记录 `表头重复列 '<key>'`，按规则 4 中断；`bk_inst_name` 与系统保留列已在规则 2.1 单独处理，不在此判重。
+6. **汇总判定（规则 4）**：若问题列表非空 → 打印**问题记录报告**（见下表），退出码 `2`，**不创建任何目录、不写任何文件**；列表为空才进入生成。
+7. **生成（规则 5）**：按下方「生成文件集」写盘；`--dry-run` 仍执行以上全部校验，失败时同样退出码 2 且不写盘，仅打印镜像结果。
+
+**问题记录报告格式（校验失败时输出）**
+
+```text
+[from-csv] 校验未通过，已中断（退出码 2），未生成任何文件。
+源文件: /path/to/Servers.csv
+问题记录:
+  [规则1] 文件名 stem 'Servers' 不符合 ^[a-z][a-z0-9_]*$（需小写字母开头、仅含小写字母/数字/下划线）
+  [规则2] 第 3 列 'IP 地址' 不符合属性 ID 正则（含中文/空格）
+  [规则2] 第 5 列 '1st_field' 不符合属性 ID 正则（数字开头）
+请修正后重试。
+```
+
+**生成文件集（与 seed 同构，§5.6.2 `apply` 直读）**
+
+| 文件 | 对应章节 | 内容 |
+|------|----------|------|
+| `classifications.csv` | §5.9 | 1 行：`bk_classification_id`（`--classification-id`，缺省 `bk_import`）/ `bk_classification_name` / `bk_classification_icon`（`icon-cc-default`）/`ispre=false` |
+| `models.csv` | §5.10 | 1 行：`bk_obj_id`（文件名 stem）/ `bk_obj_name`（`--model-name` 或 `模型-<id>`）/ `bk_classification_id` / `bk_obj_icon`（`icon-cc-default`）/ `ispre=false` / `bk_ishidden=false` / `bk_ispaused=false` / `obj_sort_number=0` |
+| `attributes_<oid>.csv` | §5.7 | **3 行表头（13 列 seed 模板）**；每表头 key 一行：**中文名 `bk_property_name` 默认 = 该英文 key 原值**（同源补填）、`bk_property_type=singlechar`、`bk_property_group=default`、`editable=true`、`isrequired=false`（`bk_inst_name` 为 `true`）、其余缺省 `false/0`；`bk_property_index` 从 10 递增（`bk_inst_name` 固定 10，与 seed 模板的 `0` 不同，仅影响展示顺序）；**系统保留 key 按规则 2.1 改写 `bk_property_id = u_<key>`**（中文名仍取原 key） |
+| `instances_<oid>.csv` | §5.8 | **单行英文表头** = 输入表头（规则 3.1 缺 `bk_inst_name` 时前置该列；规则 2.1 系统保留 key 同步改写为 `u_<key>`，数据随列名迁移），数据行原样回写（`QUOTE_ALL`）；因全部 `singlechar`，单元值即字符串，无需类型归一 |
+
+> `attributes_<oid>.csv` 采用 §5.6.1 的 13 列 seed 模板（而非 §5.7.3 的 17 列 export 模板），与 `apply` 兼容（§5.6.2 已确认 import/apply 同时接受 seed-13 与 export-17 两种结构）。`description` 列在 seed 模板中存在但 `from-csv` 不产出内容（留空供编辑），符合 §5.7 对 `description` 列的"读取即丢弃"约定。
+
+**示例**
+
+输入 `servers.csv`（首行英文表头 + 实例数据）：
+
+```csv
+bk_inst_name,ip,region,owner
+web-01,10.0.0.1,sh,alice
+web-02,10.0.0.2,bj,bob
+```
+
+命令与输出：
+
+```bash
+# 反向推导 + 生成 seed 同构目录（12 位时间戳目录名）
+python3 -m app.cli.cmdb scaffold from-csv --csv servers.csv --classification-id bk_application
+# → 生成 ./seed/260805002341/{classifications,models,attributes_servers,instances_servers}.csv
+```
+
+生成的 `attributes_servers.csv`（3 行表头，13 列，全部 `singlechar`；`bk_inst_name` 必填）：
+
+```csv
+英文名,中文名,数据类型,字段分组,数据配置,单位,描述,提示,是否可编辑,是否必填,是否只读,是否唯一,字段索引
+string,string,enum,string,json,string,string,string,bool,bool,bool,bool,int
+bk_property_id,bk_property_name,bk_property_type,bk_property_group,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+bk_inst_name,bk_inst_name,singlechar,default,,,,true,true,false,false,10
+ip,ip,singlechar,default,,,,true,false,false,false,11
+region,region,singlechar,default,,,,true,false,false,false,12
+owner,owner,singlechar,default,,,,true,false,false,false,13
+```
+
+生成的 `instances_servers.csv`（表头回映输入，数据原样）：
+
+```csv
+bk_inst_name,ip,region,owner
+web-01,10.0.0.1,sh,alice
+web-02,10.0.0.2,bj,bob
+```
+
+规则 3.1 触发示例（表头缺 `bk_inst_name`，自动补列）：
+
+```csv
+# 输入 missing_name.csv（无 bk_inst_name 列）
+ip,region
+10.0.0.1,sh
+```
+```bash
+python3 -m app.cli.cmdb scaffold from-csv --csv missing_name.csv
+# attributes_missing_name.csv 中自动补 bk_inst_name(singlechar/isrequired=true, index=10)
+# instances_missing_name.csv 表头前置 bk_inst_name，数据行填 bk_missing_name_1 / bk_missing_name_2
+```
+
+规则 2.1 触发示例（表头含系统保留列，自动加前缀区分，不拒绝）：
+
+```csv
+# 输入 with_sys.csv（含 bk_obj_id、id 等系统保留列）
+bk_inst_name,ip,bk_obj_id,id
+srv-01,10.0.0.1,app,1001
+srv-02,10.0.0.2,db,1002
+```
+```bash
+python3 -m app.cli.cmdb scaffold from-csv --csv with_sys.csv
+# 前缀映射表：bk_obj_id -> u_bk_obj_id；id -> u_id（均为业务属性，不触碰系统列）
+# attributes_with_sys.csv：bk_property_id 改写为 u_bk_obj_id / u_id（中文名仍为 bk_obj_id / id）
+# instances_with_sys.csv 表头同步改写为 bk_inst_name,ip,u_bk_obj_id,u_id，数据随列名迁移
+```
+
+随后用户编辑（如把 `region` 改为 `enum` 并补 `option`）即可：
+
+```bash
+python3 -m app.cli.cmdb scaffold apply --dir ./seed/260805002341 --atomic
+```
+
+---
+
+
 ### 5.7 `cmdb attribute import`（CSV 批量导入属性）
 
 **背景**：原项目提供属性描述导入模板（CSV），其列结构为

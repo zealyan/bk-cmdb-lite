@@ -280,6 +280,38 @@ cmdb scaffold apply --dir /tmp/seed_out/$(ls -1t /tmp/seed_out | head -1)
 # 预期：退出 0；分类/模型/属性/实例依次落地；输出对账 ✓；生成 .run.json
 ```
 
+#### `scaffold from-csv` — 从实例 CSV 反推 seed 目录
+
+把一份「首行英文表头 + 实例数据」的单模型 CSV，反向推导为与 `scaffold seed` 同构的目录（可被 `apply` 直接消费）。**全部规则通过才生成，否则中断零落盘**（详见设计文档 §5.6.3）。
+
+```
+cmdb scaffold from-csv --csv <实例数据.csv> [--out-dir ./seed] \
+    [--classification-id bk_import] [--classification-name 分类名] \
+    [--model-name 模型名] [--dry-run] [--json]
+```
+
+5 条硬规则（+ 2.1 保留列处理）：
+1. 文件名 stem → 模型 `bk_obj_id`，必须英文且匹配 `^[a-z][a-z0-9_]*$`；
+2. 表头每个英文 key → 属性 `bk_property_id`，逐一匹配同一正则；
+2.1 **系统/保留列处理**：`bk_inst_name` 是实例名，**允许原样保留**；其余系统保留列（`id`/`_id`/`bk_inst_id`/`bk_obj_id`/`bk_supplier_account`/`create_time`/`last_time`/`bk_operate_time`）**不拒绝**，自动对属性 id 与实例列加前缀 `u_` 区分（如 `bk_obj_id`→`u_bk_obj_id`），避免覆盖系统列；`bk_inst_name` 缺列则自动补为必填 `singlechar`；
+3. 每个属性类型默认 `singlechar`（不解析数据推断）；**中文属性名 (`bk_property_name`) 默认用同一英文 key 原值补填**；
+4. 规则 1/2 任一不通过 → 输出**问题记录报告**、退出码 2、不生成任何文件；
+5. 通过 → 输出 `seed/<12位时间戳>/` 目录（`classifications.csv` / `models.csv` / `attributes_<oid>.csv` / `instances_<oid>.csv`）。
+
+示例：
+```bash
+# 输入 servers.csv（首行英文表头，其余为数据行）
+cmdb scaffold from-csv --csv servers.csv --classification-id bk_application
+# 预期：退出 0；生成 ./seed/260805002341/{classifications,models,attributes_servers,instances_servers}.csv
+# 全部属性 singlechar；用户可编辑（如把 region 改 enum 并补 option）后再 apply
+
+# 校验失败示例（文件名大写 + 表头含中文/数字开头）
+cmdb scaffold from-csv --csv Servers.csv
+# 预期：退出 2；打印问题记录（规则1：stem 'Servers'；规则2：'IP 地址'/'1st_field'），不生成文件
+```
+
+> 标识符同源：`bk_obj_id` 与 `bk_property_id` 共用白名单 `IDENTIFIER_RE = ^[a-z][a-z0-9_]*$`（`app/cli/safety.py`），校验严格匹配、不做隐式转换。`attributes_<oid>.csv` 采用 13 列 seed 模板（非 17 列 export 模板），与 `apply` 兼容。
+
 #### 自定义属性分组（bk_property_group）
 
 seed 生成的目录里**没有** `property_group*.csv`——这是有意为之：`bk_property_group` 不在「分类 → 模型 → 属性 → 实例」的四级导入链中。其创建规则为：
