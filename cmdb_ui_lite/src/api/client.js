@@ -67,6 +67,47 @@ http.interceptors.response.use(
   }
 )
 
+// ============================================================
+// 请求取消机制（对齐上游 bk-cmdb $http 的 requestId + cancelPrevious）
+// ------------------------------------------------------------
+// 列表分页/筛选重载时，用 requestId 取消上一批未完成的请求，
+// 避免「陈旧的大列表响应」在翻页过程中挂载到 DOM（卸载/移除/GC），
+// 也避免 500+ 行数据在竞态下反复重建导致卡顿。
+// ============================================================
+const CancelToken = axios.CancelToken
+const cancelRegistry = new Map() // requestId -> CancelTokenSource
+
+export function cancelRequest(requestId) {
+  if (!requestId) return
+  const source = cancelRegistry.get(requestId)
+  if (source) {
+    source.cancel(`request cancelled: ${requestId}`)
+    cancelRegistry.delete(requestId)
+  }
+}
+
+export function isCancelError(error) {
+  return axios.isCancel(error)
+}
+
+// 为请求附加取消能力：cancelPrevious 时先取消同 requestId 的旧请求
+function withCancelToken(httpConfig = {}, options = {}) {
+  const { requestId, cancelPrevious } = options
+  if (!requestId) return httpConfig
+  if (cancelPrevious) cancelRequest(requestId)
+  const source = CancelToken.source()
+  cancelRegistry.set(requestId, source)
+  return { ...httpConfig, cancelToken: source.token }
+}
+
+// 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（数百行 × 上百列场景下的关键性能优化，
+// 与原项目在 relation/create.vue 中对 originalList 使用 Object.freeze 的意图一致）。
+// 冻结后仍可被 bk-table 正常渲染、排序与按 row-key 选择；仅不可再被运行时写回（列表展示场景无需写回）。
+export function freezeList(list) {
+  if (!Array.isArray(list)) return list
+  return Object.freeze(list.map(row => (row && typeof row === 'object') ? Object.freeze(row) : row))
+}
+
 // 模型相关 API
 export const modelAPI = {
   // 健康检查
@@ -108,15 +149,32 @@ export const modelAPI = {
   getModelPropertyGroups (modelId) {
     return http.get(`/api/v1/models/${modelId}/property-groups`)
   },
-  
+
+  // 新建属性分组（bk_group_id 由后端随机生成）
+  createModelPropertyGroup (modelId, payload) {
+    return http.post(`/api/v1/models/${modelId}/property-groups`, payload)
+  },
+
+  // 修改属性分组（显示名 / 排序 / 折叠）
+  updateModelPropertyGroup (modelId, groupId, payload) {
+    return http.put(`/api/v1/models/${modelId}/property-groups/${groupId}`, payload)
+  },
+
+  // 删除属性分组（默认分组不可删，其下属性回落 default）
+  deleteModelPropertyGroup (modelId, groupId) {
+    return http.delete(`/api/v1/models/${modelId}/property-groups/${groupId}`)
+  },
+
   // 获取模型实例列表
-  listInstances (modelId, params = {}) {
-    return http.get(`/api/v1/models/${modelId}/instances`, { params })
+  // config: { requestId, cancelPrevious } —— 用于翻页/筛选重载时取消上一批请求
+  listInstances (modelId, params = {}, config = {}) {
+    return http.get(`/api/v1/models/${modelId}/instances`, withCancelToken({ params }, config))
   },
 
   // 搜索模型实例 (使用POST避免URL编码问题)
-  searchInstances (modelId, params = {}) {
-    return http.post(`/api/v1/models/${modelId}/instances/search`, params)
+  // config: { requestId, cancelPrevious }
+  searchInstances (modelId, params = {}, config = {}) {
+    return http.post(`/api/v1/models/${modelId}/instances/search`, params, withCancelToken({}, config))
   },
   
   // 获取单个实例
@@ -245,4 +303,5 @@ export const modelAPI = {
 }
 
 export { default as userCustom } from './user-custom.js';
+export { withCancelToken };
 export default http

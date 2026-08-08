@@ -90,6 +90,61 @@ def get_model_property_groups(model_id):
         logger.error(f"Error getting model property groups: {e}")
         return error_response(f'获取属性分组失败: {str(e)}')
 
+@model_bp.route('/<model_id>/property-groups', methods=['POST'])
+def create_model_property_group(model_id):
+    """新建属性分组。
+
+    请求体：{ bk_group_name: str(必填), bk_group_index?: int, is_collapse?: bool }
+    bk_group_id 由系统随机生成（对齐上游 xid），返回新建分组整行。
+    """
+    try:
+        data = request.get_json() or {}
+        bk_group_name = data.get('bk_group_name')
+        group = ModelService.create_model_property_group(
+            model_id,
+            bk_group_name,
+            bk_group_index=data.get('bk_group_index', 99),
+            is_collapse=data.get('is_collapse', False))
+        return success_response({'group': group}, '分组创建成功')
+    except ValueError as e:
+        return error_response(str(e))
+    except Exception as e:
+        logger.error(f"Error creating model property group: {e}")
+        return error_response(f'创建属性分组失败: {str(e)}')
+
+@model_bp.route('/<model_id>/property-groups/<group_id>', methods=['PUT'])
+def update_model_property_group(model_id, group_id):
+    """修改属性分组（显示名 / 排序 / 折叠）。
+
+    请求体（部分字段）：{ bk_group_name?: str, bk_group_index?: int, is_collapse?: bool }
+    """
+    try:
+        data = request.get_json() or {}
+        group = ModelService.update_model_property_group(
+            model_id,
+            group_id,
+            bk_group_name=data.get('bk_group_name'),
+            bk_group_index=data.get('bk_group_index'),
+            is_collapse=data.get('is_collapse'))
+        return success_response({'group': group}, '分组更新成功')
+    except ValueError as e:
+        return error_response(str(e))
+    except Exception as e:
+        logger.error(f"Error updating model property group: {e}")
+        return error_response(f'更新属性分组失败: {str(e)}')
+
+@model_bp.route('/<model_id>/property-groups/<group_id>', methods=['DELETE'])
+def delete_model_property_group(model_id, group_id):
+    """删除属性分组（默认分组不可删；其下属性回落 default）。"""
+    try:
+        ModelService.delete_model_property_group(model_id, group_id)
+        return success_response({}, '分组删除成功')
+    except ValueError as e:
+        return error_response(str(e))
+    except Exception as e:
+        logger.error(f"Error deleting model property group: {e}")
+        return error_response(f'删除属性分组失败: {str(e)}')
+
 @model_bp.route('/<model_id>/associations', methods=['GET'])
 def get_model_associations(model_id):
     """获取模型的关联关系"""

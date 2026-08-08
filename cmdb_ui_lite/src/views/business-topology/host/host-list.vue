@@ -122,8 +122,7 @@ import FilterStore, { setupFilterStore } from '@/components/filters/store'
 import Utils from '@/components/filters/utils'
 import tableMixin from '@/mixins/table'
 import { topoAPI } from '@/api/topo'
-import { modelAPI } from '@/api/client'
-import { userCustom } from '@/api/client'
+import { modelAPI, userCustom, freezeList, cancelRequest, isCancelError } from '@/api/client'
 import RouterQuery from '@/utils/router-query'
 import { MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
 import { isPropertySortable, getSort } from '@/utils/property-sort'
@@ -360,6 +359,8 @@ export default {
     this.unwatchFilter && this.unwatchFilter()
     this.unwatchRouter && this.unwatchRouter()
     this.unwatchFilterStore && this.unwatchFilterStore()
+    // 取消进行中的主机列表请求，释放大列表数据引用，避免组件销毁后陈旧 500+ 行响应挂载/驻留（GC）
+    cancelRequest('biz-host-list')
   },
   methods: {
     /**
@@ -771,14 +772,24 @@ export default {
           }
         }
 
-        // 调用新的 searchHosts 接口
-        const result = await topoAPI.searchHosts(payload)
+        // 调用新的 searchHosts 接口（翻页/筛选/排序重载时用 requestId 取消上一批未完成的请求，
+        // 避免陈旧的大列表响应在竞态下挂载，造成 500+ 行反复重建导致卡顿）
+        const result = await topoAPI.searchHosts(payload,
+          { requestId: 'biz-host-list', cancelPrevious: true })
 
         // 兼容后端返回的数据结构
         const resData = result
-        this.table.data = resData.info || []
+        // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（与上游/资源主机列表一致，
+        // 避免业务拓扑下 500+ 主机在重载时产生大量响应式 getter 与内存开销，DOM 替换/GC 更快）
+        this.table.data = freezeList(resData.info || [])
         this.table.pagination.count = resData.count || 0
       } catch (e) {
+        // 请求被取消（翻页/筛选/排序重载时的 cancelPrevious）属预期行为，静默忽略，
+        // 保留旧数据：由取代它的新请求负责重新填充（避免清空表格闪烁）
+        if (isCancelError(e)) {
+          console.log('[HostList] 请求已取消（被新请求取代）')
+          return
+        }
         console.error('加载主机列表失败:', e)
         this.table.data = []
         this.table.pagination.count = 0

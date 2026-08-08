@@ -119,6 +119,10 @@ export default {
     instanceId: {
       type: [String, Number],
       default: null
+    },
+    propertyGroups: {
+      type: Array,
+      default: () => []
     }
   },
   data() {
@@ -174,6 +178,14 @@ export default {
         'role': '角色',
         'proc_port': '监听信息'
       }
+      // 权威显示名优先取 API 返回的 propertyGroups（bk_group_name），
+      // 未提供时退回本地 groupNameMap / group_id 本身。
+      const apiNames = {}
+      ;(this.propertyGroups || []).forEach(g => {
+        if (g && g.bk_group_id) {
+          apiNames[g.bk_group_id] = g.bk_group_name
+        }
+      })
       const groupOrder = { 'default': 0, 'role': 2, 'proc_port': 2, 'auto': 3 }
       const groups = {}
       this.properties.forEach(property => {
@@ -181,7 +193,7 @@ export default {
         if (!groups[groupId]) {
           groups[groupId] = {
             bk_group_id: groupId,
-            bk_group_name: groupNameMap[groupId] || groupId,
+            bk_group_name: apiNames[groupId] || groupNameMap[groupId] || groupId,
             properties: []
           }
         }

@@ -207,6 +207,7 @@
           <cmdb-form
             ref="cmdbFormRef"
             :properties="allProperties"
+            :property-groups="propertyGroups"
             :values="createForm"
             :type="'create'"
             :model-id="objId"
@@ -288,9 +289,10 @@ import FormMultiple from '@/components/ui/form/form-multiple.vue'
 import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
-import { modelAPI, userCustom } from '@/api/client'
+import { modelAPI, userCustom, cancelRequest, isCancelError, freezeList } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
+import throttle from 'lodash/throttle'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
 import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
@@ -322,6 +324,7 @@ export default {
       objId: 'bk_switch',
       modelData: null,
       allProperties: [],
+      propertyGroups: [],
       defaultColumns: [],
       // 与原项目保持一致: customColumns 是从存储加载的自定义列配置（存储状态）
       // columnsConfig.selected 是 UI 状态（抽屉中已勾选的属性），由 setTableHeader 同步更新
@@ -664,7 +667,7 @@ export default {
           }
         }
       }
-    }, { throttle: 100 })
+    }, { throttle: 300 })
   },
   mounted() {
     console.log('[Index.mounted] 组件挂载')
@@ -728,6 +731,8 @@ export default {
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler)
     }
+    // 取消进行中的列表请求，释放大列表数据引用，避免组件销毁后陈旧 500+ 行响应挂载/驻留（GC）
+    cancelRequest('inst-list')
   },
   watch: {
     filterTags: {
@@ -988,6 +993,15 @@ export default {
         this.defaultColumns = attrResult.default_columns || []
         console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns, 'allProperties count:', this.allProperties.length)
 
+        // 拉取分组定义，供 cmdb-form 使用权威 bk_group_name 渲染分组标题
+        try {
+          const groupsResult = await modelAPI.getModelPropertyGroups(this.objId)
+          this.propertyGroups = (groupsResult && groupsResult.groups) || []
+        } catch (e) {
+          console.log('[Index.loadModelData] 获取分组失败:', e)
+          this.propertyGroups = []
+        }
+
         try {
           const modelResult = await modelAPI.getModel(this.objId)
           if (modelResult && modelResult.model && modelResult.model.bk_obj_name) {
@@ -1046,7 +1060,7 @@ export default {
           
           instResult = await modelAPI.searchInstances(this.objId, {
             ...searchParams
-          })
+          }, { requestId: 'inst-list', cancelPrevious: true })
         } else {
           // 否则使用原有的简单搜索方式
           const isMultiSelectEnum = this.isEnumField || this.isBoolField || this.isEnumMultiField
@@ -1076,7 +1090,8 @@ export default {
             }
           }
 
-          instResult = await modelAPI.searchInstances(this.objId, searchParams)
+          instResult = await modelAPI.searchInstances(this.objId, searchParams,
+            { requestId: 'inst-list', cancelPrevious: true })
         }
 
         console.log('[Index.loadModelData] API返回结果:', {
@@ -1087,7 +1102,10 @@ export default {
         this.setTableHeader()
         this.updateTableSortState()
 
-        this.table.list = instResult.instances || []
+        // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理：
+        // 与上游 relation/create.vue 对 originalList 使用 Object.freeze 的意图一致，
+        // 避免 500+ 行 × 上百列在初始化/重载时产生大量响应式 getter 与内存开销（DOM 替换/GC 更快）。
+        this.table.list = freezeList(instResult.instances || [])
         this.table.pagination.count = instResult.total || 0
 
         // 复刻原项目 bk-cmdb（general-model/index.vue getTableData）：
@@ -1110,6 +1128,11 @@ export default {
         console.log('[Index.loadModelData] 加载完成，当前列表行数:', this.table.list.length)
 
       } catch (error) {
+        // 请求被取消（翻页/筛选重载时的 cancelPrevious）属预期行为，静默忽略，不弹错误
+        if (isCancelError(error)) {
+          console.log('[Index.loadModelData] 请求已取消（被新请求取代）')
+          return
+        }
         console.error('[ERROR] 加载数据失败:', error)
         this.$bkMessage({ message: '加载数据失败', theme: 'error' })
       } finally {

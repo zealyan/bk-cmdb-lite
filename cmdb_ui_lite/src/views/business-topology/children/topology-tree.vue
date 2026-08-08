@@ -5,7 +5,7 @@
       right-icon="bk-icon icon-search"
       placeholder="请输入关键词"
       v-model.trim="filterKeyword"
-      @input="handleFilter">
+      @input="handleFilterThrottled">
     </bk-input>
     <bk-big-tree ref="tree" class="topology-tree"
       selectable
@@ -71,8 +71,10 @@ import TopologyTreeNode from './topology-tree-node.vue'
 import CreateSet from './create-set.vue'
 import CreateModule from './create-module.vue'
 import { topoAPI } from '@/api/topo'
+import { cancelRequest, isCancelError } from '@/api/client'
 import RouterQuery from '@/utils/router-query'
 import { MENU_BUSINESS_TOPOLOGY } from '@/dictionary/menu-symbol'
+import throttle from 'lodash/throttle'
 
 const MODEL_INFO = {
   biz: { bk_obj_name: '业务', icon_text: '业' },
@@ -138,6 +140,10 @@ export default {
     }
   },
   created() {
+    // 复刻上游 bk-cmdb：搜索框输入做 300ms 节流，避免逐字符触发 tree.filter + setNodeCount
+    // （对可见节点批量统计）造成的大量重算与 DOM 抖动；lodash throttle 默认 trailing=true，
+    // 保证最后一次输入的最终结果一定生效。
+    this.handleFilterThrottled = throttle(this.handleFilter, 300)
   },
   async mounted() {
     await this.initTopology()
@@ -148,6 +154,10 @@ export default {
     window.removeEventListener('resize', this.updateTreeHeight)
     this.destroyWatcher()
     this.saveExpandedState()
+    // 取消进行中的拓扑加载与统计请求，释放数据引用（GC）；并清空待执行的节流搜索
+    cancelRequest('topo-load')
+    cancelRequest('topo-statistics')
+    this.handleFilterThrottled && this.handleFilterThrottled.cancel()
   },
   methods: {
     async initTopology() {
@@ -186,7 +196,8 @@ export default {
       const bizId = this.getCurrentBizId()
       this.bizId = bizId
 
-      const res = await topoAPI.getInstanceTopo(bizId, { with_statistics: true })
+      const res = await topoAPI.getInstanceTopo(bizId, { with_statistics: true },
+        { requestId: 'topo-load', cancelPrevious: true })
       const data = res || {}
 
       if (!data.bk_inst_id) {
@@ -420,7 +431,10 @@ export default {
           bk_biz_id: data.bk_biz_id || this.bizId
         }))
 
-        const response = await topoAPI.getTopoStatistics(this.bizId, { condition })
+        // 节点快速展开/切换时，用 requestId 取消上一批未完成的统计请求，
+        // 避免陈旧统计结果在竞态下回写节点 status/host_count，造成数量标签闪烁。
+        const response = await topoAPI.getTopoStatistics(this.bizId, { condition },
+          { requestId: 'topo-statistics', cancelPrevious: true })
         const results = response || []
 
         // 设置成功状态和统计数据
@@ -433,6 +447,12 @@ export default {
           this.$set(data, 'service_instance_count', count?.service_instance_count || 0)
         })
       } catch (error) {
+        // 请求被取消（节点快速展开/切换时的 cancelPrevious）属预期行为，静默忽略，
+        // 不将该批次节点标记为 error，避免数量标签误闪。
+        if (isCancelError(error)) {
+          console.log('[TopologyTree] 统计请求已取消（被新请求取代）')
+          return
+        }
         console.error('获取统计数据失败:', error)
         // 设置错误状态
         normalNodes.forEach((node) => {

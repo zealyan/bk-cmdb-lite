@@ -21,9 +21,9 @@ from typing import Optional
 
 from sqlalchemy.exc import OperationalError
 
-from app.definitions import get_sql_type, VALID_PROPERTY_TYPES
+from app.definitions import get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES
 from app.migrate.migrate import SYSTEM_PROPERTIES, convert_enum_option
-from app.utils.tools import generate_id, parse_json
+from app.utils.tools import generate_id, parse_json, generate_group_id
 from app.cli.safety import (
     validate_identifier, quote_ident, quote_ident_raw, InvalidIdentifierError)
 from app.cli import db as dbmod
@@ -101,15 +101,12 @@ ATTR_COLS = [
 # upsert 更新时排除的标识列（§5.8.2）
 UPDATE_EXCLUDE = {'id', 'bk_inst_id', 'bk_obj_id', '_id', 'bk_supplier_account', 'bk_inst_name'}
 
-# 上游已知分组 ID -> 标准显示名（与 app/migrate/migrate.py 的 EXTRA_GROUP_DEFS 保持一致）。
-# 分组 ID 一律小写：'default' 来自上游 NewGroupID(true)，'auto' 来自 mCommon.HostAutoFields。
-# --group-auto-create 建分组时命中则用标准名，未命中才退回用 ID 当显示名。
-KNOWN_GROUP_NAMES = {
-    'default': '基础信息',
-    'auto': '自动发现信息（需要安装agent）',
-    'role': '角色',
-    'proc_port': '监听信息',
-}
+# 上游已知分组 ID -> 标准显示名。
+# 已从 app/definitions.py 统一导入（单一来源，与 migrate 的 EXTRA_GROUP_DEFS 对齐），
+# 此处不再重复定义，避免漂移。
+# --group-auto-create 建分组时：若用户仅给了 ID 列（未给 bk_group_name），命中则用标准名，
+# 未命中才退回用 ID 当显示名；若用户给了 bk_group_name，则以用户给的显示名为准。
+assert KNOWN_GROUP_NAMES, "KNOWN_GROUP_NAMES 必须已从 app.definitions 导入"
 
 
 # ---------------------------------------------------------------------------
@@ -177,13 +174,13 @@ def locate_header_row(rows, marker='bk_property_id'):
 # ---------------------------------------------------------------------------
 # 核心：分类
 # ---------------------------------------------------------------------------
-def create_classification_core(c, cid, cname, icon, ispre, on_dup, dry_run):
+def create_classification_core(c, cid, cname, icon, ispre, classification_index=0, on_dup='error', dry_run=False):
     if dry_run:
         existing = c.query_one(
             "SELECT 1 FROM cc_ObjClassification WHERE bk_classification_id=:cid",
             {"cid": cid})
         action = 'create' if not existing else ('overwrite' if on_dup != 'skip' else 'skip')
-        print(f"[dry-run] 分类 {cid}: {action}")
+        print(f"[dry-run] 分类 {cid}: {action} (classification_index={classification_index})")
         return {'action': action}
     # 依赖调用方事务（cmd_* / do_*_import 负责开启）
     existing = c.query_one(
@@ -196,17 +193,17 @@ def create_classification_core(c, cid, cname, icon, ispre, on_dup, dry_run):
             return {'action': 'skip'}
         c.exec(
             "UPDATE cc_ObjClassification SET bk_classification_name=:n, "
-            "bk_classification_icon=:i, ispre=:p WHERE bk_classification_id=:cid",
-            {"n": cname, "i": icon, "p": ispre, "cid": cid})
+            "bk_classification_icon=:i, ispre=:p, classification_index=:idx WHERE bk_classification_id=:cid",
+            {"n": cname, "i": icon, "p": ispre, "idx": classification_index, "cid": cid})
         return {'action': 'overwrite'}
     c.exec(
         "INSERT INTO cc_ObjClassification "
         "(id, bk_classification_id, bk_classification_name, bk_classification_icon, "
-        "ispre, bk_supplier_account) VALUES "
+        "ispre, classification_index, bk_supplier_account) VALUES "
         "(:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, "
-        ":ispre, '0')",
+        ":ispre, :idx, '0')",
         {"id": generate_id(), "bk_classification_id": cid, "bk_classification_name": cname,
-         "bk_classification_icon": icon, "ispre": ispre})
+         "bk_classification_icon": icon, "ispre": ispre, "idx": classification_index})
     return {'action': 'create'}
 
 
@@ -435,6 +432,7 @@ def do_classification_import(c, csv_path, opts, dry_run, skip_empty=False):
         'bk_classification_name': ['bk_classification_name', '分类名称'],
         'bk_classification_icon': ['bk_classification_icon', '图标'],
         'ispre': ['ispre', '是否预置'],
+        'classification_index': ['classification_index', 'index', '排序', '排序序号', 'sort_index', '索引'],
     }, required=['bk_classification_id', 'bk_classification_name'])
     added = skipped = overwritten = failed = 0
     on_dup = opts.get('on_dup', 'overwrite')
@@ -456,7 +454,14 @@ def do_classification_import(c, csv_path, opts, dry_run, skip_empty=False):
                 ispre = False
                 if 'ispre' in idx and idx['ispre'] < len(row) and row[idx['ispre']].strip():
                     ispre = parse_bool(row[idx['ispre']])
-                r = create_classification_core(c, cid, cname, icon, ispre, on_dup, dry_run)
+                # classification_index 排序字段：缺列/空值/非法值统一回退 0（与对象 obj_sort_number 语义一致）
+                classification_index = 0
+                if 'classification_index' in idx and idx['classification_index'] < len(row) and row[idx['classification_index']].strip():
+                    try:
+                        classification_index = int(row[idx['classification_index']])
+                    except ValueError:
+                        classification_index = 0
+                r = create_classification_core(c, cid, cname, icon, ispre, classification_index, on_dup, dry_run)
                 if r['action'] == 'create':
                     added += 1
                 elif r['action'] == 'overwrite':
@@ -542,6 +547,85 @@ def do_model_import(c, csv_path, opts, dry_run, skip_empty=False):
             'failed': failed, 'human': f"模型导入：{summarize_import(locals())}"}
 
 
+def resolve_or_create_group(c, oid, grp_id, grp_name, auto_create, name_cache):
+    """解析属性归属的分组（显示名优先；bk_group_id 由系统自动生成）。
+
+    对齐上游 bk-cmdb 语义（attribute.go:1699-1718）：分组 ID 与显示名是两个独立概念，
+    且分组 ID（bk_group_id）由系统随机生成（generate_group_id），**用户无需也不会输入 ID**。
+    用户只需给出显示名（bk_group_name，支持中文/英文），系统按名查/建分组，
+    并在查不到且允许时自动建组（随机 ID），且按显示名去重复用。
+
+    解析优先级（以显示名为唯一用户态输入）：
+    1. grp_name 已存在（DB 或本轮已建，见 name_cache）-> 复用其 bk_group_id；
+    2. grp_name 不存在且 auto_create -> generate_group_id() 生成随机 ID，按 grp_name 建组；
+    3. grp_name 为空时的**遗留兼容**：仅当显式给出 grp_id（旧 CSV 仅有 ID 列）且该 ID
+       能定位到已有分组则复用；否则 auto_create 时按该 ID 建组（须过 C1 白名单）。
+       此分支为兼容旧数据，新流程不应再依赖——新流程只用 bk_group_name。
+    4. 都没有 -> 'default'（基础信息分组）。
+
+    :param c: 数据库连接（事务内）
+    :param oid: 模型 ID
+    :param grp_id: 遗留分组 ID 列（bk_property_group，可空；新流程无需提供）
+    :param grp_name: 分组显示名（推荐输入；支持中文/英文）
+    :param auto_create: 是否允许按显示名自动建组（--group-auto-create）
+    :param name_cache: dict，本轮已按显示名建/查到的 {显示名: bk_group_id}，跨行复用
+    :returns: 最终写入属性 bk_property_group 的分组 ID
+    """
+    grp_id = (grp_id or '').strip()
+    grp_name = (grp_name or '').strip()
+    name_cache = name_cache if isinstance(name_cache, dict) else {}
+
+    # 1) 显示名优先：按名复用（已存在或本轮已建）
+    if grp_name:
+        if grp_name in name_cache:
+            return name_cache[grp_name]
+        row = c.query_one(
+            "SELECT bk_group_id FROM cc_PropertyGroup WHERE bk_obj_id=:o AND bk_group_name=:n",
+            {"o": oid, "n": grp_name})
+        if row:
+            name_cache[grp_name] = row['bk_group_id']
+            return row['bk_group_id']
+        # 2) 自动建组：ID 由系统随机生成，显示名即用户输入（支持中文/英文）
+        if auto_create:
+            new_id = generate_group_id()  # 随机全局唯一串，对齐上游 xid.New()
+            c.exec(
+                "INSERT INTO cc_PropertyGroup "
+                "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+                "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
+                "bk_supplier_account) VALUES "
+                "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+                "false, false, true, 0, 'admin', 'admin', '0')",
+                {"_id": f"{oid}.{new_id}", "id": generate_id(), "bk_obj_id": oid,
+                 "bk_group_id": new_id, "bk_group_name": grp_name,
+                 "bk_group_index": 99})
+            name_cache[grp_name] = new_id
+            return new_id
+
+    # 3) 遗留兼容：无显示名但显式给了旧 ID 列（不推荐，仅兼容旧 CSV）
+    if grp_id:
+        row = c.query_one(
+            "SELECT bk_group_id FROM cc_PropertyGroup WHERE bk_obj_id=:o AND bk_group_id=:g",
+            {"o": oid, "g": grp_id})
+        if row:
+            return row['bk_group_id']
+        if auto_create:
+            validate_identifier(grp_id)  # 仅遗留 ID 路径才校验 C1 白名单
+            c.exec(
+                "INSERT INTO cc_PropertyGroup "
+                "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+                "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
+                "bk_supplier_account) VALUES "
+                "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+                "false, false, true, 0, 'admin', 'admin', '0')",
+                {"_id": f"{oid}.{grp_id}", "id": generate_id(), "bk_obj_id": oid,
+                 "bk_group_id": grp_id, "bk_group_name": KNOWN_GROUP_NAMES.get(grp_id, grp_id),
+                 "bk_group_index": 99})
+            return grp_id
+
+    # 4) 兜底
+    return 'default'
+
+
 def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
     oid = opts['bk_obj_id']
     validate_identifier(oid)
@@ -575,6 +659,7 @@ def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
             raise CliError(EXIT_PARAM, f"属性表头缺少必填列: {missing}", "header")
         added = skipped = overwritten = failed = desc_dropped = 0
         on_dup = opts.get('on_dup', 'overwrite')
+        name_cache = {}  # 本轮按显示名去重复用分组 ID（镜像上游 grpNameIDMap）
         for i, row in enumerate(data, start=hidx + 2):
             def cell(f):
                 ci = colpos.get(f)
@@ -590,29 +675,11 @@ def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
             try:
                 if ptype not in VALID_PROPERTY_TYPES:
                     raise CliError(EXIT_PARAM, f"非法 bk_property_type: {ptype}", "type")
-                # 分组解析（D 列按分组名/ID 解析）
-                grp = cell('bk_property_group') or 'default'
-                grp_row = c.query_one(
-                    "SELECT bk_group_id FROM cc_PropertyGroup WHERE bk_obj_id=:o "
-                    "AND (bk_group_id=:g OR bk_group_name=:g)",
-                    {"o": oid, "g": grp})
-                if grp_row:
-                    bk_group_id = grp_row['bk_group_id']
-                elif opts.get('group_auto_create'):
-                    validate_identifier(grp)
-                    c.exec(
-                        "INSERT INTO cc_PropertyGroup "
-                        "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
-                        "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
-                        "bk_supplier_account) VALUES "
-                        "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, 0, false, false, "
-                        "true, 0, 'admin', 'admin', '0')",
-                        {"_id": f"{oid}.{grp}", "id": generate_id(), "bk_obj_id": oid,
-                         "bk_group_id": grp,
-                         "bk_group_name": KNOWN_GROUP_NAMES.get(grp, grp)})
-                    bk_group_id = grp
-                else:
-                    bk_group_id = 'default'
+                # 分组解析：bk_property_group = 分组 ID 列（可空），bk_group_name = 显示名列（可空）。
+                # --group-auto-create 时按显示名去重自动建组，并生成随机 bk_group_id。
+                bk_group_id = resolve_or_create_group(
+                    c, oid, cell('bk_property_group'), cell('bk_group_name'),
+                    opts.get('group_auto_create'), name_cache)
                 # option 归一
                 option_raw = cell('option')
                 option_json = _normalize_option(ptype, option_raw) if option_raw else None
@@ -878,8 +945,8 @@ def cmd_classification_create(args):
         with c.conn.begin():
             r = create_classification_core(
                 c, args.bk_classification_id, args.bk_classification_name,
-                args.bk_classification_icon, args.ispre, args.on_duplicate, args.dry_run)
-    emit_result({**r, 'human': f"分类 {args.bk_classification_id}: {r['action']}"}, args.json)
+                args.bk_classification_icon, args.ispre, args.classification_index, args.on_duplicate, args.dry_run)
+    emit_result({**r, 'human': f"分类 {args.bk_classification_id}: {r['action']} (classification_index={args.classification_index})"}, args.json)
     return EXIT_OK
 
 
@@ -908,25 +975,30 @@ def cmd_model_create(args):
 
 
 def cmd_attribute_create(args):
-    p = {
-        'bk_property_id': args.bk_property_id,
-        'bk_property_name': args.bk_property_name,
-        'bk_property_type': args.bk_property_type,
-        'bk_property_group': args.bk_property_group,
-        'isrequired': args.isrequired,
-        'editable': args.editable,
-        'bk_ishidden': args.bk_ishidden,
-        'bk_isapi': args.bk_isapi,
-        'bk_issystem': args.bk_issystem,
-        'ispre': args.ispre,
-        'ismultiple': args.ismultiple,
-        'bk_property_index': args.bk_property_index,
-        'option': _normalize_option(args.bk_property_type, args.option) if args.option else None,
-        'placeholder': args.placeholder or '',
-        'unit': args.unit or '',
-    }
     with dbmod.cli_conn() as c:
         with c.conn.begin():
+            # 分组解析：优先用 bk_property_group（ID），否则按 bk_group_name（显示名）查/建；
+            # 给定显示名且分组不存在时自动建组（生成随机 bk_group_id）。
+            bk_group_id = resolve_or_create_group(
+                c, args.bk_obj_id, args.bk_property_group, args.bk_group_name,
+                auto_create=bool(args.bk_group_name), name_cache={})
+            p = {
+                'bk_property_id': args.bk_property_id,
+                'bk_property_name': args.bk_property_name,
+                'bk_property_type': args.bk_property_type,
+                'bk_property_group': bk_group_id,
+                'isrequired': args.isrequired,
+                'editable': args.editable,
+                'bk_ishidden': args.bk_ishidden,
+                'bk_isapi': args.bk_isapi,
+                'bk_issystem': args.bk_issystem,
+                'ispre': args.ispre,
+                'ismultiple': args.ismultiple,
+                'bk_property_index': args.bk_property_index,
+                'option': _normalize_option(args.bk_property_type, args.option) if args.option else None,
+                'placeholder': args.placeholder or '',
+                'unit': args.unit or '',
+            }
             r = add_attribute_core(c, args.bk_obj_id, p, args.dry_run, on_dup=args.on_duplicate)
     emit_result({**r, 'human': f"属性 {args.bk_obj_id}.{args.bk_property_id}: {r['action']}"},
                 args.json)
@@ -1110,48 +1182,48 @@ def cmd_instance_import(args):
 # scaffold
 # ---------------------------------------------------------------------------
 def _seed_content():
-    classifications = (['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre'],
-                      [['bk_network', '网络设备', 'icon-cc-network', 'false'],
-                       ['bk_application', '应用系统', 'icon-cc-application', 'false']])
+    classifications = (['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre', 'classification_index'],
+                      [['bk_network', '网络设备', 'icon-cc-network', 'false', '1'],
+                       ['bk_application', '应用系统', 'icon-cc-application', 'false', '2']])
     models = (['bk_obj_id', 'bk_obj_name', 'bk_classification_id', 'bk_obj_icon', 'ispre',
                'bk_ishidden', 'bk_ispaused', 'obj_sort_number'],
               [['bk_switch', '交换机', 'bk_network', 'icon-cc-switch', 'false', 'false', 'false', '0'],
                ['bk_deployment', '部署', 'bk_application', 'icon-cc-deployment', 'false', 'false', 'false', '1']])
-    attr_header = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
+    attr_header = ['英文名', '中文名', '数据类型', '字段分组', '分组显示名', '数据配置', '单位', '描述', '提示',
                    '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
-    attr_types = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
+    attr_types = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                   '布尔', '布尔', '布尔', '布尔', '整型']
     attr_en = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
-               'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+               'bk_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
     attrs_switch = (attr_header,
                     attr_types,
                     attr_en,
-                    [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['name', '名称', 'singlechar', 'default', '', '', '请输入名称', '', 'true', 'false', 'false', 'false', '10'],
-                     ['status', '状态', 'enum', 'default',
+                    [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['name', '名称', 'singlechar', 'default', '', '', '请输入名称', '', '', 'true', 'false', 'false', 'false', '10'],
+                     ['status', '状态', 'enum', 'default', '',
                       '[{"id":"running","name":"运行中","type":"text","is_default":true},'
                       '{"id":"stopped","name":"已停止","type":"text","is_default":false}]',
-                      '', '状态', '', 'false', 'false', 'false', 'false', '11'],
-                     ['power_type', '电源类型', 'enummulti', 'default',
+                      '', '状态', '', '', 'false', 'false', 'false', 'false', '11'],
+                     ['power_type', '电源类型', 'enummulti', 'default', '',
                       '[{"id":"AC","name":"AC","type":"text","is_default":false},'
                       '{"id":"DC","name":"DC","type":"text","is_default":false}]',
-                      '', '电源', '', 'false', 'false', 'false', 'false', '12'],
-                     ['management_ip', '管理IP', 'list', 'default',
-                      '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', 'false', 'false', 'false', 'false', '13'],
-                     ['port_count', '端口数', 'int', 'default', '', '', '端口数量', '', 'false', 'false', 'false', 'false', '14'],
-                     ['bk_backup', '是否备份', 'bool', 'default', '', '', '是否开启备份', '', 'false', 'false', 'false', 'false', '15'],
-                     ['description', '描述', 'longchar', 'default', '', '', '设备描述', '', 'false', 'false', 'false', 'false', '16']])
+                      '', '电源', '', '', 'false', 'false', 'false', 'false', '12'],
+                     ['management_ip', '管理IP', 'list', 'default', '',
+                      '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', 'false', '13'],
+                     ['port_count', '端口数', 'int', 'default', '', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
+                     ['bk_backup', '是否备份', 'bool', 'default', '', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
+                     ['description', '描述', 'longchar', 'default', '', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
     attrs_deployment = (attr_header,
                         attr_types,
                         attr_en,
-                        [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['dep_hosts', '部署主机', 'singlechar', 'default', '', '', '部署目标主机', '', 'true', 'false', 'false', 'false', '10'],
-                         ['dep_ns', '命名空间', 'singlechar', 'default', '', '', 'K8s 命名空间', '', 'true', 'false', 'false', 'false', '11'],
-                         ['type', '部署类型', 'enum', 'default',
+                        [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['dep_hosts', '部署主机', 'singlechar', 'default', '', '', '部署目标主机', '', '', 'true', 'false', 'false', 'false', '10'],
+                         ['dep_ns', '命名空间', 'singlechar', 'default', '', '', 'K8s 命名空间', '', '', 'true', 'false', 'false', 'false', '11'],
+                         ['type', '部署类型', 'enum', 'default', '',
                           '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
                           '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
-                          '', '部署策略', '', 'false', 'false', 'false', 'false', '12']])
+                          '', '部署策略', '', '', 'false', 'false', 'false', 'false', '12']])
     instances_switch = (['bk_inst_name', 'status', 'power_type', 'management_ip', 'port_count',
                          'bk_backup', 'description'],
                         [['核心交换机A', 'running', '["AC"]', '["192.168.1.1","192.168.1.2"]', '48', '1', '机房核心交换机'],
@@ -1217,11 +1289,17 @@ def cmd_scaffold_spec(args):
                 create_classification_core(c, cls['bk_classification_id'],
                                            cls['bk_classification_name'],
                                            cls.get('bk_classification_icon', 'icon-cc-default'),
-                                           cls.get('ispre', False), 'skip', False)
+                                           cls.get('ispre', False), cls.get('classification_index', 0),
+                                           'skip', False)
             create_model_core(c, o, False)
+            # 分组：显示名（bk_group_name）为唯一用户态输入；bk_group_id 缺失则由系统生成。
+            # 建立「显示名 -> bk_group_id」映射，供属性按名引用。
+            name_to_gid = {}
             for g in groups:
+                gname = (g.get('bk_group_name') or '').strip()
+                gid = (g.get('bk_group_id') or '').strip() or generate_group_id()
                 if not c.query_one("SELECT 1 FROM cc_PropertyGroup WHERE bk_obj_id=:o AND bk_group_id=:g",
-                                    {"o": o['bk_obj_id'], "g": g['bk_group_id']}):
+                                    {"o": o['bk_obj_id'], "g": gid}):
                     c.exec(
                         "INSERT INTO cc_PropertyGroup "
                         "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
@@ -1229,17 +1307,51 @@ def cmd_scaffold_spec(args):
                         "bk_supplier_account) VALUES "
                         "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
                         ":bk_isdefault, false, true, 0, 'admin', 'admin', '0')",
-                        {"_id": f"{o['bk_obj_id']}.{g['bk_group_id']}", "id": generate_id(),
-                         "bk_obj_id": o['bk_obj_id'], "bk_group_id": g['bk_group_id'],
-                         "bk_group_name": g['bk_group_name'],
+                        {"_id": f"{o['bk_obj_id']}.{gid}", "id": generate_id(),
+                         "bk_obj_id": o['bk_obj_id'], "bk_group_id": gid,
+                         "bk_group_name": gname or KNOWN_GROUP_NAMES.get(gid, gid),
                          "bk_group_index": g.get('bk_group_index', 0),
                          "bk_isdefault": g.get('bk_isdefault', False)})
+                if gname:
+                    name_to_gid[gname] = gid
+
+            def resolve_attr_group(gname, gid):
+                """属性分组解析：显示名优先（ID 系统生成，不要求用户输入）。"""
+                gname = (gname or '').strip()
+                gid = (gid or '').strip()
+                if gname:
+                    if gname in name_to_gid:
+                        return name_to_gid[gname]
+                    row = c.query_one(
+                        "SELECT bk_group_id FROM cc_PropertyGroup "
+                        "WHERE bk_obj_id=:o AND bk_group_name=:n",
+                        {"o": o['bk_obj_id'], "n": gname})
+                    if row:
+                        name_to_gid[gname] = row['bk_group_id']
+                        return row['bk_group_id']
+                    # 按显示名自动建组（ID 系统生成，支持中文/英文显示名）
+                    new_id = generate_group_id()
+                    c.exec(
+                        "INSERT INTO cc_PropertyGroup "
+                        "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+                        "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
+                        "bk_supplier_account) VALUES "
+                        "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+                        "false, false, true, 0, 'admin', 'admin', '0')",
+                        {"_id": f"{o['bk_obj_id']}.{new_id}", "id": generate_id(),
+                         "bk_obj_id": o['bk_obj_id'], "bk_group_id": new_id,
+                         "bk_group_name": gname, "bk_group_index": 99})
+                    name_to_gid[gname] = new_id
+                    return new_id
+                return gid or 'default'
+
             for a in attributes:
+                a_group = resolve_attr_group(a.get('bk_group_name'), a.get('bk_property_group'))
                 p = {
                     'bk_property_id': a['bk_property_id'],
                     'bk_property_name': a['bk_property_name'],
                     'bk_property_type': a['bk_property_type'],
-                    'bk_property_group': a.get('bk_property_group', 'default'),
+                    'bk_property_group': a_group,
                     'isrequired': a.get('isrequired', False),
                     'editable': a.get('editable', True),
                     'bk_ishidden': a.get('bk_ishidden', False),
@@ -1347,10 +1459,10 @@ _FROM_CSV_PREFIX = 'u_'
 # 13 列 seed 属性模板（与 _seed_content 同构；from-csv 用此而非 17 列 export 模板，§5.6.3）
 _FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
                '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
-_FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
+_FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                '布尔', '布尔', '布尔', '布尔', '整型']
 _FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
-               'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+               'bk_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
 
 
@@ -1435,7 +1547,7 @@ def _from_csv_build_plan(args):
         else:
             final, is_req = key_map[k], 'false'
         # 规则 3：singlechar + 中文名默认取英文 key 原值（保留列前缀下仍为原 key）
-        attr_rows.append([final, k, 'singlechar', 'default', '', '', '', '',
+        attr_rows.append([final, k, 'singlechar', 'default', '', '', '', '', '',
                           'true', is_req, 'false', 'false', str(idx)])
         inst_header.append(final)
         idx += 1
@@ -1482,8 +1594,8 @@ def cmd_scaffold_from_csv(args):
     out_dir = os.path.join(args.out_dir, ts)
     model_id = plan['model_id']
 
-    cls_header = ['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre']
-    cls_rows = [[plan['cls_id'], plan['cls_name'], 'icon-cc-default', 'false']]
+    cls_header = ['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre', 'classification_index']
+    cls_rows = [[plan['cls_id'], plan['cls_name'], 'icon-cc-default', 'false', '0']]
     model_header = ['bk_obj_id', 'bk_obj_name', 'bk_classification_id', 'bk_obj_icon',
                     'ispre', 'bk_ishidden', 'bk_ispaused', 'obj_sort_number']
     model_rows = [[model_id, plan['model_name'], plan['cls_id'], 'icon-cc-default',
@@ -1544,6 +1656,8 @@ def build_parser():
     x.add_argument('--bk_classification_name', required=True)
     x.add_argument('--bk_classification_icon', default='icon-cc-default')
     x.add_argument('--ispre', type=parse_bool, default=False)
+    x.add_argument('--classification_index', '--index', type=int, default=0,
+                   help='分类排序序号（升序，越小越靠前；--index 为兼容别名）')
     add_dup(x, 'error')
     x.set_defaults(func=cmd_classification_create)
     x = css.add_parser('import')
@@ -1605,7 +1719,11 @@ def build_parser():
     x.add_argument('--bk_property_id', required=True)
     x.add_argument('--bk_property_name', required=True)
     x.add_argument('--bk_property_type', required=True)
-    x.add_argument('--bk_property_group', default='default')
+    x.add_argument('--bk_property_group', default='default',
+                   help='可选：引用已存在的分组 ID（bk_group_id）；留空即可，无需用户输入 ID')
+    x.add_argument('--bk_group_name', default=None,
+                   help='分组显示名（bk_group_name，支持中文/英文）；给定且分组不存在时'
+                        '自动建组（bk_group_id 由系统随机生成），同名复用同一组')
     x.add_argument('--isrequired', type=parse_bool, default=False)
     x.add_argument('--editable', type=parse_bool, default=True)
     x.add_argument('--bk_ishidden', type=parse_bool, default=False)

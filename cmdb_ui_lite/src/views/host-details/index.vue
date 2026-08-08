@@ -45,24 +45,31 @@
         :active.sync="activeTab">
         <bk-tab-panel name="property" label="主机属性">
           <div class="property">
-            <div v-for="group in effectivePropertyGroups" :key="group.bk_group_id" class="group">
-              <h2 class="group-name">{{ group.bk_group_name }}</h2>
-              <ul class="property-list">
-                <li v-for="property in getPropertiesByGroup(group.bk_group_id)" :key="property.bk_property_id" class="property-item">
-                  <span class="property-name">{{ property.bk_property_name }}</span>
-                  <span class="property-value">
-                    <editable-property
-                      :property="property"
-                      :value="hostInfo.host[property.bk_property_id]"
-                      :editable="property.editable !== false && !property.bk_isapi"
-                      :editing-property-id="editingPropertyId"
-                      @start-edit="editingPropertyId = $event"
-                      @end-edit="editingPropertyId = null"
-                      @confirm="handlePropertyConfirm">
-                    </editable-property>
-                  </span>
-                </li>
-              </ul>
+            <div
+              v-for="group in effectivePropertyGroups"
+              :key="group.bk_group_id"
+              class="property-group"
+              v-show="getPropertiesByGroup(group.bk_group_id).length">
+              <cmdb-collapse
+                :label="group.bk_group_name"
+                :collapse.sync="groupState[group.bk_group_id]">
+                <ul class="property-list">
+                  <li v-for="property in getPropertiesByGroup(group.bk_group_id)" :key="property.bk_property_id" :class="['property-item', property.bk_property_type]">
+                    <span class="property-name">{{ property.bk_property_name }}</span>
+                    <span class="property-value">
+                      <editable-property
+                        :property="property"
+                        :value="hostInfo.host[property.bk_property_id]"
+                        :editable="property.editable !== false && !property.bk_isapi"
+                        :editing-property-id="editingPropertyId"
+                        @start-edit="editingPropertyId = $event"
+                        @end-edit="editingPropertyId = null"
+                        @confirm="handlePropertyConfirm">
+                      </editable-property>
+                    </span>
+                  </li>
+                </ul>
+              </cmdb-collapse>
             </div>
           </div>
         </bk-tab-panel>
@@ -92,6 +99,7 @@
 <script>
 import InstanceAssociation from '@/components/instance-association/index.vue'
 import EditableProperty from '@/components/property/editable-property.vue'
+import CmdbCollapse from '@/components/ui/collapse/CmdbCollapse.vue'
 import { modelAPI } from '@/api/client'
 import {
   MENU_BUSINESS_TOPOLOGY,
@@ -104,7 +112,8 @@ export default {
   name: 'HostDetails',
   components: {
     InstanceAssociation,
-    EditableProperty
+    EditableProperty,
+    CmdbCollapse
   },
   data() {
     return {
@@ -124,6 +133,7 @@ export default {
       apiAttributes: {},
       propertyGroups: [],
       loading: true,
+      groupState: {},
       associationLoading: false,
       editingPropertyId: null,
       associationKey: 0,
@@ -276,6 +286,11 @@ export default {
       if (newTab === 'association') {
         this.loadAssociationData()
       }
+    },
+    // 分组数据加载完成后重置折叠状态；默认折叠由分组的 is_collapse 决定，
+    // 与上游 cmdb-details (mixins/form.js) 行为一致。
+    effectivePropertyGroups () {
+      this.initGroupState()
     }
   },
   created () {
@@ -284,6 +299,16 @@ export default {
     this.loadHostData()
   },
   methods: {
+    // 初始化各分组折叠状态：默认展开/折叠由后端分组的 is_collapse 决定。
+    // 对应上游 bk-cmdb 中 form.js 对 groupState 的初始化逻辑。
+    initGroupState () {
+      const state = {}
+      this.effectivePropertyGroups.forEach(group => {
+        state[group.bk_group_id] = !!group.is_collapse
+      })
+      this.groupState = state
+    },
+
     getPropertiesByGroup (groupId) {
       const props = this.properties.filter(p => {
         if (p.bk_property_id === 'id') return false
@@ -343,6 +368,9 @@ export default {
         }
 
         await this.loadTopologyData()
+
+        // 数据加载完毕，按分组的 is_collapse 初始化折叠状态
+        this.initGroupState()
         
       } catch (error) {
         console.error('加载主机数据失败:', error)
@@ -571,20 +599,10 @@ export default {
   padding: 11px 0 2px 24px;
   background: rgba(235, 244, 255, .6);
   border-bottom: 1px solid #dcdee5;
-  overflow-y: auto;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: #d9d9d9;
-    border-radius: 3px;
-  }
+  // 复刻上游 bk-cmdb（host-details/index.vue）：滚动条用项目标准 @include scrollbar-y
+  // （8px / thumb #dcdee5 / radius 20px / hover #979BA5），与上游及 Lite 其余组件保持一致，
+  // 不再手写 6px/#d9d9d9/3px 的非标准值。
+  @include scrollbar-y;
 }
 
 .info-basic {
@@ -741,92 +759,94 @@ export default {
 
   :deep(.bk-tab-section) {
     padding-bottom: 10px;
-    overflow-y: auto;
-
-    &::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background: #d9d9d9;
-      border-radius: 3px;
-    }
+    // 复刻上游 bk-cmdb（host-details/index.vue .bk-tab-section）：竖向滚动容器使用
+    // 项目标准 @include scrollbar-y（8px / thumb #dcdee5 / radius 20px / hover #979BA5），
+    // 与上游及 Lite 其余组件保持一致；位置修正见上一任务（滚动改由全宽 .bk-tab-section 承载）。
+    @include scrollbar-y;
   }
 }
 
 .property {
-  height: 100%;
-  overflow: auto;
+  // 滚动由外层 .bk-tab-section（全宽）承载，使垂直滚动条紧贴页面右边缘；
+  // 本容器仅做内容居中与最大宽度限制，自身不再作为滚动容器，避免滚动条错误地
+  // 出现在 1200px 居中盒子的右边缘（距视口右约 330px）而非视口右边缘。
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-.group {
-  margin: 22px 0 0 0;
+.property-group {
+  // 与上游 cmdb-details 的 .property-group 保持一致的分组间距
+  padding: 7px 0 10px 0;
 
-  .group-name {
-    line-height: 21px;
-    font-size: 16px;
-    font-weight: normal;
-    color: #333948;
-    margin: 0;
-    padding-left: 24px;
-    position: relative;
-
-    &::before {
-      content: '';
-      display: inline-block;
-      vertical-align: -2px;
-      width: 4px;
-      height: 14px;
-      margin-right: 9px;
-      margin-left: -24px;
-      position: absolute;
-      left: 20px;
-      background-color: #dcdee5;
-    }
+  &:first-child {
+    padding: 28px 0 10px 0;
   }
 }
 
 .property-list {
+  // 复刻上游 bk-cmdb host-details/children/property.vue (528-608)：
+  // flex-wrap + 每项 flex:0 0 50% => 恒定两栏；name 行高 32px、value 用 normal 行高，
+  // 并以 margin-top:6px 抵消基线差，使 name/value 文字垂直居中对齐（与原项目一致）
   margin: 24px 0 0 0;
+  padding: 0 20px;
   color: #63656e;
   display: flex;
   flex-wrap: wrap;
-  padding: 0 20px;
 
   .property-item {
     flex: 0 0 50%;
     max-width: 50%;
     padding-bottom: 8px;
+    margin: 0;
+    font-size: 14px;
     display: flex;
 
+    // 内部表格字段（inner table）占满整行，与上游 .property-item.innertable 一致
+    &.innertable {
+      flex: 0 0 100%;
+      max-width: 100%;
+
+      .property-value {
+        flex: 1;
+        min-width: 0;
+        max-width: none;
+      }
+    }
+
     .property-name {
+      // 复刻上游：定宽 160px、右对齐、左缩进 36px 对齐分组标题、过长截断
       position: relative;
+      flex: none;
       width: 160px;
-      line-height: 32px;
       padding: 0 16px 0 36px;
-      font-size: 14px;
       color: #63656e;
       text-align: right;
+      line-height: 32px;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
 
-      &::after {
+      &:after {
+        // 与上游一致：使用全角冒号并贴右对齐
+        content: "：";
         position: absolute;
         right: 2px;
-        content: '：';
       }
     }
 
     .property-value {
+      // 复刻上游 property.vue：
+      // 1) margin-top:6px 抵消 name(line-height:32px) 与 value(normal 行高) 的基线差 => 垂直对齐
+      // 2) line-height:normal + word-break:break-all 与上游 value-default-theme 一致
+      flex: 1;
+      min-width: 0;
+      // 原项目 .property-value 自身 max-width = calc(100% - 160px - 60px)，
+      // 留出 60px 给右侧的编辑/复制图标（与值平级）。
+      // lite 中图标位于 editable-property 内部，但外层 wrapper 仍应占满整段值区，
+      // 由内部 .property-value + .property-actions 共同分配，故只减去 name 宽度。
+      max-width: calc(100% - 160px);
       margin: 6px 0 0 4px;
-      max-width: calc(100% - 160px - 60px);
-      font-size: 14px;
-      color: #313237;
+      line-height: normal;
       word-break: break-all;
     }
   }
@@ -838,19 +858,5 @@ export default {
   color: #909399;
   background: #fafafa;
   border-radius: 4px;
-}
-
-@media (min-width: 1600px) {
-  .property-list {
-    .property-item {
-      .property-name {
-        width: 260px;
-      }
-
-      .property-value {
-        max-width: calc(100% - 260px - 60px);
-      }
-    }
-  }
 }
 </style>

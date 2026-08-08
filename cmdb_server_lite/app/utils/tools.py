@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 import json
 import uuid
+import secrets
 
 # --- ID 生成器：全局唯一、数据库无关 ---
 #
@@ -78,6 +79,27 @@ def generate_id(scope: str = None, model_id: str = None) -> int:
         _id_seq_value[0] += 1
         _id_seq_save(_id_seq_value[0])
     return val
+
+
+# --- 分组 bk_group_id 生成器：随机全局唯一串（对齐上游 bk-cmdb）---
+#
+# 上游 src/scene_server/topo_server/logics/model/group.go:334 NewGroupID(isDefault)：
+#   - 默认分组固定返回小写 "default"
+#   - 非默认分组返回 xid.New().String() —— 随机全局唯一串（20 位 base32 小写）
+# 因此 bk_group_id 与记录的整型 id（NextSequence 自增）是两回事：
+#   - id             = 记录主键，自增顺序
+#   - bk_group_id    = 语义标识，随机唯一、非顺序、不受小写标识符约束
+_GROUP_ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'  # base32 小写，贴近上游 xid
+
+
+def generate_group_id() -> str:
+    """生成分组 bk_group_id：随机全局唯一串（对齐上游 xid.New()）。
+
+    非顺序、不要求小写标识符，与上游 NewGroupID(false) 语义一致。
+    用于 --group-auto-create 自动建组、以及分组 API 新建分组。
+    """
+    return ''.join(secrets.choice(_GROUP_ID_ALPHABET) for _ in range(20))
+
 
 def safe_get(data: dict, key: str, default: Any = None) -> Any:
     """

@@ -28,6 +28,7 @@ from app.definitions import (
     VALID_PROPERTY_TYPES,
     ASSOCIATION_PROPERTY_TYPES,
     LEGACY_PROPERTY_TYPE_ALIAS,
+    KNOWN_GROUP_NAMES,
 )
 
 
@@ -375,9 +376,9 @@ MODEL_CLASSIFICATION_MAP = {
 
 # 分类定义
 CLASSIFICATIONS = [
-    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True},
-    {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True},
-    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True},
+    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True, "classification_index": 1},
+    {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True, "classification_index": 2},
+    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True, "classification_index": 3},
 ]
 
 # 属性分组定义（对齐上游 bk-cmdb）
@@ -399,6 +400,8 @@ PROPERTY_GROUPS = [
 
 # 非通用分组定义：仅在特定模型上出现，由属性实际引用反推补全时取此处的名称与序号。
 # 对齐 admin_server/common/definitions.go 与 addPresetObjects.go 的 GroupIndex。
+# 显示名与 app/definitions.py 的 KNOWN_GROUP_NAMES（CLI 共用单一来源）保持一致，
+# migrate_property_groups 补全分组时已优先用 KNOWN_GROUP_NAMES 反查，避免漂移。
 EXTRA_GROUP_DEFS = {
     "auto": {"bk_group_name": "自动发现信息（需要安装agent）", "bk_group_index": 3},
     "role": {"bk_group_name": "角色", "bk_group_index": 2},
@@ -478,14 +481,15 @@ class DatabaseMigrator:
         for cls in CLASSIFICATIONS:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_ObjClassification
-                (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, bk_supplier_account)
-                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, '0')
+                (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, classification_index, bk_supplier_account)
+                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, :classification_index, '0')
             """, {
                 "id": cls["id"],
                 "bk_classification_id": cls["bk_classification_id"],
                 "bk_classification_name": cls["bk_classification_name"],
                 "bk_classification_icon": cls.get("bk_classification_icon") or DEFAULT_CLASSIFICATION_ICON,
-                "ispre": cls["ispre"]
+                "ispre": cls["ispre"],
+                "classification_index": cls.get("classification_index", cls["id"])
             })
         logger.info(f"迁移 {len(CLASSIFICATIONS)} 个分类")
     
@@ -620,16 +624,21 @@ class DatabaseMigrator:
             used_groups.setdefault(mid, set()).add(gid)
 
         fixed_defs = {g['bk_group_id']: g for g in PROPERTY_GROUPS}
+        # 显示名单一来源：EXTRA_GROUP_DEFS（含 index）优先，再用 app.definitions.KNOWN_GROUP_NAMES
+        # （CLI 与 migrate 共用，避免「ID->显示名」漂移），最后兜底为首字母大写的 group_id。
+        name_by_id = {gid: d['bk_group_name'] for gid, d in EXTRA_GROUP_DEFS.items()}
+        name_by_id.update(KNOWN_GROUP_NAMES)
         for model_id, groups in used_groups.items():
             for gid in groups:
                 if (model_id, gid) in existing_groups:
                     continue
                 # 先查通用分组定义，再查上游已知的非通用分组（auto/role/proc_port），
-                # 都未命中才回退为「首字母大写的 group_id」
+                # 都未命中再查 KNOWN_GROUP_NAMES，最后回退为「首字母大写的 group_id」
                 spec = fixed_defs.get(gid) or EXTRA_GROUP_DEFS.get(gid)
                 group_name = (
                     spec['bk_group_name'] if spec
-                    else gid[:1].upper() + gid[1:]
+                    else name_by_id.get(gid)
+                    or gid[:1].upper() + gid[1:]
                 )
                 group_index = spec['bk_group_index'] if spec else 99
                 # 此处仅处理 existing_groups 中不存在的分组（上面已 continue 跳过已存在的），
@@ -877,6 +886,8 @@ class DatabaseMigrator:
                     bk_mac VARCHAR,
                     bk_outer_mac VARCHAR,
                     import_from VARCHAR,
+                    bk_verify_date DATE,
+                    bk_verify_time TIME,
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     creator VARCHAR DEFAULT 'admin',
@@ -901,6 +912,7 @@ class DatabaseMigrator:
                     bk_classification_name VARCHAR NOT NULL,
                     bk_classification_icon VARCHAR DEFAULT 'icon-cc-default',
                     ispre BOOLEAN DEFAULT false,
+                    classification_index INTEGER DEFAULT 0,
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
