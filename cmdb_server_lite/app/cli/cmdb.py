@@ -701,10 +701,10 @@ def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
             try:
                 if ptype not in VALID_PROPERTY_TYPES:
                     raise CliError(EXIT_PARAM, f"非法 bk_property_type: {ptype}", "type")
-                # 分组解析：bk_property_group = 分组 ID 列（可空），bk_group_name = 显示名列（可空）。
+                # 分组解析：bk_property_group = 分组 ID 列（可空），bk_property_group_name = 显示名列（可空）。
                 # --group-auto-create 时按显示名去重自动建组，并生成随机 bk_group_id。
                 bk_group_id = resolve_or_create_group(
-                    c, oid, cell('bk_property_group'), cell('bk_group_name'),
+                    c, oid, cell('bk_property_group'), cell('bk_property_group_name'),
                     opts.get('group_auto_create'), name_cache)
                 # option 归一
                 option_raw = cell('option')
@@ -1232,7 +1232,7 @@ def _seed_content():
     attr_types = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                   '布尔', '布尔', '布尔', '布尔', '整型']
     attr_en = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
-               'bk_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+               'bk_property_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
     attrs_switch = (attr_header,
                     attr_types,
@@ -1242,13 +1242,13 @@ def _seed_content():
                      ['status', '状态', 'enum', 'default', '',
                       '[{"id":"running","name":"运行中","type":"text","is_default":true},'
                       '{"id":"stopped","name":"已停止","type":"text","is_default":false}]',
-                      '', '状态', '', '', 'false', 'false', 'false', 'false', '11'],
+                      '', '状态', '', '', 'false', 'false', 'false', '11'],
                      ['power_type', '电源类型', 'enummulti', 'default', '',
                       '[{"id":"AC","name":"AC","type":"text","is_default":false},'
                       '{"id":"DC","name":"DC","type":"text","is_default":false}]',
-                      '', '电源', '', '', 'false', 'false', 'false', 'false', '12'],
+                      '', '电源', '', '', 'false', 'false', 'false', '12'],
                      ['management_ip', '管理IP', 'list', 'default', '',
-                      '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', 'false', '13'],
+                      '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', '13'],
                      ['port_count', '端口数', 'int', 'default', '', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
                      ['bk_backup', '是否备份', 'bool', 'default', '', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
                      ['description', '描述', 'longchar', 'default', '', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
@@ -1261,7 +1261,7 @@ def _seed_content():
                          ['type', '部署类型', 'enum', 'default', '',
                           '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
                           '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
-                          '', '部署策略', '', '', 'false', 'false', 'false', 'false', '12']])
+                          '', '部署策略', '', '', 'false', 'false', 'false', '12']])
     instances_switch = (['bk_inst_name', 'status', 'power_type', 'management_ip', 'port_count',
                          'bk_backup', 'description'],
                         [['核心交换机A', 'running', '["AC"]', '["192.168.1.1","192.168.1.2"]', '48', '1', '机房核心交换机'],
@@ -1384,7 +1384,7 @@ def cmd_scaffold_spec(args):
                 return gid or 'default'
 
             for a in attributes:
-                a_group = resolve_attr_group(a.get('bk_group_name'), a.get('bk_property_group'))
+                a_group = resolve_attr_group(a.get('bk_property_group_name'), a.get('bk_property_group'))
                 p = {
                     'bk_property_id': a['bk_property_id'],
                     'bk_property_name': a['bk_property_name'],
@@ -1495,12 +1495,12 @@ _FROM_CSV_RESERVED = SQLITE_SYSTEM_COLS - {'bk_inst_name'}
 _FROM_CSV_PREFIX = 'u_'
 
 # 13 列 seed 属性模板（与 _seed_content 同构；from-csv 用此而非 17 列 export 模板，§5.6.3）
-_FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
+_FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '分组显示名', '数据配置', '单位', '描述', '提示',
                '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
 _FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                '布尔', '布尔', '布尔', '布尔', '整型']
 _FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
-               'bk_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+               'bk_property_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
 
 
