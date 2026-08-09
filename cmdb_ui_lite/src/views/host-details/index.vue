@@ -592,6 +592,12 @@ export default {
 .details-layout {
   overflow: hidden;
   height: 100%;
+  // 对齐 #/business/2/index/host/11：业务拓扑的 host 详情由 .host-detail-subview
+  // 浮层(background-color:#fff)承载白底。#/resource/host/11 同样复用本组件，但其
+  // 父容器 dynamicRouterView 的 .main-views/.main-scroller 无白底，会落在全局灰底
+  // (#f5f7fa) 上。此处给共享组件根节点补白底，使两种入口的 details-tab(unborder-card)
+  // 背景一致，且不依赖父容器是否有白底。
+  background-color: #fff;
 }
 
 .info {
