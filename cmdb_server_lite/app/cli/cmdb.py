@@ -1501,6 +1501,22 @@ _FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_pro
                'isreadonly', 'isonly', 'bk_property_index']
 
 
+def _looks_like_header_row(row):
+    """实例 CSV 表头行判定：首单元格为合法英文标识符（列名）即视为表头。
+
+    from-csv 源文件约定为「首行英文表头 + 实例数据」（§5.6.3）。当源文件混入
+    前导说明行（如中文标题）或重复表头行时，据此定位真正的表头行，避免把
+    说明/重复行误当作实例数据（规则 4 补强）。
+    """
+    if not row:
+        return False
+    try:
+        validate_identifier(str(row[0]).strip())
+    except InvalidIdentifierError:
+        return False
+    return True
+
+
 def _from_csv_build_plan(args):
     """解析 + 校验 + 推导，返回 (plan, problems)。
 
@@ -1523,11 +1539,23 @@ def _from_csv_build_plan(args):
     if not rows:
         problems.append("[规则4] 文件无有效表头（空文件）")
         return None, problems
-    header_raw = rows[0]
-    data_rows = rows[1:]
+    # 规则 4 补强（§5.6.3）：定位首个「像英文表头」的行作为表头，跳过其前的
+    # 说明行（如中文标题行）；其后的重复表头行也在 data 段跳过，避免被误当作
+    # 实例数据生成脏实例（bk_inst_name='bk_inst_name' 之类）。
+    hdr_pos = next((i for i, r in enumerate(rows[:5]) if _looks_like_header_row(r)), None)
+    if hdr_pos is None:
+        problems.append("[规则4] 文件无有效表头（前 5 行未找到英文表头行）")
+        return None, problems
+    header_raw = rows[hdr_pos]
+    data_rows = rows[hdr_pos + 1:]
     if not header_raw or all(c.strip() == '' for c in header_raw):
         problems.append("[规则4] 文件无有效表头")
         return None, problems
+    # 跳过与表头完全相同的重复前导数据行（导出工具常见的重复表头行），
+    # 否则该重复行会被误当作实例数据，生成 bk_inst_name='bk_inst_name' 的脏实例。
+    _hnorm = [c.strip() for c in header_raw]
+    while data_rows and [c.strip() for c in data_rows[0]] == _hnorm:
+        data_rows = data_rows[1:]
     if not data_rows:
         problems.append("[规则4] 实例 CSV 无数据行（预检失败）")
         return None, problems

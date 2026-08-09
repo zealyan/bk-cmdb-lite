@@ -318,6 +318,8 @@ cmdb scaffold from-csv --csv <实例数据.csv> [--out-dir ./seed] \
 4. 规则 1/2 任一不通过 → 输出**问题记录报告**、退出码 2、不生成任何文件；
 5. 通过 → 输出 `seed/<12位时间戳>/` 目录（`classifications.csv` / `models.csv` / `attributes_<oid>.csv` / `instances_<oid>.csv`）。
 
+> **表头鲁棒性（规则 4 补强）**：源文件约定为「首行英文表头 + 实例数据」，但允许前导说明行（如中文标题）或重复表头行——`from-csv` 会扫描前 5 行定位首个英文表头行，跳过其前的说明行、及其后与其完全相同的重复表头行，避免这些前导/重复行被误当作实例数据（生成 `bk_inst_name='bk_inst_name'` 之类的脏实例）。前 5 行均未找到英文表头时按规则 4 中断。
+
 示例：
 ```bash
 # 输入 servers.csv（首行英文表头，其余为数据行）
