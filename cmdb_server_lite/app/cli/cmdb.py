@@ -1539,20 +1539,30 @@ def _from_csv_build_plan(args):
     if not rows:
         problems.append("[规则4] 文件无有效表头（空文件）")
         return None, problems
-    # 规则 4 补强（§5.6.3）：定位首个「像英文表头」的行作为表头，跳过其前的
-    # 说明行（如中文标题行）；其后的重复表头行也在 data 段跳过，避免被误当作
-    # 实例数据生成脏实例（bk_inst_name='bk_inst_name' 之类）。
-    hdr_pos = next((i for i, r in enumerate(rows[:5]) if _looks_like_header_row(r)), None)
+    # 规则 4 补强（§5.6.3）：按「字段名」定位表头行，而非固定取首行（行号）。
+    # 优先查找含必填/已知实例字段名（bk_inst_name 等）的行作为表头；找不到时
+    # （源表头无 bk_inst_name、将由规则3.1 自动补）才回退到「首单元格为合法英文
+    # 标识符」的启发式。这样即使前导实例的 bk_inst_name 为数字编号（如 1001），
+    # 也不会被「行号/标识符启发式」误当作表头行吞掉（避免数字编号前导实例丢失）。
+    _HEADER_FIELD_HINTS = ('bk_inst_name', 'bk_host_name', 'bk_inst_id')
+    hdr_pos = None
+    for i, r in enumerate(rows[:10]):
+        if any(str(c).strip() in _HEADER_FIELD_HINTS for c in r):
+            hdr_pos = i
+            break
     if hdr_pos is None:
-        problems.append("[规则4] 文件无有效表头（前 5 行未找到英文表头行）")
+        hdr_pos = next((i for i, r in enumerate(rows[:10]) if _looks_like_header_row(r)), None)
+    if hdr_pos is None:
+        problems.append("[规则4] 文件无有效表头（前 10 行未找到含 bk_inst_name 等字段名或英文表头行）")
         return None, problems
     header_raw = rows[hdr_pos]
     data_rows = rows[hdr_pos + 1:]
     if not header_raw or all(c.strip() == '' for c in header_raw):
         problems.append("[规则4] 文件无有效表头")
         return None, problems
-    # 跳过与表头完全相同的重复前导数据行（导出工具常见的重复表头行），
+    # 兜底：跳过与表头完全相同的重复前导数据行（导出工具常见的重复表头行），
     # 否则该重复行会被误当作实例数据，生成 bk_inst_name='bk_inst_name' 的脏实例。
+    # 注意：此跳过发生在字段名定位出的表头之后，不影响数字编号前导实例。
     _hnorm = [c.strip() for c in header_raw]
     while data_rows and [c.strip() for c in data_rows[0]] == _hnorm:
         data_rows = data_rows[1:]
