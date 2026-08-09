@@ -160,17 +160,17 @@ cmdb attribute create --bk_obj_id bk_app_system --bk_property_id status --bk_pro
 cmdb attribute import --csv <文件> --bk_obj_id <模型id> \
     [--group-auto-create] [--atomic|--no-atomic] [--strict] [--verbose] [--on-duplicate overwrite]
 ```
-> **分组列（对齐上游 bk-cmdb）**：`bk_property_group` = 分组 **ID**（`bk_group_id`，可选/遗留列），`bk_group_name` = 分组 **显示名**（推荐列）。CSV 表头共 14 列（含 `bk_group_name`）。**分组 ID 由系统自动生成，用户只需提供 `bk_group_name`，无需也不应输入 ID、无需新增列。**
+> **分组列（对齐上游 bk-cmdb）**：scaffold 生成的 `attributes_*.csv` 现为 **13 列**，分组仅用**单列 `bk_property_group_name`**（中文表头"字段分组"，即分组显示名），不再有独立的 `bk_property_group`（分组 ID）列和"分组显示名"/`bk_group_name` 列。`attribute import` 仍**向后兼容**遗留的 14 列格式（含 `bk_property_group` ID 列 + `bk_group_name` 显示名列）。**分组 ID 由系统自动生成，用户只需提供 `bk_property_group_name`（显示名），无需也不应输入 ID、无需新增列。**
 > `--group-auto-create`：分组**按显示名优先**解析——同显示名在批次内去重复用同一组；不存在时生成**随机 `bk_group_id`**（`generate_group_id()`）并以该显示名命名。仅遗留的 `bk_property_group` ID 列显式给出且该 ID 必须新建时才校验 C1 白名单；自动建组的随机 ID 不受 C1 约束。
 > `description` 列 lite 未实现，会被丢弃并告警（不影响落库）。
 
-示例 CSV（单列分组 ID，归默认组）：
+示例 CSV（scaffold 生成的 13 列模板，仅 `bk_property_group_name` 单分组列；归默认组）：
 ```csv
-bk_property_id,bk_property_name,bk_property_type,bk_property_group,bk_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+bk_property_id,bk_property_name,bk_property_type,bk_property_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
 ip_addr,管理IP,singlechar,default,,,,管理地址,true,false,false,false,10
 ```
 
-两列分组 + 显示名去重示例（三条属性共享同一随机分组 ID）：
+遗留双列分组 + 显示名去重示例（`bk_property_group` + `bk_group_name`；仍可被 `attribute import` 消费，三条属性共享同一随机分组 ID）：
 ```csv
 bk_property_id,bk_property_name,bk_property_type,bk_property_group,bk_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
 ip,IP,singlechar,network,网络配置,,,,,,true,false,false,false,10
@@ -330,27 +330,28 @@ cmdb scaffold from-csv --csv Servers.csv
 # 预期：退出 2；打印问题记录（规则1：stem 'Servers'；规则2：'IP 地址'/'1st_field'），不生成文件
 ```
 
-> 标识符同源：`bk_obj_id` 与 `bk_property_id` 共用白名单 `IDENTIFIER_RE = ^[a-z][a-z0-9_]*$`（`app/cli/safety.py`），校验严格匹配、不做隐式转换。`attributes_<oid>.csv` 采用 14 列 seed 模板（含新增 `bk_group_name` 分组显示名列，非 17 列 export 模板），与 `apply` 兼容。
+> 标识符同源：`bk_obj_id` 与 `bk_property_id` 共用白名单 `IDENTIFIER_RE = ^[a-z][a-z0-9_]*$`（`app/cli/safety.py`），校验严格匹配、不做隐式转换。`attributes_<oid>.csv` 采用 13 列 seed 模板（仅 `bk_property_group_name` 单分组列，对应中文表头"字段分组"，已弃用独立的 `bk_property_group` / `bk_group_name` 列，非 17 列 export 模板），与 `apply` 兼容。
 
 #### 自定义属性分组（bk_property_group / bk_group_name）
 
 seed 生成的目录里**没有** `property_group*.csv`——这是有意为之：`bk_property_group` 不在「分类 → 模型 → 属性 → 实例」的四级导入链中。其创建规则为：
 
-- **`default` 分组由 `model create` / `create_model_core` 自动建出**。seed 模板中所有属性的 `bk_property_group` 列都填 `default`，因此无需单独的「分组文件」。
-- 分组是**按属性逐行引用**的：属性 CSV 的 `bk_group_name` 列填分组 **显示名**（推荐，唯一用户态输入），`bk_property_group` 列填分组 **ID**（可选/遗留，缺省由系统生成）；**分组 ID 由系统自动生成，用户无需输入 ID、无需新增列。**
+- **`default` 分组由 `model create` / `create_model_core` 自动建出**。seed 模板中所有属性的 `bk_property_group_name` 列都填 `default`，因此无需单独的「分组文件」。
+- 分组是**按属性逐行引用**的：scaffold 生成的 `attributes_*.csv` 仅含单列 `bk_property_group_name`（中文表头"字段分组"），填分组 **显示名**（推荐，唯一用户态输入）；遗留 CSV 也可用 `bk_group_name`（显示名）+ `bk_property_group`（ID，可选）双列。**分组 ID 由系统自动生成，用户无需输入 ID、无需新增列。**
 
 **两列语义（对齐上游 bk-cmdb）**：
 
 | 列 | 含义 | 说明 |
 | --- | --- | --- |
-| `bk_group_name` | 分组 **显示名**（`bk_group_name`） | 用户可读名称（支持中文/英文）；**建组与归属的唯一用户态输入** |
-| `bk_property_group` | 分组 **ID**（`bk_group_id`） | 语义标识；可空，缺省由系统随机生成（`default` 分组除外） |
+| `bk_property_group_name` | 分组 **显示名**（scaffold 生成模板用的单分组列，对应中文表头"字段分组"） | 推荐列；scaffold 生成的 `attributes_*.csv` 仅含此列，用户填分组显示名（如 `网络配置`）即可，ID 由系统生成 |
+| `bk_group_name` | 分组 **显示名**（`bk_group_name`，遗留兼容列） | 用户可读名称（支持中文/英文）；建组与归属的用户态输入之一 |
+| `bk_property_group` | 分组 **ID**（`bk_group_id`，遗留兼容列） | 语义标识；可空，缺省由系统随机生成（`default` 分组除外） |
 
 `--group-auto-create` 时的分组解析（详见 CLI 设计文档 §5.11.9，已改为**显示名优先**）：先按 `bk_group_name` 显示名精确匹配/去重复用 → 再按 `bk_property_group` ID 兼容旧 CSV → 都不命中才自动建组。自动建组生成**随机 `bk_group_id`**（`generate_group_id()`，20 位 base32 小写串，对齐上游 `xid.New()`），并以 `bk_group_name` 作为显示名；**同一显示名在导入批次内去重，复用同一 ID**（镜像上游 `grpNameIDMap`），因此多条属性填同一显示名只会建出一个分组。
 
 **要新增一个自定义分组（如「网络配置」），最简做法：**
 
-1. 在 `attributes_<oid>.csv` 中，把目标属性行的 `bk_group_name` 列填为 `网络配置`（可同时留空 `bk_property_group`，让系统生成随机 ID）；
+1. 在 `attributes_<oid>.csv` 中，把目标属性行的 `bk_property_group_name` 列填为 `网络配置`（scaffold 模板仅此单列，无需再填 `bk_property_group`）；
 2. 跑 `scaffold apply` 并加 `--group-auto-create`：
 
 ```bash
@@ -373,7 +374,7 @@ cmdb scaffold apply --dir <csv目录> --group-auto-create
 | --- | --- | --- |
 | classification | **bk_classification_id**, **bk_classification_name**, bk_classification_icon, ispre, classification_index | 支持中文别名；`classification_index` 控制分类显示顺序（升序） |
 | model | **bk_obj_id**, **bk_obj_name**, **bk_classification_id**, bk_obj_icon, ispre, bk_ishidden, bk_ispaused, obj_sort_number | |
-| attribute | 首单元格=`bk_property_id`；**bk_property_id**, **bk_property_name**, **bk_property_type**, bk_property_group, bk_group_name, option, …（共 14 列） | 可带"英文名/类型"说明行；`bk_group_name` 为分组显示名（新增列） |
+| attribute | 首单元格=`bk_property_id`；**bk_property_id**, **bk_property_name**, **bk_property_type**, **bk_property_group_name**(分组显示名，scaffold 生成模板用此单列), bk_property_group(分组ID,可选/遗留兼容列), bk_group_name(显示名,遗留兼容列), option, …（scaffold 生成 13 列；遗留双列 14 列兼容） | 可带"英文名/类型"说明行；分组列**推荐用 `bk_property_group_name`**（显示名），`bk_property_group` / `bk_group_name` 为遗留兼容列 |
 | instance | **bk_inst_name** + 属性 ID | `bk_inst_id` 可选 |
 
 > 所有 CSV 默认以 `utf-8-sig` 读取（自动剔除 BOM），分隔符默认 `,`。
