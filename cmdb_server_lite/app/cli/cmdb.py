@@ -701,7 +701,8 @@ def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
             try:
                 if ptype not in VALID_PROPERTY_TYPES:
                     raise CliError(EXIT_PARAM, f"非法 bk_property_type: {ptype}", "type")
-                # 分组解析：bk_property_group = 分组 ID 列（可空），bk_property_group_name = 显示名列（可空）。
+                # 分组解析：scaffold 生成的属性表头仅含 bk_property_group_name（显示名，可空）；
+                # 旧 CSV 若仍带 bk_property_group（分组 ID 列）也会被兼容读取（缺失列返回空）。
                 # --group-auto-create 时按显示名去重自动建组，并生成随机 bk_group_id。
                 bk_group_id = resolve_or_create_group(
                     c, oid, cell('bk_property_group'), cell('bk_property_group_name'),
@@ -1227,41 +1228,37 @@ def _seed_content():
                'bk_ishidden', 'bk_ispaused', 'obj_sort_number'],
               [['bk_switch', '交换机', 'bk_network', 'icon-cc-switch', 'false', 'false', 'false', '0'],
                ['bk_deployment', '部署', 'bk_application', 'icon-cc-deployment', 'false', 'false', 'false', '1']])
-    attr_header = ['英文名', '中文名', '数据类型', '字段分组', '分组显示名', '数据配置', '单位', '描述', '提示',
+    attr_header = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
                    '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
-    attr_types = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
+    attr_types = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                   '布尔', '布尔', '布尔', '布尔', '整型']
-    attr_en = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
-               'bk_property_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+    attr_en = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group_name',
+               'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
     attrs_switch = (attr_header,
                     attr_types,
                     attr_en,
-                    [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['name', '名称', 'singlechar', 'default', '', '', '请输入名称', '', '', 'true', 'false', 'false', 'false', '10'],
-                     ['status', '状态', 'enum', 'default', '',
-                      '[{"id":"running","name":"运行中","type":"text","is_default":true},'
+                    [                     ['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['name', '名称', 'singlechar', 'default', '', '请输入名称', '', '', 'true', 'false', 'false', 'false', '10'],
+                     ['status', '状态', 'enum', 'default', '[{"id":"running","name":"运行中","type":"text","is_default":true},'
                       '{"id":"stopped","name":"已停止","type":"text","is_default":false}]',
                       '', '状态', '', '', 'false', 'false', 'false', '11'],
-                     ['power_type', '电源类型', 'enummulti', 'default', '',
-                      '[{"id":"AC","name":"AC","type":"text","is_default":false},'
+                     ['power_type', '电源类型', 'enummulti', 'default', '[{"id":"AC","name":"AC","type":"text","is_default":false},'
                       '{"id":"DC","name":"DC","type":"text","is_default":false}]',
                       '', '电源', '', '', 'false', 'false', 'false', '12'],
-                     ['management_ip', '管理IP', 'list', 'default', '',
-                      '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', '13'],
-                     ['port_count', '端口数', 'int', 'default', '', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
-                     ['bk_backup', '是否备份', 'bool', 'default', '', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
-                     ['description', '描述', 'longchar', 'default', '', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
+                     ['management_ip', '管理IP', 'list', 'default', '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', '13'],
+                     ['port_count', '端口数', 'int', 'default', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
+                     ['bk_backup', '是否备份', 'bool', 'default', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
+                     ['description', '描述', 'longchar', 'default', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
     attrs_deployment = (attr_header,
                         attr_types,
                         attr_en,
-                        [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['dep_hosts', '部署主机', 'singlechar', 'default', '', '', '部署目标主机', '', '', 'true', 'false', 'false', 'false', '10'],
-                         ['dep_ns', '命名空间', 'singlechar', 'default', '', '', 'K8s 命名空间', '', '', 'true', 'false', 'false', 'false', '11'],
-                         ['type', '部署类型', 'enum', 'default', '',
-                          '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
-                          '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
-                          '', '部署策略', '', '', 'false', 'false', 'false', '12']])
+                        [                     ['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['dep_hosts', '部署主机', 'singlechar', 'default', '', '部署目标主机', '', '', 'true', 'false', 'false', 'false', '10'],
+                         ['dep_ns', '命名空间', 'singlechar', 'default', '', 'K8s 命名空间', '', '', 'true', 'false', 'false', 'false', '11'],
+                     ['type', '部署类型', 'enum', 'default', '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
+                      '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
+                      '', '部署策略', '', '', 'false', 'false', 'false', '12']])
     instances_switch = (['bk_inst_name', 'status', 'power_type', 'management_ip', 'port_count',
                          'bk_backup', 'description'],
                         [['核心交换机A', 'running', '["AC"]', '["192.168.1.1","192.168.1.2"]', '48', '1', '机房核心交换机'],
@@ -1495,12 +1492,12 @@ _FROM_CSV_RESERVED = SQLITE_SYSTEM_COLS - {'bk_inst_name'}
 _FROM_CSV_PREFIX = 'u_'
 
 # 13 列 seed 属性模板（与 _seed_content 同构；from-csv 用此而非 17 列 export 模板，§5.6.3）
-_FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '分组显示名', '数据配置', '单位', '描述', '提示',
+_FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
                '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
-_FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
+_FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                '布尔', '布尔', '布尔', '布尔', '整型']
-_FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
-               'bk_property_group_name', 'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+_FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group_name',
+               'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
 
 
@@ -1585,7 +1582,7 @@ def _from_csv_build_plan(args):
         else:
             final, is_req = key_map[k], 'false'
         # 规则 3：singlechar + 中文名默认取英文 key 原值（保留列前缀下仍为原 key）
-        attr_rows.append([final, k, 'singlechar', 'default', '', '', '', '', '',
+        attr_rows.append([final, k, 'singlechar', 'default', '', '', '', '',
                           'true', is_req, 'false', 'false', str(idx)])
         inst_header.append(final)
         idx += 1
