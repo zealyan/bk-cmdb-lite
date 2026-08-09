@@ -245,6 +245,7 @@
           <form-multiple
             ref="formMultipleRef"
             :properties="allProperties"
+            :property-groups="propertyGroups"
             :show-options="true"
             :submitting="batchUpdateFormLoading"
             :model-id="objId"

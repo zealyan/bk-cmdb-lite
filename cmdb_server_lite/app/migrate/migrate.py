@@ -200,6 +200,66 @@ SYSTEM_PROPERTIES = [
     }
 ]
 
+# 内置时间属性（创建时间 / 最后修改时间）
+# 规则与 biz/set/module（见 BUILTIN_MODEL_ATTRIBUTES）保持一致：
+# - bk_property_type=time，ispre=true（内置，不可删）
+# - isreadonly=true / editable=false：值由系统写入，用户不可改
+# - bk_isapi=false / bk_issystem=false：对页面可见（详情页、列表字段可选）
+# - bk_property_group=default：与 biz 一样落在「基础信息」分组
+# 索引取极大值，保证 UI 属性排序（组内按 bk_property_index 升序）时永远排在最后，
+# 且不与业务属性（现有模型最大 index 为 34）或后续 CLI 新增属性冲突。
+BUILTIN_TIME_PROPERTY_INDEX = {
+    "create_time": 9998,
+    "last_time": 9999,
+}
+
+BUILTIN_TIME_PROPERTIES = [
+    {
+        "bk_property_id": "create_time",
+        "bk_property_name": "创建时间",
+        "bk_property_type": "time",
+        "isrequired": False,
+        "isreadonly": True,
+        "isonly": False,
+        "editable": False,
+        "bk_ispassword": False,
+        "bk_ishidden": False,
+        "bk_isapi": False,
+        "bk_issystem": False,
+        "ispre": True,
+        "bk_property_index": BUILTIN_TIME_PROPERTY_INDEX["create_time"],
+        "bk_property_group": "default",
+        "placeholder": "",
+        "unit": "",
+        "option": None
+    },
+    {
+        "bk_property_id": "last_time",
+        "bk_property_name": "最后修改时间",
+        "bk_property_type": "time",
+        "isrequired": False,
+        "isreadonly": True,
+        "isonly": False,
+        "editable": False,
+        "bk_ispassword": False,
+        "bk_ishidden": False,
+        "bk_isapi": False,
+        "bk_issystem": False,
+        "ispre": True,
+        "bk_property_index": BUILTIN_TIME_PROPERTY_INDEX["last_time"],
+        "bk_property_group": "default",
+        "placeholder": "",
+        "unit": "",
+        "option": None
+    }
+]
+
+# 系统属性 = 4 个标识属性（id / bk_inst_id / bk_inst_name / bk_obj_id）
+#          + 2 个内置时间属性（create_time / last_time）
+# 该列表同时被 migrate_attributes（存量模型）与 CLI create_model_core（新建模型）消费，
+# 保证「通用普通模型 + host」与 biz/set/module 一样自带创建时间 / 最后修改时间。
+SYSTEM_PROPERTIES = SYSTEM_PROPERTIES + BUILTIN_TIME_PROPERTIES
+
 # 内置模型定义（biz/set/module）
 # 这些模型有独立的表（cc_ApplicationBase/cc_SetBase/cc_ModuleBase）
 # 需要在 cc_ObjDes 和 cc_ObjAttDes 中注册，以便前端正常显示属性
@@ -1171,7 +1231,106 @@ class DatabaseMigrator:
                 total_attrs += 1
         
         logger.info(f"迁移了 {total_attrs} 个内置模型属性")
-    
+
+    def ensure_builtin_time_attributes(self):
+        """为 host 与通用普通模型补齐内置时间属性（创建时间 / 最后修改时间）
+
+        与 biz/set/module 同规则（BUILTIN_MODEL_ATTRIBUTES）：ispre + 只读 + 页面可见。
+        覆盖三类模型来源：
+          1) JSON 资源迁移出来的模型（host / bk_switch / bk_slb...）——已由
+             migrate_attributes 走 SYSTEM_PROPERTIES 写入，这里做兜底校正；
+          2) CLI（cmdb model create / scaffold apply）在本方法上线前建的历史模型；
+          3) 存量数据库直接升级（无需清库重跑）。
+
+        幂等：cc_ObjAttDes 主键为 (bk_obj_id, bk_property_id)，重复执行只刷新定义；
+        同时校验实例表是否具备 create_time / last_time 列，缺失则 ALTER 补列。
+        biz/set/module 由 BUILTIN_MODEL_ATTRIBUTES 单独维护，此处跳过。
+        """
+        topo_model_ids = {m["bk_obj_id"] for m in BUILTIN_MODELS}
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+
+        max_row = self.execute_query("SELECT MAX(id) AS max_id FROM cc_ObjAttDes")
+        next_id = ((max_row[0].get('max_id') if max_row else None) or 0) + 1
+
+        touched_attrs = 0
+        added_columns = []
+
+        for model in models:
+            model_id = model['bk_obj_id']
+            if model_id in topo_model_ids:
+                continue
+
+            for tp in BUILTIN_TIME_PROPERTIES:
+                prop_id = tp['bk_property_id']
+                existing = self.execute_query(
+                    "SELECT id FROM cc_ObjAttDes "
+                    "WHERE bk_obj_id = :o AND bk_property_id = :p",
+                    {'o': model_id, 'p': prop_id}
+                )
+                if existing and existing[0].get('id'):
+                    attr_id = existing[0]['id']
+                else:
+                    attr_id = next_id
+                    next_id += 1
+
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjAttDes
+                    (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                     bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                     bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
+                     bk_property_index, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                            :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                            :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
+                            :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
+                """, {
+                    '_id': f"{model_id}.{prop_id}",
+                    'id': attr_id,
+                    'bk_obj_id': model_id,
+                    'bk_property_id': prop_id,
+                    'bk_property_name': tp['bk_property_name'],
+                    'bk_property_type': tp['bk_property_type'],
+                    'bk_property_group': tp['bk_property_group'],
+                    'isrequired': tp['isrequired'],
+                    'bk_ispassword': tp['bk_ispassword'],
+                    'bk_ishidden': tp['bk_ishidden'],
+                    'isreadonly': tp['isreadonly'],
+                    'isonly': tp['isonly'],
+                    'bk_isapi': tp['bk_isapi'],
+                    'bk_issystem': tp['bk_issystem'],
+                    'option': None,
+                    'unit': tp['unit'],
+                    'placeholder': tp['placeholder'],
+                    'editable': tp['editable'],
+                    'ispre': tp['ispre'],
+                    'bk_property_index': tp['bk_property_index'],
+                })
+                touched_attrs += 1
+
+            # 实例表补列（host 用 cc_HostBase，通用模型用分表）
+            table_name = 'cc_HostBase' if model_id == 'host' \
+                else f"cc_ObjectBase_0_pub_{model_id}"
+            try:
+                cols = {row['name'] for row in
+                        self.execute_query(f'PRAGMA table_info("{table_name}")')}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"跳过实例表列校验 {table_name}: {exc}")
+                continue
+            if not cols:
+                continue
+            for prop_id in ('create_time', 'last_time'):
+                if prop_id not in cols:
+                    self.execute_sql(
+                        f'ALTER TABLE "{table_name}" ADD COLUMN {prop_id} '
+                        f'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+                    )
+                    added_columns.append(f"{table_name}.{prop_id}")
+
+        logger.info(
+            f"内置时间属性补齐完成：写入 {touched_attrs} 条属性定义"
+            + (f"，补列 {added_columns}" if added_columns else "")
+        )
+
     def process_option(self, prop_type, option):
         """
         处理属性选项值，根据类型进行转换
@@ -1278,6 +1437,10 @@ class DatabaseMigrator:
                 
                 # 先插入系统属性
                 for sys_prop in SYSTEM_PROPERTIES:
+                    # host 模型在上游仅用 bk_host_name 作名称字段，不注册 bk_inst_name；
+                    # 对齐上游：跳过 host 的 bk_inst_name，避免 host 出现双名称字段。
+                    if model_id == 'host' and sys_prop['bk_property_id'] == 'bk_inst_name':
+                        continue
                     prop_type = sys_prop.get("bk_property_type", "singlechar")
                     option = sys_prop.get("option")
                     option = self.process_option(prop_type, option)
@@ -1884,6 +2047,10 @@ class DatabaseMigrator:
         for model in models:
             if model['bk_obj_id'] not in builtin_model_ids:
                 self.create_instance_table(model['bk_obj_id'])
+
+        # 步骤7.1: 补齐 host / 通用模型的内置时间属性（创建时间 / 最后修改时间）
+        # 放在实例表创建之后，可同时校正历史模型的实例表缺列问题
+        self.ensure_builtin_time_attributes()
 
         # 步骤8: 迁移实例数据
         self.migrate_instances()

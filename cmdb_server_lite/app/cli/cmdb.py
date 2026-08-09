@@ -22,7 +22,8 @@ from typing import Optional
 from sqlalchemy.exc import OperationalError
 
 from app.definitions import get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES
-from app.migrate.migrate import SYSTEM_PROPERTIES, convert_enum_option
+from app.migrate.migrate import (
+    SYSTEM_PROPERTIES, BUILTIN_TIME_PROPERTIES, convert_enum_option)
 from app.utils.tools import generate_id, parse_json, generate_group_id
 from app.cli.safety import (
     validate_identifier, quote_ident, quote_ident_raw, InvalidIdentifierError)
@@ -99,7 +100,22 @@ ATTR_COLS = [
 ]
 
 # upsert 更新时排除的标识列（§5.8.2）
-UPDATE_EXCLUDE = {'id', 'bk_inst_id', 'bk_obj_id', '_id', 'bk_supplier_account', 'bk_inst_name'}
+# create_time 为内置只读属性：一经写入不可被后续导入覆盖（与 API
+# InstanceService.update_instance 的 system_fields_to_exclude 语义一致）。
+UPDATE_EXCLUDE = {'id', 'bk_inst_id', 'bk_obj_id', '_id', 'bk_supplier_account',
+                  'bk_inst_name', 'create_time'}
+
+# 内置时间属性（单一真相源：app/migrate/migrate.py 的 BUILTIN_TIME_PROPERTIES）：
+# CLI 写实例时由工具自动填充，用户在 CSV 里不给也不会缺失；
+# 属性定义本身由 migrate / model create 统一下发，不允许 attribute 命令改写。
+TIME_CREATE_FIELD = 'create_time'
+TIME_LAST_FIELD = 'last_time'
+BUILTIN_TIME_PROPERTY_IDS = {tp['bk_property_id'] for tp in BUILTIN_TIME_PROPERTIES}
+
+
+def _now_ts():
+    """当前时间戳，格式与 API 层 InstanceService 一致（YYYY-mm-dd HH:MM:SS）。"""
+    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
 
 # 上游已知分组 ID -> 标准显示名。
 # 已从 app/definitions.py 统一导入（单一来源，与 migrate 的 EXTRA_GROUP_DEFS 对齐），
@@ -240,7 +256,8 @@ def create_model_core(c, o, dry_run):
     oid = o['bk_obj_id']
     validate_identifier(oid)
     if dry_run:
-        print(f"[dry-run] CREATE MODEL {oid} (group+4系统属性+2分表+唯一约束)")
+        print(f"[dry-run] CREATE MODEL {oid} "
+              f"(group+{len(SYSTEM_PROPERTIES)}系统属性+2分表+唯一约束)")
         return {'action': 'create'}
     warning = None
     # 依赖调用方事务（cmd_* / do_*_import 负责开启）
@@ -290,7 +307,8 @@ def create_model_core(c, o, dry_run):
         "(:_id, :id, :bk_obj_id, 'default', '基础信息', -1, true, false, true, 0, "
         "'admin', 'admin', '0')",
         {"_id": f"{oid}.default", "id": generate_id(), "bk_obj_id": oid})
-    # 3) 4 个系统属性（逐行独立 generate_id，C2）
+    # 3) 系统属性（4 个标识属性 + create_time / last_time 两个内置时间属性；
+    #    逐行独立 generate_id，C2）
     for sp in SYSTEM_PROPERTIES:
         c.exec(
             "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
@@ -337,6 +355,14 @@ def _normalize_option(ptype, option_raw):
 def add_attribute_core(c, oid, p, dry_run, on_dup='error'):
     validate_identifier(oid)
     validate_identifier(p['bk_property_id'])
+    # 内置时间属性由 migrate / model create 统一下发（ispre + 只读），
+    # 禁止经 attribute create/import 重定义，避免把系统维护字段改成可编辑业务字段。
+    if p['bk_property_id'] in BUILTIN_TIME_PROPERTY_IDS:
+        raise CliError(
+            EXIT_PARAM,
+            f"{p['bk_property_id']} 是内置时间属性（系统自动维护），不支持通过 "
+            f"attribute 命令创建或覆盖",
+            "builtin_attr")
     if dry_run:
         print(f"[dry-run] ADD ATTR {oid}.{p['bk_property_id']} + ALTER TABLE")
         return {'action': 'create'}
@@ -833,6 +859,13 @@ def do_instance_import(c, csv_path, opts, dry_run, skip_empty=False):
             if col in ('bk_inst_name', 'bk_inst_id'):
                 continue
             write[col] = v
+        # 内置时间字段：CSV 显式给了非空值则尊重（数据迁移场景保留原始录入时间），
+        # 否则由 CLI 自动填当前时间；最后修改时间在新建时与创建时间对齐。
+        now = _now_ts()
+        if not write.get(TIME_CREATE_FIELD):
+            write[TIME_CREATE_FIELD] = now
+        if not write.get(TIME_LAST_FIELD):
+            write[TIME_LAST_FIELD] = write[TIME_CREATE_FIELD]
         return write
 
     def do_row(values):
@@ -846,8 +879,13 @@ def do_instance_import(c, csv_path, opts, dry_run, skip_empty=False):
             if hit:
                 set_cols = [col for col in values if col not in UPDATE_EXCLUDE]
                 if set_cols:
-                    set_clause = ", ".join(f"{quote_ident(col)}=:{col}" for col in set_cols)
-                    up = {col: values[col] for col in set_cols}
+                    # 命中更新即为一次修改：强制刷新最后修改时间（忽略 CSV 传入值），
+                    # 与 API 层 update_instance 行为保持一致；create_time 已在
+                    # UPDATE_EXCLUDE 中被挡掉，导入不会篡改创建时间。
+                    up = {col: values[col] for col in set_cols
+                          if col != TIME_LAST_FIELD}
+                    up[TIME_LAST_FIELD] = _now_ts()
+                    set_clause = ", ".join(f"{quote_ident(col)}=:{col}" for col in up)
                     c.exec(f"UPDATE {quote_ident_raw(tbl)} SET {set_clause} "
                            f"WHERE {placeholders}", {**up, **params})
                 updated += 1
