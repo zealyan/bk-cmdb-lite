@@ -1314,5 +1314,6 @@ SYSTEM_FIELDS = {
     'bk_module_id',
     'bk_module_name',
     'bk_biz_set_id',
-    'bk_biz_set_name'
+    'bk_biz_set_name',
+    'creator'                   # 实例创建者（RBAC「创建者自管」判定；对齐上游 owner 维度）
 }

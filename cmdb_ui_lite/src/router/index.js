@@ -15,6 +15,7 @@ import {
 } from '@/dictionary/menu-symbol'
 import store from '@/store'
 import { getCachedBizId, setCachedBizId, DEFAULT_BIZ_ID } from '@/utils/biz-cache'
+import { ensureAuth } from '@/auth'
 
 Vue.use(VueRouter)
 
@@ -165,6 +166,13 @@ const routes = [
         }
       }
     ]
+  },
+  {
+    // 独立登录页（免登录模式下一般不会被自动跳转进入）
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/login/index.vue'),
+    meta: { public: true }
   }
 ]
 
@@ -181,7 +189,17 @@ const router = new VueRouter({
 //   4. 首次进入且无任何来源时，回退 DEFAULT_BIZ_ID（蓝鲸平台=2）并写入缓存 + store
 const BUSINESS_ROUTES = [MENU_BUSINESS_TOPOLOGY, MENU_BUSINESS_HOST_DETAILS]
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
+  // ── 最小内置鉴权守卫 ──
+  // 非登录页：先确认登录态（skipLogin 直接放行；否则需有效 token）。
+  // 未登录 → 跳登录页并携带 redirect 回跳地址。
+  if (to.path !== '/login') {
+    const authed = await ensureAuth()
+    if (!authed) {
+      return next({ path: '/login', query: { redirect: to.fullPath } })
+    }
+  }
+
   if (!BUSINESS_ROUTES.includes(to.name)) {
     return next()
   }

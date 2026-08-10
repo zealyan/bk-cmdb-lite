@@ -60,6 +60,28 @@ class BaseConfig:
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 1000
 
+    # ── 内置鉴权配置（最小内置方案，不使用外部 IAM）──
+    # skipLogin=True 时后端不强制登录、current_user 回落默认 admin，前端不显示登录页。
+    # 部署时设 CMDB_SKIP_LOGIN=false 即开启登录页 + token 强制。
+    SKIP_LOGIN = os.environ.get('CMDB_SKIP_LOGIN', 'true').lower() == 'true'
+    # token 有效期（秒），用 itsdangerous.TimedSerializer.max_age 实现
+    TOKEN_MAX_AGE = int(os.environ.get('CMDB_TOKEN_MAX_AGE', '3600'))
+    # 无身份时的回落用户 / 供应商（dev / skipLogin 场景）
+    DEFAULT_USER = os.environ.get('CMDB_DEFAULT_USER', 'admin')
+    DEFAULT_SUPPLIER = os.environ.get('CMDB_DEFAULT_SUPPLIER', '0')
+    # 启动时自动创建的初始管理员（bk_role=1 超管）
+    BOOTSTRAP_ADMIN_USER = os.environ.get('CMDB_ADMIN_USER', 'admin')
+    BOOTSTRAP_ADMIN_PASS = os.environ.get('CMDB_ADMIN_PASS', 'admin')
+    # 身份相关错误码（对齐上游：result:false + bk_error_code，HTTP 仍 200）
+    AUTH_ERR_UNAUTHORIZED = 1302100   # 未登录 / 登录失效
+    AUTH_ERR_BAD_CREDENTIAL = 1302101 # 用户名或密码错误
+    AUTH_ERR_NO_PERMISSION = 1302102  # 无操作权限（CCNoPermission）
+
+    # ── RBAC 总开关（模式 B：内置轻量权限）──
+    # ENABLE_AUTH=False（默认）时全局短路放行，行为与现状完全一致（零回归）。
+    # 设为 true 开启内置 RBAC：supplier 隔离 + 创建者自管 + 管理员全权 + 模型级策略。
+    ENABLE_AUTH = os.environ.get('CMDB_ENABLE_AUTH', 'false').lower() == 'true'
+
 # 开发环境配置
 class DevelopmentConfig(BaseConfig):
     ENV = 'development'

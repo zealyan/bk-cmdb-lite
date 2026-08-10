@@ -24,6 +24,11 @@ const http = axios.create({
 // 基本 API 请求拦截器
 http.interceptors.request.use(
   (config) => {
+    // 最小内置鉴权：携带 bk_token（localStorage），对齐上游 Authorization: Bearer 透传
+    const token = localStorage.getItem('bk_token')
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
     return config
   },
   (error) => {
@@ -39,9 +44,20 @@ http.interceptors.response.use(
     // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
     if (data !== null && typeof data === 'object' && 'result' in data) {
       if (data.result === false) {
+        // 未登录 / 登录失效（1302100）：清 token 并跳登录页（/me 自检除外，避免与守卫重复跳转）
+        const code = data.bk_error_code
+        if (code === 1302100
+            && !(response.config && response.config.url && response.config.url.includes('/api/v1/auth/me'))
+            && window.location.hash.replace('#', '') !== '/login') {
+          localStorage.removeItem('bk_token')
+          document.cookie = 'bk_token=; path=/; max-age=0'
+          window.location.hash = '#/login'
+        }
         // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
         const error = new Error(data.bk_error_msg || '业务处理失败')
         error.response = { data }
+        error.bk_error_code = code
+        error.isBusinessError = true
         return Promise.reject(error)
       }
       // 成功：返回 data 字段内容

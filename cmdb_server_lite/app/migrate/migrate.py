@@ -1588,7 +1588,8 @@ class DatabaseMigrator:
             'bk_obj_id VARCHAR NOT NULL',
             'create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
             'last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            'bk_operate_time TIMESTAMP'
+            'bk_operate_time TIMESTAMP',
+            'creator VARCHAR DEFAULT \'\''
         ]
         
         # 添加模型自定义属性

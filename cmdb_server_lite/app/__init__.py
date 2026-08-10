@@ -9,6 +9,7 @@ from app.middlewares.cors import init_cors
 from app.utils.logger import setup_logger
 from app.utils.exceptions import APIException
 from app.api.v1 import register_v1_routes
+from app.auth import init_user_table, bootstrap_admin, init_policy_table, ensure_creator_columns, auth_filter
 
 def create_app(config=None):
     """
@@ -35,9 +36,22 @@ def create_app(config=None):
     
     # 初始化数据库
     init_db(config)
-    
+
+    # 初始化内置鉴权：建 cc_UserBase 表 + 确保初始管理员存在
+    init_user_table()
+    bootstrap_admin()
+
+    # 初始化 RBAC（模式 B）：建 cc_AuthPolicy 表 + 为实例表补 creator 列。
+    # ENABLE_AUTH 默认 False，本步仅建表/补列，不改变任何鉴权行为（零回归）。
+    init_policy_table()
+    ensure_creator_columns()
+
     # 注册所有 v1 版本路由
     register_v1_routes(app)
+
+    # 全局粗粒度门禁（对应上游 apiserver authFilter）；由 ENABLE_AUTH 总开关控制，
+    # 关闭时直接放行，开启后对实例写端点做模型级鉴权。
+    app.before_request(auth_filter)
     
     # 全局错误处理 - 统一返回 BaseResp 格式，与原项目一致
     # 业务异常一律返回 HTTP 200 + BaseResp（result:false + bk_error_code），
