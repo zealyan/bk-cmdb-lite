@@ -440,8 +440,10 @@ export default {
   // 列宽 min 0 可被窄容器压缩，max 400px 与原始「50% 且封顶 400px」观感一致。
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 400px));
-  // 原项目 .property-item 为 margin: 12px 0 0（仅纵向间距，列间无 gap）
-  gap: 12px 0;
+  // 行距 12px 与原项目 .property-item 的 margin: 12px 0 0 一致；
+  // 列距 40px 复刻上游 / 主机详情两栏的横向留白（上游 .property-value 右侧
+  // padding:0 15px 0 0 + 主机详情 name 左缩进 36px），避免左右栏紧贴。
+  gap: 12px 40px;
 }
 
 .info-item {
