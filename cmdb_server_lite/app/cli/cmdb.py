@@ -297,14 +297,14 @@ def create_model_core(c, o, dry_run):
          "obj_sort_number": o['obj_sort_number']})
     # 2) 默认分组（对齐上游 logics/model/object.go:147-154 创建自定义模型时的 default 分组：
     #    GroupID = NewGroupID(true) = "default"（小写ID）、IsDefault = true、GroupIndex = -1；
-    #    显示名上游硬编码英文 "Default"，此处取中文语境的标准名「基础信息」
-    #    （admin_server/common/definitions.go:22 BaseInfoName，亦为上游 UI 中文 i18n 值）
+    #    显示名上游硬编码英文 "Default"（通用/普通模型的标准默认分组名），
+    #    CLI 创建的是通用/普通模型，故此处用 "Default"（非内置模型的「基础信息」）。
     c.exec(
         "INSERT INTO cc_PropertyGroup "
         "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
         "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
         "bk_supplier_account) VALUES "
-        "(:_id, :id, :bk_obj_id, 'default', '基础信息', -1, true, false, true, 0, "
+        "(:_id, :id, :bk_obj_id, 'default', 'Default', -1, true, false, true, 0, "
         "'admin', 'admin', '0')",
         {"_id": f"{oid}.default", "id": generate_id(), "bk_obj_id": oid})
     # 3) 系统属性（4 个标识属性 + create_time / last_time 两个内置时间属性；
@@ -587,7 +587,7 @@ def resolve_or_create_group(c, oid, grp_id, grp_name, auto_create, name_cache):
     3. grp_name 为空时的**遗留兼容**：仅当显式给出 grp_id（旧 CSV 仅有 ID 列）且该 ID
        能定位到已有分组则复用；否则 auto_create 时按该 ID 建组（须过 C1 白名单）。
        此分支为兼容旧数据，新流程不应再依赖——新流程只用 bk_group_name。
-    4. 都没有 -> 'default'（基础信息分组）。
+    4. 都没有 -> 'default'（默认分组：内置模型为「基础信息」，通用模型为「Default」）。
 
     :param c: 数据库连接（事务内）
     :param oid: 模型 ID
@@ -1238,25 +1238,25 @@ def _seed_content():
     attrs_switch = (attr_header,
                     attr_types,
                     attr_en,
-                    [                     ['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['name', '名称', 'singlechar', 'default', '', '请输入名称', '', '', 'true', 'false', 'false', 'false', '10'],
-                     ['status', '状态', 'enum', 'default', '[{"id":"running","name":"运行中","type":"text","is_default":true},'
+                    [                     ['bk_inst_name', '实例名', 'singlechar', 'Default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['name', '名称', 'singlechar', 'Default', '', '请输入名称', '', '', 'true', 'false', 'false', 'false', '10'],
+                     ['status', '状态', 'enum', 'Default', '[{"id":"running","name":"运行中","type":"text","is_default":true},'
                       '{"id":"stopped","name":"已停止","type":"text","is_default":false}]',
                       '', '状态', '', '', 'false', 'false', 'false', '11'],
-                     ['power_type', '电源类型', 'enummulti', 'default', '[{"id":"AC","name":"AC","type":"text","is_default":false},'
+                     ['power_type', '电源类型', 'enummulti', 'Default', '[{"id":"AC","name":"AC","type":"text","is_default":false},'
                       '{"id":"DC","name":"DC","type":"text","is_default":false}]',
                       '', '电源', '', '', 'false', 'false', 'false', '12'],
-                     ['management_ip', '管理IP', 'list', 'default', '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', '13'],
-                     ['port_count', '端口数', 'int', 'default', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
-                     ['bk_backup', '是否备份', 'bool', 'default', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
-                     ['description', '描述', 'longchar', 'default', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
+                     ['management_ip', '管理IP', 'list', 'Default', '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', '13'],
+                     ['port_count', '端口数', 'int', 'Default', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
+                     ['bk_backup', '是否备份', 'bool', 'Default', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
+                     ['description', '描述', 'longchar', 'Default', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
     attrs_deployment = (attr_header,
                         attr_types,
                         attr_en,
-                        [                     ['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['dep_hosts', '部署主机', 'singlechar', 'default', '', '部署目标主机', '', '', 'true', 'false', 'false', 'false', '10'],
-                         ['dep_ns', '命名空间', 'singlechar', 'default', '', 'K8s 命名空间', '', '', 'true', 'false', 'false', 'false', '11'],
-                     ['type', '部署类型', 'enum', 'default', '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
+                        [                     ['bk_inst_name', '实例名', 'singlechar', 'Default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['dep_hosts', '部署主机', 'singlechar', 'Default', '', '部署目标主机', '', '', 'true', 'false', 'false', 'false', '10'],
+                         ['dep_ns', '命名空间', 'singlechar', 'Default', '', 'K8s 命名空间', '', '', 'true', 'false', 'false', 'false', '11'],
+                     ['type', '部署类型', 'enum', 'Default', '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
                       '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
                       '', '部署策略', '', '', 'false', 'false', 'false', '12']])
     instances_switch = (['bk_inst_name', 'status', 'power_type', 'management_ip', 'port_count',
@@ -1620,7 +1620,7 @@ def _from_csv_build_plan(args):
         else:
             final, is_req = key_map[k], 'false'
         # 规则 3：singlechar + 中文名默认取英文 key 原值（保留列前缀下仍为原 key）
-        attr_rows.append([final, k, 'singlechar', 'default', '', '', '', '',
+        attr_rows.append([final, k, 'singlechar', 'Default', '', '', '', '',
                           'true', is_req, 'false', 'false', str(idx)])
         inst_header.append(final)
         idx += 1

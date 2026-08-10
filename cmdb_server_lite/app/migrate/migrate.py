@@ -446,17 +446,28 @@ CLASSIFICATIONS = [
 # 术语澄清（易错点）：
 #   bk_group_id / bk_property_group  = 分组【ID】，上游 NewGroupID(true) 固定返回小写 "default"
 #                                      （src/scene_server/topo_server/logics/model/group.go:335-341）
-#   bk_group_name                    = 分组【显示名】，中文语境为「基础信息」
-#                                      （admin_server/common/definitions.go:22 BaseInfoName）
-#   首字母大写的 "Default" 只是上游自定义模型的显示名硬编码（logics/model/object.go:150），
-#   属于 bk_group_name 而非 ID，切勿写进 bk_property_group。
+#   bk_group_name                    = 分组【显示名】，按模型类型区分：
+#                                      - 内置模型(biz/set/module/host)：「基础信息」(BaseInfoName)
+#                                        （admin_server/common/definitions.go:22）
+#                                      - 通用/普通模型：首字母大写的 "Default"
+#                                        （logics/model/object.go:150 硬编码），属 bk_group_name 而非 ID
+#   切勿把 "Default" 写进 bk_property_group（那是分组 ID，固定小写 "default"）。
 #
 # 上游内置模型只有 default 一个通用分组（addPresetObjects.go:242-268），
 # 不存在 base 分组；host 的自动发现分组 ID 是 auto 而非 agent。
+# 默认分组显示名：内置模型 =「基础信息」，通用/普通模型 =「Default」（见 DEFAULT_GROUP_BUILTIN_MODELS）。
 PROPERTY_GROUPS = [
     {"id": 1, "bk_group_id": "default", "bk_group_name": "基础信息", "bk_isdefault": True,
      "is_collapse": False, "ispre": True, "bk_group_index": -1},
 ]
+
+# 默认分组显示名：区分内置模型与通用/普通模型（对齐上游）。
+BUILTIN_DEFAULT_GROUP_NAME = "基础信息"   # 内置模型(biz/set/module/host) 默认分组显示名
+GENERIC_DEFAULT_GROUP_NAME = "Default"    # 通用/普通模型 默认分组显示名（上游硬编码）
+# 上游内置模型集合：其默认分组显示名用「基础信息」；其余模型（bk_switch/bk_slb/bk_deployment 等）
+# 均为通用/普通模型，默认分组显示名用「Default」。
+# 注意：区别于上方 BUILTIN_MODELS（内置模型定义列表），本集合仅用于默认分组显示名判定。
+DEFAULT_GROUP_BUILTIN_MODELS = {"biz", "set", "module", "host"}
 
 # 非通用分组定义：仅在特定模型上出现，由属性实际引用反推补全时取此处的名称与序号。
 # 对齐 admin_server/common/definitions.go 与 addPresetObjects.go 的 GroupIndex。
@@ -561,6 +572,18 @@ class DatabaseMigrator:
         for model in models:
             model_id = model['bk_obj_id']
             for group in PROPERTY_GROUPS:
+                # 默认分组显示名按模型类型区分（bk_group_id 始终是 "default"，与显示名无关）：
+                #   内置模型(biz/set/module/host) -> 「基础信息」(BaseInfoName)
+                #   通用/普通模型               -> 「Default」(logics/model/object.go:150 硬编码)
+                # 注意：PROPERTY_GROUPS 的 bk_group_name 仅为内置默认名，通用模型须显式取
+                # GENERIC_DEFAULT_GROUP_NAME，切勿回退到 group['bk_group_name']（仍是「基础信息」）。
+                is_default_grp = bool(group.get('bk_isdefault')) or group.get('bk_group_id') == 'default'
+                if is_default_grp:
+                    bk_group_name = (BUILTIN_DEFAULT_GROUP_NAME
+                                     if model_id in DEFAULT_GROUP_BUILTIN_MODELS
+                                     else GENERIC_DEFAULT_GROUP_NAME)
+                else:
+                    bk_group_name = group['bk_group_name']
                 # 去重写入：cc_PropertyGroup 主键为自增 id，_id 非唯一，
                 # 旧版 INSERT OR REPLACE 仅按 id 判重，会在「模型已存在 default 行」
                 # 时插入第二条同名分组（如旧的「默认」与新的「基础信息」并存）。
@@ -583,7 +606,7 @@ class DatabaseMigrator:
                         WHERE id = :id
                     """, {
                         '_id': f"{model_id}.{group['bk_group_id']}",
-                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_name': bk_group_name,
                         'bk_group_index': group['bk_group_index'],
                         'bk_isdefault': group['bk_isdefault'],
                         'is_collapse': group['is_collapse'],
@@ -617,7 +640,7 @@ class DatabaseMigrator:
                         '_id': f"{model_id}.{group['bk_group_id']}",
                         'bk_obj_id': model_id,
                         'bk_group_id': group['bk_group_id'],
-                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_name': bk_group_name,
                         'bk_group_index': group['bk_group_index'],
                         'bk_isdefault': group['bk_isdefault'],
                         'is_collapse': group['is_collapse'],
