@@ -425,11 +425,12 @@ export default {
 }
 
 .info-card {
-  // 与主机详情 .property 对齐：属性面板最大宽度 1200px 并水平居中，
-  // 使「左栏属性名 → 左侧导航栏」的整体左偏移与主机详情(=上游)一致；
-  // 否则实例详情满宽(1380)时左栏会比主机详情偏左约 90px。
+  // 与上游 cmdb-property 的 .property-list 对齐：固定上限宽度并【左对齐】，
+  // margin 仅取 0（左缘贴内容区左缘，即紧贴已折叠/展开的导航栏右缘），
+  // 不居中——否则侧边栏收缩导致内容区变宽时，居中盒子会整体右移、左间距变大。
+  // 上游写法为 width:1208px; margin:25px 0 0 0（左 margin 0，左对齐不居中）。
   max-width: 1200px;
-  margin: 0 auto;
+  margin: 0;
   padding: 20px;
   background-color: #fff;
 }
