@@ -42,7 +42,7 @@
         </bk-tab-panel>
 
         <bk-tab-panel name="association" label="关联">
-          <div class="info-card">
+          <div class="info-card assoc-card">
             <div v-bkloading="{ isLoading: associationLoading }">
               <div v-if="!isDataReady" class="empty-state">
                 <span>数据加载中...</span>
@@ -433,6 +433,13 @@ export default {
   margin: 0;
   padding: 20px;
   background-color: #fff;
+}
+
+// 关联 tab 为表格型内容，应随内容区宽度动态撑满（右缘贴窗口右侧），
+// 避免侧边栏收缩导致内容区变宽时，max-width:1200 在右侧留下过大空白。
+// 仅放开上限，左对齐与内边距仍与属性 tab 保持一致。
+.assoc-card {
+  max-width: none;
 }
 
 .property-groups {
