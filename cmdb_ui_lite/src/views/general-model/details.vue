@@ -42,20 +42,22 @@
         </bk-tab-panel>
 
         <bk-tab-panel name="association" label="关联">
-          <div v-bkloading="{ isLoading: associationLoading }">
-            <div v-if="!isDataReady" class="empty-state">
-              <span>数据加载中...</span>
+          <div class="info-card">
+            <div v-bkloading="{ isLoading: associationLoading }">
+              <div v-if="!isDataReady" class="empty-state">
+                <span>数据加载中...</span>
+              </div>
+              <instance-association
+                v-else
+                ref="associationComponent"
+                :key="associationKey"
+                :obj-id="objId"
+                :inst-id="instId"
+                :associations="allAssociations"
+                :relations="modelRelations"
+                @association-change="handleAssociationChange">
+              </instance-association>
             </div>
-            <instance-association
-              v-else
-              ref="associationComponent"
-              :key="associationKey"
-              :obj-id="objId"
-              :inst-id="instId"
-              :associations="allAssociations"
-              :relations="modelRelations"
-              @association-change="handleAssociationChange">
-            </instance-association>
           </div>
         </bk-tab-panel>
       </bk-tab>
