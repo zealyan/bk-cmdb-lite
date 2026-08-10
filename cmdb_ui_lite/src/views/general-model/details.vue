@@ -412,7 +412,10 @@ export default {
     }
 
     :deep(.bk-tab-section) {
-      padding: 0 20px;
+      // 与主机详情(.details-tab :deep(.bk-tab-section)) 对齐：仅保留底部内边距，
+      // 去掉左右 20px，使属性面板左缘由 .info-card 的 20px 内边距承载（等价于主机详情
+      // .property-list 的 20px），避免实例详情整体比主机详情更靠左、贴近导航栏。
+      padding: 0;
       padding-bottom: 10px;
       background-color: transparent;
     }
@@ -420,6 +423,11 @@ export default {
 }
 
 .info-card {
+  // 与主机详情 .property 对齐：属性面板最大宽度 1200px 并水平居中，
+  // 使「左栏属性名 → 左侧导航栏」的整体左偏移与主机详情(=上游)一致；
+  // 否则实例详情满宽(1380)时左栏会比主机详情偏左约 90px。
+  max-width: 1200px;
+  margin: 0 auto;
   padding: 20px;
   background-color: #fff;
 }
@@ -455,9 +463,11 @@ export default {
   min-width: 0;
 
   .property-label {
-    // 与原项目 cmdb-details 一致：属性名定宽右对齐，过长时自身也截断
+    // 对标主机详情 .property-name：定宽右对齐 + 左缩进 36px（贴齐分组标题，与上游一致），
+    // 使「左栏属性名 → 左侧导航栏」的整体左偏移与主机详情(=上游)一致；宽度 160px 亦对齐主机。
     flex: none;
-    width: 140px;
+    width: 160px;
+    padding-left: 36px;
     text-align: right;
     font-size: 14px;
     color: #63656e;
