@@ -36,10 +36,7 @@ export default {
   },
   computed: {
     condition() {
-      const cond = FilterStore.condition || {}
-      console.log('[filter-tag] condition computed → FilterStore.condition:', JSON.stringify(cond))
-      console.log('[filter-tag] condition computed → FilterStore.selected count:', (FilterStore.selected || []).length)
-      return cond
+      return FilterStore.condition || {}
     },
     showIPTag() {
       const list = Utils.splitIP(FilterStore.IP.text)
@@ -49,7 +46,6 @@ export default {
       const result = (FilterStore.selected || []).filter((property) => {
         const cond = this.condition[property.bk_property_id]
         if (!cond) {
-          console.log('[filter-tag] selected filter → SKIP', property.bk_property_id, '(no condition)')
           return false
         }
         const { value } = cond
@@ -63,10 +59,8 @@ export default {
             hasValue = true
           }
         }
-        console.log('[filter-tag] selected filter →', property.bk_property_id, 'value:', JSON.stringify(value), 'hasValue:', hasValue)
         return hasValue
       })
-      console.log('[filter-tag] selected result →', result.map(p => p.bk_property_id))
       return result
     },
     showClear() {
