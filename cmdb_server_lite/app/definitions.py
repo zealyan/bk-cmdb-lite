@@ -127,6 +127,22 @@ ASSOCIATION_PROPERTY_TYPES = (
     PROPERTY_TYPE_FOREIGNKEY_LEGACY,
 )
 
+# ---------------------------------------------------------------------------
+# 分组 ID -> 标准显示名（CLI 与 migrate 共用，单一来源，避免漂移）
+# ---------------------------------------------------------------------------
+# 对齐上游 bk-cmdb 的非通用分组定义：
+#   - admin_server/common/definitions.go        (BaseInfoName = "基础信息")
+#   - src/scene_server/topo_server/logics/model/object.go:150  (自定义模型默认分组显示名)
+#   - addPresetObjects.go / HostRow()           (auto/role/proc_port 分组)
+# 仅作「按 ID 反查显示名」的兜底；CLI --group-auto-create 仅有 ID 列、
+# 且未提供 bk_group_name 时才使用。若用户显式给了 bk_group_name，则以其为准。
+KNOWN_GROUP_NAMES = {
+    'default': '基础信息',
+    'auto': '自动发现信息（需要安装agent）',
+    'role': '角色',
+    'proc_port': '监听信息',
+}
+
 
 def get_sql_type(prop_type):
     """根据 bk_property_type 返回对应的 SQL 列类型。
@@ -177,5 +193,6 @@ __all__ = [
     "PROPERTY_TYPE_FOREIGNKEY_LEGACY",
     "LEGACY_PROPERTY_TYPE_ALIAS",
     "ASSOCIATION_PROPERTY_TYPES",
+    "KNOWN_GROUP_NAMES",
     "get_sql_type",
 ]

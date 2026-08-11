@@ -47,7 +47,7 @@
     {
       "bk_property_id": "operator",
       "bk_property_name": "主要维护人",
-      "bk_property_type": "user",
+      "bk_property_type": "singlechar",
       "isrequired": false,
       "isreadonly": false,
       "editable": true,
@@ -58,7 +58,7 @@
     {
       "bk_property_id": "bk_bak_operator",
       "bk_property_name": "备份维护人",
-      "bk_property_type": "user",
+      "bk_property_type": "singlechar",
       "isrequired": false,
       "isreadonly": false,
       "editable": true,
@@ -399,6 +399,29 @@
       "width": 100,
       "bk_property_group": "",
       "bk_issystem": true
+    },
+    {
+      "bk_property_id": "bk_verify_date",
+      "bk_property_name": "验证日期",
+      "bk_property_type": "date",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 33,
+      "width": 150,
+      "bk_property_group": "default"
+    },
+    {
+      "bk_property_id": "bk_verify_time",
+      "bk_property_name": "验证时间",
+      "bk_property_type": "time",
+      "isrequired": false,
+      "isreadonly": false,
+      "editable": true,
+      "bk_property_index": 34,
+      "width": 160,
+      "bk_property_group": "default"
     }
+
   ]
 }

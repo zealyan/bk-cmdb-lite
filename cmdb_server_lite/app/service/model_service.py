@@ -1,5 +1,6 @@
 from app.db.executor import query_all, query_one, execute
 from app.definitions import PROPERTY_TYPE_BOOL
+from app.utils.tools import generate_group_id
 import json
 
 DEFAULT_OBJ_ICON = 'icon-cc-default'
@@ -102,6 +103,122 @@ class ModelService:
         return query_all('model/select_property_groups.sql', {
             'model_id': model_id
         })
+
+    @staticmethod
+    def create_model_property_group(model_id, bk_group_name, bk_group_index=99, is_collapse=False):
+        """新建属性分组。
+
+        对齐上游 bk-cmdb：分组 ID（bk_group_id）由系统随机生成（generate_group_id，
+        非顺序、非小写标识符约束），显示名（bk_group_name）由调用方提供。
+        同名分组（同模型内）视为冲突，直接报错。
+
+        :returns: 新建的分组整行
+        :raises ValueError: 显示名为空 / 同名分组已存在 / 模型不存在
+        """
+        if not bk_group_name or not str(bk_group_name).strip():
+            raise ValueError('分组显示名 bk_group_name 不能为空')
+        bk_group_name = str(bk_group_name).strip()
+
+        if not query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id = :o", {'o': model_id}):
+            raise ValueError(f'模型不存在: {model_id}')
+
+        dup = query_one(
+            "SELECT 1 FROM cc_PropertyGroup WHERE bk_obj_id = :o AND bk_group_name = :n",
+            {'o': model_id, 'n': bk_group_name})
+        if dup:
+            raise ValueError(f'分组显示名已存在: {bk_group_name}')
+
+        bk_group_id = generate_group_id()
+        execute(
+            "INSERT INTO cc_PropertyGroup "
+            "(_id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+            "bk_isdefault, is_collapse, ispre, bk_biz_id, bk_supplier_account, "
+            "creator, modifier) VALUES "
+            "(:_id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+            "false, :is_collapse, true, 0, '0', 'admin', 'admin')",
+            {
+                '_id': f"{model_id}.{bk_group_id}",
+                'bk_obj_id': model_id,
+                'bk_group_id': bk_group_id,
+                'bk_group_name': bk_group_name,
+                'bk_group_index': int(bk_group_index),
+                'is_collapse': bool(is_collapse),
+            })
+        return query_one(
+            "SELECT * FROM cc_PropertyGroup WHERE bk_obj_id = :o AND bk_group_id = :g",
+            {'o': model_id, 'g': bk_group_id})
+
+    @staticmethod
+    def update_model_property_group(model_id, group_id, bk_group_name=None,
+                                     bk_group_index=None, is_collapse=None):
+        """修改属性分组（显示名 / 排序 / 折叠）。
+
+        :returns: 更新后的分组整行
+        :raises ValueError: 分组不存在 / 改名后与其他分组同名
+        """
+        existing = query_one(
+            "SELECT * FROM cc_PropertyGroup WHERE bk_obj_id = :o AND bk_group_id = :g",
+            {'o': model_id, 'g': group_id})
+        if not existing:
+            raise ValueError(f'分组不存在: {group_id}')
+
+        if bk_group_name is not None and str(bk_group_name).strip() \
+                and str(bk_group_name).strip() != existing.get('bk_group_name'):
+            new_name = str(bk_group_name).strip()
+            dup = query_one(
+                "SELECT 1 FROM cc_PropertyGroup "
+                "WHERE bk_obj_id = :o AND bk_group_name = :n AND bk_group_id != :g",
+                {'o': model_id, 'n': new_name, 'g': group_id})
+            if dup:
+                raise ValueError(f'分组显示名已存在: {new_name}')
+            existing['bk_group_name'] = new_name
+
+        if bk_group_index is not None:
+            existing['bk_group_index'] = int(bk_group_index)
+        if is_collapse is not None:
+            existing['is_collapse'] = bool(is_collapse)
+
+        execute(
+            "UPDATE cc_PropertyGroup SET bk_group_name = :n, bk_group_index = :i, "
+            "is_collapse = :c, modifier = 'admin', last_time = CURRENT_TIMESTAMP "
+            "WHERE bk_obj_id = :o AND bk_group_id = :g",
+            {
+                'n': existing['bk_group_name'],
+                'i': existing['bk_group_index'],
+                'c': existing['is_collapse'],
+                'o': model_id,
+                'g': group_id,
+            })
+        return query_one(
+            "SELECT * FROM cc_PropertyGroup WHERE bk_obj_id = :o AND bk_group_id = :g",
+            {'o': model_id, 'g': group_id})
+
+    @staticmethod
+    def delete_model_property_group(model_id, group_id):
+        """删除属性分组。
+
+        默认分组（default）禁止删除；被删分组下的属性回落到 default，
+        与上游 DeleteObjectAttributeGroup 行为一致。
+
+        :returns: 被删分组的 bk_group_id
+        :raises ValueError: 默认分组不可删 / 分组不存在
+        """
+        if group_id == 'default':
+            raise ValueError('默认分组不可删除')
+        existing = query_one(
+            "SELECT 1 FROM cc_PropertyGroup WHERE bk_obj_id = :o AND bk_group_id = :g",
+            {'o': model_id, 'g': group_id})
+        if not existing:
+            raise ValueError(f'分组不存在: {group_id}')
+
+        execute(
+            "UPDATE cc_ObjAttDes SET bk_property_group = 'default' "
+            "WHERE bk_obj_id = :o AND bk_property_group = :g",
+            {'o': model_id, 'g': group_id})
+        execute(
+            "DELETE FROM cc_PropertyGroup WHERE bk_obj_id = :o AND bk_group_id = :g",
+            {'o': model_id, 'g': group_id})
+        return group_id
     
     @staticmethod
     def get_object_unique(model_id):

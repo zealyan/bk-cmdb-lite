@@ -28,6 +28,7 @@ from app.definitions import (
     VALID_PROPERTY_TYPES,
     ASSOCIATION_PROPERTY_TYPES,
     LEGACY_PROPERTY_TYPE_ALIAS,
+    KNOWN_GROUP_NAMES,
 )
 
 
@@ -198,6 +199,66 @@ SYSTEM_PROPERTIES = [
         "option": None
     }
 ]
+
+# 内置时间属性（创建时间 / 最后修改时间）
+# 规则与 biz/set/module（见 BUILTIN_MODEL_ATTRIBUTES）保持一致：
+# - bk_property_type=time，ispre=true（内置，不可删）
+# - isreadonly=true / editable=false：值由系统写入，用户不可改
+# - bk_isapi=false / bk_issystem=false：对页面可见（详情页、列表字段可选）
+# - bk_property_group=default：与 biz 一样落在「基础信息」分组
+# 索引取极大值，保证 UI 属性排序（组内按 bk_property_index 升序）时永远排在最后，
+# 且不与业务属性（现有模型最大 index 为 34）或后续 CLI 新增属性冲突。
+BUILTIN_TIME_PROPERTY_INDEX = {
+    "create_time": 9998,
+    "last_time": 9999,
+}
+
+BUILTIN_TIME_PROPERTIES = [
+    {
+        "bk_property_id": "create_time",
+        "bk_property_name": "创建时间",
+        "bk_property_type": "time",
+        "isrequired": False,
+        "isreadonly": True,
+        "isonly": False,
+        "editable": False,
+        "bk_ispassword": False,
+        "bk_ishidden": False,
+        "bk_isapi": False,
+        "bk_issystem": False,
+        "ispre": True,
+        "bk_property_index": BUILTIN_TIME_PROPERTY_INDEX["create_time"],
+        "bk_property_group": "default",
+        "placeholder": "",
+        "unit": "",
+        "option": None
+    },
+    {
+        "bk_property_id": "last_time",
+        "bk_property_name": "最后修改时间",
+        "bk_property_type": "time",
+        "isrequired": False,
+        "isreadonly": True,
+        "isonly": False,
+        "editable": False,
+        "bk_ispassword": False,
+        "bk_ishidden": False,
+        "bk_isapi": False,
+        "bk_issystem": False,
+        "ispre": True,
+        "bk_property_index": BUILTIN_TIME_PROPERTY_INDEX["last_time"],
+        "bk_property_group": "default",
+        "placeholder": "",
+        "unit": "",
+        "option": None
+    }
+]
+
+# 系统属性 = 4 个标识属性（id / bk_inst_id / bk_inst_name / bk_obj_id）
+#          + 2 个内置时间属性（create_time / last_time）
+# 该列表同时被 migrate_attributes（存量模型）与 CLI create_model_core（新建模型）消费，
+# 保证「通用普通模型 + host」与 biz/set/module 一样自带创建时间 / 最后修改时间。
+SYSTEM_PROPERTIES = SYSTEM_PROPERTIES + BUILTIN_TIME_PROPERTIES
 
 # 内置模型定义（biz/set/module）
 # 这些模型有独立的表（cc_ApplicationBase/cc_SetBase/cc_ModuleBase）
@@ -375,9 +436,9 @@ MODEL_CLASSIFICATION_MAP = {
 
 # 分类定义
 CLASSIFICATIONS = [
-    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True},
-    {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True},
-    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True},
+    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True, "classification_index": 1},
+    {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True, "classification_index": 2},
+    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True, "classification_index": 3},
 ]
 
 # 属性分组定义（对齐上游 bk-cmdb）
@@ -385,20 +446,33 @@ CLASSIFICATIONS = [
 # 术语澄清（易错点）：
 #   bk_group_id / bk_property_group  = 分组【ID】，上游 NewGroupID(true) 固定返回小写 "default"
 #                                      （src/scene_server/topo_server/logics/model/group.go:335-341）
-#   bk_group_name                    = 分组【显示名】，中文语境为「基础信息」
-#                                      （admin_server/common/definitions.go:22 BaseInfoName）
-#   首字母大写的 "Default" 只是上游自定义模型的显示名硬编码（logics/model/object.go:150），
-#   属于 bk_group_name 而非 ID，切勿写进 bk_property_group。
+#   bk_group_name                    = 分组【显示名】，按模型类型区分：
+#                                      - 内置模型(biz/set/module/host)：「基础信息」(BaseInfoName)
+#                                        （admin_server/common/definitions.go:22）
+#                                      - 通用/普通模型：首字母大写的 "Default"
+#                                        （logics/model/object.go:150 硬编码），属 bk_group_name 而非 ID
+#   切勿把 "Default" 写进 bk_property_group（那是分组 ID，固定小写 "default"）。
 #
 # 上游内置模型只有 default 一个通用分组（addPresetObjects.go:242-268），
 # 不存在 base 分组；host 的自动发现分组 ID 是 auto 而非 agent。
+# 默认分组显示名：内置模型 =「基础信息」，通用/普通模型 =「Default」（见 DEFAULT_GROUP_BUILTIN_MODELS）。
 PROPERTY_GROUPS = [
     {"id": 1, "bk_group_id": "default", "bk_group_name": "基础信息", "bk_isdefault": True,
      "is_collapse": False, "ispre": True, "bk_group_index": -1},
 ]
 
+# 默认分组显示名：区分内置模型与通用/普通模型（对齐上游）。
+BUILTIN_DEFAULT_GROUP_NAME = "基础信息"   # 内置模型(biz/set/module/host) 默认分组显示名
+GENERIC_DEFAULT_GROUP_NAME = "Default"    # 通用/普通模型 默认分组显示名（上游硬编码）
+# 上游内置模型集合：其默认分组显示名用「基础信息」；其余模型（bk_switch/bk_slb/bk_deployment 等）
+# 均为通用/普通模型，默认分组显示名用「Default」。
+# 注意：区别于上方 BUILTIN_MODELS（内置模型定义列表），本集合仅用于默认分组显示名判定。
+DEFAULT_GROUP_BUILTIN_MODELS = {"biz", "set", "module", "host"}
+
 # 非通用分组定义：仅在特定模型上出现，由属性实际引用反推补全时取此处的名称与序号。
 # 对齐 admin_server/common/definitions.go 与 addPresetObjects.go 的 GroupIndex。
+# 显示名与 app/definitions.py 的 KNOWN_GROUP_NAMES（CLI 共用单一来源）保持一致，
+# migrate_property_groups 补全分组时已优先用 KNOWN_GROUP_NAMES 反查，避免漂移。
 EXTRA_GROUP_DEFS = {
     "auto": {"bk_group_name": "自动发现信息（需要安装agent）", "bk_group_index": 3},
     "role": {"bk_group_name": "角色", "bk_group_index": 2},
@@ -478,14 +552,15 @@ class DatabaseMigrator:
         for cls in CLASSIFICATIONS:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_ObjClassification
-                (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, bk_supplier_account)
-                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, '0')
+                (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, classification_index, bk_supplier_account)
+                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, :classification_index, '0')
             """, {
                 "id": cls["id"],
                 "bk_classification_id": cls["bk_classification_id"],
                 "bk_classification_name": cls["bk_classification_name"],
                 "bk_classification_icon": cls.get("bk_classification_icon") or DEFAULT_CLASSIFICATION_ICON,
-                "ispre": cls["ispre"]
+                "ispre": cls["ispre"],
+                "classification_index": cls.get("classification_index", cls["id"])
             })
         logger.info(f"迁移 {len(CLASSIFICATIONS)} 个分类")
     
@@ -497,6 +572,18 @@ class DatabaseMigrator:
         for model in models:
             model_id = model['bk_obj_id']
             for group in PROPERTY_GROUPS:
+                # 默认分组显示名按模型类型区分（bk_group_id 始终是 "default"，与显示名无关）：
+                #   内置模型(biz/set/module/host) -> 「基础信息」(BaseInfoName)
+                #   通用/普通模型               -> 「Default」(logics/model/object.go:150 硬编码)
+                # 注意：PROPERTY_GROUPS 的 bk_group_name 仅为内置默认名，通用模型须显式取
+                # GENERIC_DEFAULT_GROUP_NAME，切勿回退到 group['bk_group_name']（仍是「基础信息」）。
+                is_default_grp = bool(group.get('bk_isdefault')) or group.get('bk_group_id') == 'default'
+                if is_default_grp:
+                    bk_group_name = (BUILTIN_DEFAULT_GROUP_NAME
+                                     if model_id in DEFAULT_GROUP_BUILTIN_MODELS
+                                     else GENERIC_DEFAULT_GROUP_NAME)
+                else:
+                    bk_group_name = group['bk_group_name']
                 # 去重写入：cc_PropertyGroup 主键为自增 id，_id 非唯一，
                 # 旧版 INSERT OR REPLACE 仅按 id 判重，会在「模型已存在 default 行」
                 # 时插入第二条同名分组（如旧的「默认」与新的「基础信息」并存）。
@@ -519,7 +606,7 @@ class DatabaseMigrator:
                         WHERE id = :id
                     """, {
                         '_id': f"{model_id}.{group['bk_group_id']}",
-                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_name': bk_group_name,
                         'bk_group_index': group['bk_group_index'],
                         'bk_isdefault': group['bk_isdefault'],
                         'is_collapse': group['is_collapse'],
@@ -553,7 +640,7 @@ class DatabaseMigrator:
                         '_id': f"{model_id}.{group['bk_group_id']}",
                         'bk_obj_id': model_id,
                         'bk_group_id': group['bk_group_id'],
-                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_name': bk_group_name,
                         'bk_group_index': group['bk_group_index'],
                         'bk_isdefault': group['bk_isdefault'],
                         'is_collapse': group['is_collapse'],
@@ -620,16 +707,21 @@ class DatabaseMigrator:
             used_groups.setdefault(mid, set()).add(gid)
 
         fixed_defs = {g['bk_group_id']: g for g in PROPERTY_GROUPS}
+        # 显示名单一来源：EXTRA_GROUP_DEFS（含 index）优先，再用 app.definitions.KNOWN_GROUP_NAMES
+        # （CLI 与 migrate 共用，避免「ID->显示名」漂移），最后兜底为首字母大写的 group_id。
+        name_by_id = {gid: d['bk_group_name'] for gid, d in EXTRA_GROUP_DEFS.items()}
+        name_by_id.update(KNOWN_GROUP_NAMES)
         for model_id, groups in used_groups.items():
             for gid in groups:
                 if (model_id, gid) in existing_groups:
                     continue
                 # 先查通用分组定义，再查上游已知的非通用分组（auto/role/proc_port），
-                # 都未命中才回退为「首字母大写的 group_id」
+                # 都未命中再查 KNOWN_GROUP_NAMES，最后回退为「首字母大写的 group_id」
                 spec = fixed_defs.get(gid) or EXTRA_GROUP_DEFS.get(gid)
                 group_name = (
                     spec['bk_group_name'] if spec
-                    else gid[:1].upper() + gid[1:]
+                    else name_by_id.get(gid)
+                    or gid[:1].upper() + gid[1:]
                 )
                 group_index = spec['bk_group_index'] if spec else 99
                 # 此处仅处理 existing_groups 中不存在的分组（上面已 continue 跳过已存在的），
@@ -877,6 +969,8 @@ class DatabaseMigrator:
                     bk_mac VARCHAR,
                     bk_outer_mac VARCHAR,
                     import_from VARCHAR,
+                    bk_verify_date DATE,
+                    bk_verify_time TIME,
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     creator VARCHAR DEFAULT 'admin',
@@ -901,6 +995,7 @@ class DatabaseMigrator:
                     bk_classification_name VARCHAR NOT NULL,
                     bk_classification_icon VARCHAR DEFAULT 'icon-cc-default',
                     ispre BOOLEAN DEFAULT false,
+                    classification_index INTEGER DEFAULT 0,
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
@@ -1159,7 +1254,106 @@ class DatabaseMigrator:
                 total_attrs += 1
         
         logger.info(f"迁移了 {total_attrs} 个内置模型属性")
-    
+
+    def ensure_builtin_time_attributes(self):
+        """为 host 与通用普通模型补齐内置时间属性（创建时间 / 最后修改时间）
+
+        与 biz/set/module 同规则（BUILTIN_MODEL_ATTRIBUTES）：ispre + 只读 + 页面可见。
+        覆盖三类模型来源：
+          1) JSON 资源迁移出来的模型（host / bk_switch / bk_slb...）——已由
+             migrate_attributes 走 SYSTEM_PROPERTIES 写入，这里做兜底校正；
+          2) CLI（cmdb model create / scaffold apply）在本方法上线前建的历史模型；
+          3) 存量数据库直接升级（无需清库重跑）。
+
+        幂等：cc_ObjAttDes 主键为 (bk_obj_id, bk_property_id)，重复执行只刷新定义；
+        同时校验实例表是否具备 create_time / last_time 列，缺失则 ALTER 补列。
+        biz/set/module 由 BUILTIN_MODEL_ATTRIBUTES 单独维护，此处跳过。
+        """
+        topo_model_ids = {m["bk_obj_id"] for m in BUILTIN_MODELS}
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+
+        max_row = self.execute_query("SELECT MAX(id) AS max_id FROM cc_ObjAttDes")
+        next_id = ((max_row[0].get('max_id') if max_row else None) or 0) + 1
+
+        touched_attrs = 0
+        added_columns = []
+
+        for model in models:
+            model_id = model['bk_obj_id']
+            if model_id in topo_model_ids:
+                continue
+
+            for tp in BUILTIN_TIME_PROPERTIES:
+                prop_id = tp['bk_property_id']
+                existing = self.execute_query(
+                    "SELECT id FROM cc_ObjAttDes "
+                    "WHERE bk_obj_id = :o AND bk_property_id = :p",
+                    {'o': model_id, 'p': prop_id}
+                )
+                if existing and existing[0].get('id'):
+                    attr_id = existing[0]['id']
+                else:
+                    attr_id = next_id
+                    next_id += 1
+
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjAttDes
+                    (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                     bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                     bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
+                     bk_property_index, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                            :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                            :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
+                            :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
+                """, {
+                    '_id': f"{model_id}.{prop_id}",
+                    'id': attr_id,
+                    'bk_obj_id': model_id,
+                    'bk_property_id': prop_id,
+                    'bk_property_name': tp['bk_property_name'],
+                    'bk_property_type': tp['bk_property_type'],
+                    'bk_property_group': tp['bk_property_group'],
+                    'isrequired': tp['isrequired'],
+                    'bk_ispassword': tp['bk_ispassword'],
+                    'bk_ishidden': tp['bk_ishidden'],
+                    'isreadonly': tp['isreadonly'],
+                    'isonly': tp['isonly'],
+                    'bk_isapi': tp['bk_isapi'],
+                    'bk_issystem': tp['bk_issystem'],
+                    'option': None,
+                    'unit': tp['unit'],
+                    'placeholder': tp['placeholder'],
+                    'editable': tp['editable'],
+                    'ispre': tp['ispre'],
+                    'bk_property_index': tp['bk_property_index'],
+                })
+                touched_attrs += 1
+
+            # 实例表补列（host 用 cc_HostBase，通用模型用分表）
+            table_name = 'cc_HostBase' if model_id == 'host' \
+                else f"cc_ObjectBase_0_pub_{model_id}"
+            try:
+                cols = {row['name'] for row in
+                        self.execute_query(f'PRAGMA table_info("{table_name}")')}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"跳过实例表列校验 {table_name}: {exc}")
+                continue
+            if not cols:
+                continue
+            for prop_id in ('create_time', 'last_time'):
+                if prop_id not in cols:
+                    self.execute_sql(
+                        f'ALTER TABLE "{table_name}" ADD COLUMN {prop_id} '
+                        f'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+                    )
+                    added_columns.append(f"{table_name}.{prop_id}")
+
+        logger.info(
+            f"内置时间属性补齐完成：写入 {touched_attrs} 条属性定义"
+            + (f"，补列 {added_columns}" if added_columns else "")
+        )
+
     def process_option(self, prop_type, option):
         """
         处理属性选项值，根据类型进行转换
@@ -1266,6 +1460,10 @@ class DatabaseMigrator:
                 
                 # 先插入系统属性
                 for sys_prop in SYSTEM_PROPERTIES:
+                    # host 模型在上游仅用 bk_host_name 作名称字段，不注册 bk_inst_name；
+                    # 对齐上游：跳过 host 的 bk_inst_name，避免 host 出现双名称字段。
+                    if model_id == 'host' and sys_prop['bk_property_id'] == 'bk_inst_name':
+                        continue
                     prop_type = sys_prop.get("bk_property_type", "singlechar")
                     option = sys_prop.get("option")
                     option = self.process_option(prop_type, option)
@@ -1872,6 +2070,10 @@ class DatabaseMigrator:
         for model in models:
             if model['bk_obj_id'] not in builtin_model_ids:
                 self.create_instance_table(model['bk_obj_id'])
+
+        # 步骤7.1: 补齐 host / 通用模型的内置时间属性（创建时间 / 最后修改时间）
+        # 放在实例表创建之后，可同时校正历史模型的实例表缺列问题
+        self.ensure_builtin_time_attributes()
 
         # 步骤8: 迁移实例数据
         self.migrate_instances()

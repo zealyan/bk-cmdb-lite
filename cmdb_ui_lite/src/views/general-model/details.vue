@@ -6,52 +6,58 @@
           <div class="info-card">
             <div class="property-groups">
               <div v-for="group in effectivePropertyGroups" :key="group.bk_group_id" class="property-group">
-                <h3 class="group-title">{{ group.bk_group_name }}</h3>
-                <div class="info-grid">
-                  <div
-                    v-for="property in getPropertiesByGroup(group.bk_group_id)"
-                    :key="property.bk_property_id"
-                    class="info-item">
-                    <span class="property-label">{{ property.bk_property_name }}</span>
-                    <span class="property-colon">：</span>
-                    <span class="property-value-wrap">
-                      <template v-if="property.bk_property_id === 'id'">
-                        <bk-button :text="true" @click="viewInstance">{{ instanceData[property.bk_property_id] }}</bk-button>
-                      </template>
-                      <template v-else>
-                        <editable-property
-                          :property="property"
-                          :value="instanceData[property.bk_property_id]"
-                          :editable="property.editable !== false && !property.bk_isapi"
-                          :editing-property-id="editingPropertyId"
-                          @start-edit="editingPropertyId = $event"
-                          @end-edit="editingPropertyId = null"
-                          @confirm="handlePropertyConfirm">
-                        </editable-property>
-                      </template>
-                    </span>
+                <cmdb-collapse
+                  :label="group.bk_group_name"
+                  :collapse.sync="groupState[group.bk_group_id]">
+                  <div class="info-grid">
+                    <div
+                      v-for="property in getPropertiesByGroup(group.bk_group_id)"
+                      :key="property.bk_property_id"
+                      class="info-item"
+                      :class="{ 'full-width': isFullWidthProperty(property) }">
+                      <span class="property-label" v-bk-overflow-tips="{ boundary: 'viewport' }">{{ property.bk_property_name }}</span>
+                      <span class="property-colon">：</span>
+                      <span class="property-value-wrap">
+                        <template v-if="property.bk_property_id === 'id'">
+                          <bk-button :text="true" @click="viewInstance">{{ instanceData[property.bk_property_id] }}</bk-button>
+                        </template>
+                        <template v-else>
+                          <editable-property
+                            :property="property"
+                            :value="instanceData[property.bk_property_id]"
+                            :editable="property.editable !== false && !property.bk_isapi"
+                            :editing-property-id="editingPropertyId"
+                            @start-edit="editingPropertyId = $event"
+                            @end-edit="editingPropertyId = null"
+                            @confirm="handlePropertyConfirm">
+                          </editable-property>
+                        </template>
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </cmdb-collapse>
               </div>
             </div>
           </div>
         </bk-tab-panel>
 
         <bk-tab-panel name="association" label="关联">
-          <div v-bkloading="{ isLoading: associationLoading }">
-            <div v-if="!isDataReady" class="empty-state">
-              <span>数据加载中...</span>
+          <div class="info-card assoc-card">
+            <div v-bkloading="{ isLoading: associationLoading }">
+              <div v-if="!isDataReady" class="empty-state">
+                <span>数据加载中...</span>
+              </div>
+              <instance-association
+                v-else
+                ref="associationComponent"
+                :key="associationKey"
+                :obj-id="objId"
+                :inst-id="instId"
+                :associations="allAssociations"
+                :relations="modelRelations"
+                @association-change="handleAssociationChange">
+              </instance-association>
             </div>
-            <instance-association
-              v-else
-              ref="associationComponent"
-              :key="associationKey"
-              :obj-id="objId"
-              :inst-id="instId"
-              :associations="allAssociations"
-              :relations="modelRelations"
-              @association-change="handleAssociationChange">
-            </instance-association>
           </div>
         </bk-tab-panel>
       </bk-tab>
@@ -62,6 +68,7 @@
 <script>
 import InstanceAssociation from '@/components/instance-association/index.vue'
 import EditableProperty from '@/components/property/editable-property.vue'
+import CmdbCollapse from '@/components/ui/collapse/CmdbCollapse.vue'
 import { modelAPI } from '@/api/client'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
 import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
@@ -70,7 +77,8 @@ export default {
   name: 'ModelDetails',
   components: {
     InstanceAssociation,
-    EditableProperty
+    EditableProperty,
+    CmdbCollapse
   },
   data() {
     return {
@@ -87,6 +95,7 @@ export default {
       associationLoading: false,
       editingPropertyId: null,
       associationKey: 0,
+      groupState: {},
       MENU_RESOURCE_INSTANCE,
       MENU_RESOURCE_MANAGEMENT
     }
@@ -162,6 +171,12 @@ export default {
         }
         this.loadAssociationData()
       }
+    },
+    effectivePropertyGroups: {
+      immediate: true,
+      handler () {
+        this.initGroupState()
+      }
     }
   },
   created () {
@@ -170,6 +185,11 @@ export default {
     this.loadInstanceData()
   },
   methods: {
+    initGroupState () {
+      this.effectivePropertyGroups.forEach(group => {
+        this.$set(this.groupState, group.bk_group_id, group.is_collapse)
+      })
+    },
     getPropertiesByGroup (groupId) {
       const props = this.properties.filter(p => {
         if (p.bk_property_id === 'id') return false
@@ -177,8 +197,15 @@ export default {
         const propGroup = p.bk_property_group || 'default'
         return propGroup === groupId && p.bk_property_index !== -1
       }).sort((a, b) => a.bk_property_index - b.bk_property_index)
-      
+
       return props
+    },
+
+    // 对应原项目 cmdb-details 中 .property-item.innertable 的整行通栏判定：
+    // 仅 INNER_TABLE 类型字段占满整行；longchar 在原项目中是普通两栏项（不整行），
+    // 其值由 2 行截断 + 悬停 tips 处理，避免整行通栏导致与原项目观感不符
+    isFullWidthProperty (property) {
+      return property.bk_property_type === 'INNER_TABLE'
     },
 
     async loadInstanceData () {
@@ -387,7 +414,10 @@ export default {
     }
 
     :deep(.bk-tab-section) {
-      padding: 0 20px;
+      // 与主机详情(.details-tab :deep(.bk-tab-section)) 对齐：仅保留底部内边距，
+      // 去掉左右 20px，使属性面板左缘由 .info-card 的 20px 内边距承载（等价于主机详情
+      // .property-list 的 20px），避免实例详情整体比主机详情更靠左、贴近导航栏。
+      padding: 0;
       padding-bottom: 10px;
       background-color: transparent;
     }
@@ -395,8 +425,21 @@ export default {
 }
 
 .info-card {
+  // 与上游 cmdb-property 的 .property-list 对齐：固定上限宽度并【左对齐】，
+  // margin 仅取 0（左缘贴内容区左缘，即紧贴已折叠/展开的导航栏右缘），
+  // 不居中——否则侧边栏收缩导致内容区变宽时，居中盒子会整体右移、左间距变大。
+  // 上游写法为 width:1208px; margin:25px 0 0 0（左 margin 0，左对齐不居中）。
+  max-width: 1200px;
+  margin: 0;
   padding: 20px;
   background-color: #fff;
+}
+
+// 关联 tab 为表格型内容，应随内容区宽度动态撑满（右缘贴窗口右侧），
+// 避免侧边栏收缩导致内容区变宽时，max-width:1200 在右侧留下过大空白。
+// 仅放开上限，左对齐与内边距仍与属性 tab 保持一致。
+.assoc-card {
+  max-width: none;
 }
 
 .property-groups {
@@ -406,38 +449,45 @@ export default {
     &:last-child {
       margin-bottom: 0;
     }
-
-    .group-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: #313238;
-      margin: 0 0 16px 0;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #e8eaec;
-    }
   }
 }
 
 .info-grid {
+  // 与原项目 cmdb-details 的 .property-list 保持一致：
+  // 严格两栏，每项 width:50% 且上限 max-width:400px（float 布局的等价写法）。
+  // 列宽 min 0 可被窄容器压缩，max 400px 与原始「50% 且封顶 400px」观感一致。
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 400px));
+  // 行距 12px 与原项目 .property-item 的 margin: 12px 0 0 一致；
+  // 列距 40px 复刻上游 / 主机详情两栏的横向留白（上游 .property-value 右侧
+  // padding:0 15px 0 0 + 主机详情 name 左缩进 36px），避免左右栏紧贴。
+  gap: 12px 40px;
 }
 
 .info-item {
   display: flex;
   align-items: flex-start;
-  flex-wrap: wrap;
+  // 不允许换行，否则超长属性值会把值区挤到下一行，截断失效
+  flex-wrap: nowrap;
+  // 栅格子项默认 min-width:auto，会被内容撑破 1fr，导致整行溢出
+  min-width: 0;
 
   .property-label {
+    // 对标主机详情 .property-name：定宽右对齐 + 左缩进 36px（贴齐分组标题，与上游一致），
+    // 使「左栏属性名 → 左侧导航栏」的整体左偏移与主机详情(=上游)一致；宽度 160px 亦对齐主机。
+    flex: none;
+    width: 160px;
+    padding-left: 36px;
+    text-align: right;
     font-size: 14px;
     color: #63656e;
-    white-space: nowrap;
     line-height: 20px;
     padding-top: 6px;
+    @include ellipsis;
   }
 
   .property-colon {
+    flex: none;
     font-size: 14px;
     color: #63656e;
     margin: 0 4px;
@@ -448,11 +498,22 @@ export default {
   .property-value-wrap {
     font-size: 14px;
     color: #313238;
-    word-break: break-all;
     min-width: 0;
     flex: 1;
+    overflow: hidden;
     line-height: 20px;
     padding-top: 6px;
+  }
+
+  // INNER_TABLE 类型字段整行通栏，对应原项目 .property-item.innertable 的
+  // width:100%; max-width:unset。longchar 不整行（按原项目为普通两栏项）
+  &.full-width {
+    grid-column: 1 / -1;
+    padding-right: 0;
+
+    .property-value-wrap {
+      max-width: 1200px;
+    }
   }
 }
 

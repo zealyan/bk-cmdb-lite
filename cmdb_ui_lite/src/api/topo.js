@@ -1,4 +1,4 @@
-import http from './client'
+import http, { withCancelToken } from './client'
 
 const API_BASE = '/api/v1'
 
@@ -19,14 +19,15 @@ export const topoAPI = {
    * @param {Object} params 参数（with_statistics 等）
    * @returns {Promise<Object>} 拓扑树数据
    */
-  async getInstanceTopo(bizId, params = {}) {
-    const response = await http.get(`${API_BASE}/topo/instance/mainline`, {
-      params: {
-        bk_biz_id: bizId,
-        with_statistics: params.with_statistics || true,
-        ...params
-      }
-    })
+  async getInstanceTopo(bizId, params = {}, config = {}) {
+    const response = await http.get(`${API_BASE}/topo/instance/mainline`,
+      withCancelToken({
+        params: {
+          bk_biz_id: bizId,
+          with_statistics: params.with_statistics || true,
+          ...params
+        }
+      }, config))
     return response
   },
 
@@ -34,13 +35,16 @@ export const topoAPI = {
    * 获取拓扑节点统计数据（批量）
    * @param {number} bizId 业务ID
    * @param {Object} params 参数
+   * @param {Object} [config] 请求取消配置 { requestId, cancelPrevious }
+   *        复刻上游拓扑树：节点快速展开/切换时，用 requestId 取消上一批未完成的统计请求，
+   *        避免陈旧统计结果在竞态下回写节点状态（status/host_count），造成数量标签闪烁。
    * @returns {Promise<Array>} 统计结果列表
    */
-  async getTopoStatistics(bizId, params = {}) {
+  async getTopoStatistics(bizId, params = {}, config = {}) {
     const response = await http.post(`${API_BASE}/topo/statistics`, {
       bk_biz_id: bizId,
       ...params
-    })
+    }, withCancelToken({}, config))
     return response
   },
 
@@ -161,8 +165,9 @@ export const topoAPI = {
    * @param {Object} [payload.page] 分页 { start: 0, limit: 20, sort: 'bk_host_id' }
    * @returns {Promise<Object>} { result, data: { info: [], count: number }, code, message }
    */
-  async searchHosts(payload = {}) {
-    const response = await http.post(`${API_BASE}/topo/hosts/search`, payload)
+  async searchHosts(payload = {}, config = {}) {
+    const response = await http.post(`${API_BASE}/topo/hosts/search`, payload,
+      withCancelToken({}, config))
     return response
   },
 

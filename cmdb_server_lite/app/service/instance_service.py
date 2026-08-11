@@ -883,8 +883,12 @@ class InstanceService:
             data['bk_obj_id'] = model_id
         data[id_field] = instance_id
         data.setdefault('bk_supplier_account', '0')
-        data.setdefault('create_time', now)
-        data.setdefault('last_time', now)
+        # 内置时间字段由系统写入：调用方（含前端只读表单回传）给空值时一律取当前时间，
+        # 仅在显式传入非空值（数据迁移场景）时保留原值。
+        if not data.get('create_time'):
+            data['create_time'] = now
+        if not data.get('last_time'):
+            data['last_time'] = now
 
         duplicates = InstanceService.check_unique(model_id, data)
         if duplicates:
@@ -979,6 +983,8 @@ class InstanceService:
         table_name = InstanceService._get_table_name(model_id)
         id_field = InstanceService._get_id_field(model_id)
 
+        # 最后修改时间由系统强制刷新（忽略调用方传入值）；创建时间在下方
+        # system_fields_to_exclude 中被排除，任何更新请求都改不动。
         data['last_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         duplicates = InstanceService.check_unique(model_id, data, exclude_instance_id=instance_id)
