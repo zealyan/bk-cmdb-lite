@@ -14,6 +14,7 @@ class Action:
     FIND = "find"
     UPDATE_MANY = "updateMany"
     DELETE_MANY = "deleteMany"
+    UNASSOCIATE = "unassociate"
 
 
 class ResourceType:
