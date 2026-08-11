@@ -9,6 +9,9 @@
     @hidden="handleHidden">
     <div class="filter-form-header" slot="header">
       高级筛选
+      <template v-if="collection">
+        ({{collection.name}})
+      </template>
     </div>
     <div class="filter-layout" slot="content" ref="propertyList">
       <bk-form class="filter-form" form-type="vertical">
@@ -103,42 +106,74 @@
           @click="handleSearch">
           查询
         </bk-button>
-        <bk-button class="option-reset mr10" theme="default" @click="handleReset">清空</bk-button>
+        <template v-if="collection">
+          <span
+            class="option-collect-wrapper"
+            v-bk-tooltips="{
+              disabled: allowCollect,
+              content: '请先填写筛选条件'
+            }">
+            <bk-button
+              class="option-collect"
+              theme="default"
+              :disabled="!allowCollect"
+              @click="handleUpdateCollection">
+              更新条件
+            </bk-button>
+          </span>
+        </template>
         <bk-popover
+          v-else
+          class="option-collect"
           ref="collectionPopover"
-          class="option-collect-popover"
-          placement="top"
-          trigger="click"
-          :tippy-options="{ boundary: 'window' }">
+          placement="top-end"
+          theme="light"
+          trigger="manual"
+          :width="280"
+          :z-index="99999"
+          :tippy-options="{
+            interactive: true,
+            hideOnClick: false,
+            boundary: 'window',
+            onShown: focusCollectionName,
+            onHidden: clearCollectionName
+          }"
+          v-bk-tooltips="{
+            disabled: allowCollect,
+            content: '请先填写筛选条件'
+          }">
           <bk-button
-            class="option-collect"
             theme="default"
             :disabled="!allowCollect"
-            v-bk-tooltips.top="allowCollect ? '' : '请先设置筛选条件，再收藏当前条件'">
-            <i class="bk-icon icon-cc-star"></i>
+            @click="handleCreateCollection">
             收藏此条件
           </bk-button>
-          <div slot="content" class="collection-form">
+          <section class="collection-form" slot="content">
             <label class="collection-title">收藏此条件</label>
             <bk-input
               class="collection-name"
               ref="collectionName"
+              placeholder="请填写名称"
               v-model.trim="collectionForm.name"
-              placeholder="请输入收藏名称"
-              @enter="handleSaveCollection"></bk-input>
+              @focus="handleCollectionFormFocus"
+              @enter="handleSaveCollection">
+            </bk-input>
+            <p class="collection-error" v-if="collectionForm.error">{{collectionForm.error}}</p>
             <div class="collection-options">
               <bk-button
-                size="small"
+                class="mr10"
                 theme="primary"
+                size="small"
                 :disabled="!collectionForm.name.length"
                 :loading="collectionSaving"
                 @click="handleSaveCollection">
                 确定
               </bk-button>
-              <bk-button size="small" theme="default" @click="closeCollectionForm">取消</bk-button>
+              <bk-button theme="default" size="small" @click="closeCollectionForm">取消</bk-button>
             </div>
-          </div>
+          </section>
         </bk-popover>
+        <bk-button class="option-reset" theme="default" @click="handleReset">清空</bk-button>
       </div>
     </div>
   </bk-sideslider>
@@ -195,7 +230,8 @@ export default {
       isShow: false,
       withoutOperator: ['date', 'time', 'bool'],
       collectionForm: {
-        name: ''
+        name: '',
+        error: ''
       },
       collectionSaving: false,
       IPCondition: Utils.getDefaultIP(),
@@ -238,8 +274,17 @@ export default {
     storageIPCondition() {
       return FilterStore.IP
     },
+    collection() {
+      return FilterStore.activeCollection
+    },
     allowCollect() {
-      return this.selected.length > 0
+      const hasIP = !!(this.IPCondition.text && this.IPCondition.text.trim().length)
+      const hasCondition = Object.keys(this.condition).some((id) => {
+        const value = this.condition[id] && this.condition[id].value
+        return value !== '' && value !== null && value !== undefined
+          && !(Array.isArray(value) && value.length === 0)
+      })
+      return hasIP || hasCondition
     }
   },
   watch: {
@@ -474,9 +519,6 @@ export default {
         // 深拷贝当前 condition 和 IP，避免引用问题
         const submitCondition = JSON.parse(JSON.stringify(this.condition))
         const submitIP = JSON.parse(JSON.stringify(this.IPCondition))
-        console.log('[filter-form] handleSearch → this.condition:', JSON.stringify(this.condition))
-        console.log('[filter-form] handleSearch → this.selected:', this.selected.map(p => p.bk_property_id))
-        console.log('[filter-form] handleSearch → submitCondition:', JSON.stringify(submitCondition))
         if (this.type === 'index') {
           return this.searchAction({ condition: submitCondition, IP: submitIP })
         }
@@ -487,13 +529,10 @@ export default {
         // 所以先更新 selected，然后在 nextTick 中设置 condition
         FilterStore.updateSelected([...this.selected])
         this.$nextTick(() => {
-          console.log('[filter-form] nextTick → FilterStore.condition BEFORE setCondition:', JSON.stringify(FilterStore.condition))
           FilterStore.setCondition({
             condition: submitCondition,
             IP: submitIP
           })
-          console.log('[filter-form] nextTick → FilterStore.condition AFTER setCondition:', JSON.stringify(FilterStore.condition))
-          console.log('[filter-form] nextTick → FilterStore.selected:', FilterStore.selected.map(p => p.bk_property_id))
           this.close()
         })
       }, 300)
@@ -503,6 +542,7 @@ export default {
       this.clearCondition()
     },
     handleCreateCollection() {
+      this.collectionForm.error = ''
       const popover = this.$refs.collectionPopover
       if (popover && popover.instance) {
         popover.instance.show()
@@ -514,11 +554,53 @@ export default {
         popover.instance.hide()
       }
       this.collectionForm.name = ''
+      this.collectionForm.error = ''
+    },
+    handleCollectionFormFocus() {
+      this.collectionForm.error = ''
+    },
+    focusCollectionName() {
+      const ref = this.$refs.collectionName
+      const input = (ref && ref.$refs && ref.$refs.input)
+        || (ref && ref.$el && ref.$el.querySelector('input'))
+      if (input && input.focus) {
+        input.focus()
+      }
+    },
+    clearCollectionName() {
+      this.collectionForm.name = ''
+      this.collectionForm.error = ''
+    },
+    async handleUpdateCollection() {
+      try {
+        const conditions = {}
+        this.selected.forEach((property) => {
+          const id = property.bk_property_id
+          const cond = this.condition[id]
+          if (cond) {
+            conditions[id] = { operator: cond.operator, value: cond.value }
+          }
+        })
+        await FilterStore.updateCollection({
+          id: this.collection.id,
+          name: this.collection.name,
+          conditions
+        })
+        this.$success('更新收藏成功')
+      } catch (e) {
+        console.error('[filter-form] 更新收藏失败', e)
+        const msg = (e && e.bk_error_msg) || '更新失败'
+        this.$bkMessage && this.$bkMessage({ message: msg, theme: 'error' })
+      }
     },
     async handleSaveCollection() {
-      if (!this.collectionForm.name || !this.collectionForm.name.trim()) {
+      const name = (this.collectionForm.name || '').trim()
+      // 必填校验（对齐上游 v-validate required）：空名称不提交，行内提示
+      if (!name) {
+        this.collectionForm.error = '请填写名称'
         return
       }
+      this.collectionForm.error = ''
       // 从当前抽屉的 selected/condition 序列化 live 条件（不与 FilterStore.condition 的滞后状态耦合）
       const conditions = {}
       this.selected.forEach((property) => {
@@ -530,12 +612,14 @@ export default {
       })
       this.collectionSaving = true
       try {
-        await FilterStore.createCollection({ name: this.collectionForm.name.trim(), conditions })
+        await FilterStore.createCollection({ name, conditions })
         this.$success('收藏成功')
         this.closeCollectionForm()
       } catch (e) {
         console.error('[filter-form] 收藏条件失败', e)
-        this.$bkMessage && this.$bkMessage({ message: '收藏失败', theme: 'error' })
+        const msg = (e && e.bk_error_msg) || '收藏失败'
+        this.collectionForm.error = msg
+        this.$bkMessage && this.$bkMessage({ message: msg, theme: 'error' })
       } finally {
         this.collectionSaving = false
       }
@@ -748,28 +832,26 @@ export default {
 <!-- popover 内容被 teleport 到 body，scoped 样式无法命中，单独用非 scoped 块 -->
 <style lang="scss">
 .collection-form {
-  padding: 12px;
-  width: 240px;
-
   .collection-title {
     display: block;
-    font-size: 14px;
-    font-weight: 600;
-    color: #313238;
-    margin-bottom: 8px;
+    font-size: 13px;
+    color: #63656E;
+    line-height: 17px;
   }
 
   .collection-name {
-    margin-bottom: 12px;
+    margin-top: 13px;
+  }
+
+  .collection-error {
+    color: #ea3636;
+    position: absolute;
   }
 
   .collection-options {
     display: flex;
+    padding: 20px 0 10px;
     justify-content: flex-end;
-
-    .bk-button {
-      margin-left: 8px;
-    }
   }
 }
 </style>
