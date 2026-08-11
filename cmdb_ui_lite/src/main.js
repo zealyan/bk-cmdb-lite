@@ -25,6 +25,15 @@ Vue.component('cmdb-resize-layout', ResizeLayout)
 Vue.component('cmdb-dialog', CmdDialog)
 // 统一错误呈现：组件 catch 中调用 this.$handleApiError(error) 即可
 Vue.prototype.$handleApiError = handleApiError
+// 移植自原项目：蓝鲸 CMDB 上游依赖全局 $success 提示方法（旧版 bk-magic-vue 内置），
+// 当前工程所用的 bk-magic-vue 2.5.9-beta.39 已不再注册 $success，
+// 直接用 this.$success(...) 会抛 TypeError → 被组件 catch 误判为“操作失败”。
+// 这里用 $bkMessage({ theme: 'success' }) 补齐该全局方法，使「收藏成功 / 复制成功」等提示正常工作。
+Vue.prototype.$success = function $success(message, options = {}) {
+  if (this && typeof this.$bkMessage === 'function') {
+    this.$bkMessage({ theme: 'success', message, ...options })
+  }
+}
 // 移植自原项目：v-transfer-dom，把弹框挂到 body，
 // 避免祖先元素的 transform 破坏 .dialog-wrapper 的 position: fixed 视口定位。
 Vue.directive('transfer-dom', {
