@@ -44,15 +44,12 @@ http.interceptors.response.use(
     // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
     if (data !== null && typeof data === 'object' && 'result' in data) {
       if (data.result === false) {
-        // 未登录 / 登录失效（1302100）：清 token 并跳登录页（/me 自检除外，避免与守卫重复跳转）
+        // 未登录 / 登录失效（1302100）：不在此处清 token 或强跳登录页。
+        // 「登录态失效 → 跳转登录」的唯一权威是路由守卫 ensureAuth（它调用 /me 自检），
+        // 否则数据密集的路由页（业务拓扑 / 资源 / 主机实例）一旦某个请求被判未登录，
+        // 会话就会被这里掐断，表现为「登录信息在路由页里凭空消失」。
+        // 这里仅把业务错误抛出，交由调用方 / 守卫处理。
         const code = data.bk_error_code
-        if (code === 1302100
-            && !(response.config && response.config.url && response.config.url.includes('/api/v1/auth/me'))
-            && window.location.hash.replace('#', '') !== '/login') {
-          localStorage.removeItem('bk_token')
-          document.cookie = 'bk_token=; path=/; max-age=0'
-          window.location.hash = '#/login'
-        }
         // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
         const error = new Error(data.bk_error_msg || '业务处理失败')
         error.response = { data }

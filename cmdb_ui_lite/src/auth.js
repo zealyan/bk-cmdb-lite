@@ -7,6 +7,7 @@
 import { me } from '@/api/auth'
 
 const TOKEN_KEY = 'bk_token'
+const USER_KEY = 'bk_user_name'
 const SKIP_KEY = 'cmdb_skip_login'
 
 let _pending = null
@@ -25,9 +26,22 @@ export function setToken(t) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
   document.cookie = 'bk_token=; path=/; max-age=0'
   _resolved = null
   _pending = null
+}
+
+export function getUserName() {
+  return localStorage.getItem(USER_KEY) || ''
+}
+
+export function setUserName(name) {
+  if (name) {
+    localStorage.setItem(USER_KEY, name)
+  } else {
+    localStorage.removeItem(USER_KEY)
+  }
 }
 
 export function getSkipLogin() {

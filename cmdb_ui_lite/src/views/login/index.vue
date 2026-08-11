@@ -39,7 +39,7 @@
 
 <script>
 import { login as apiLogin } from '@/api/auth'
-import { setToken, getToken, getSkipLogin } from '@/auth'
+import { setToken, setUserName, getToken, getSkipLogin } from '@/auth'
 
 export default {
   name: 'LoginView',
@@ -73,6 +73,8 @@ export default {
       try {
         const data = await apiLogin(this.form)
         setToken(data.bk_token)
+        setUserName(data.bk_user_name)
+        this.$store.commit('user/setUser', { name: data.bk_user_name, skipLogin: false })
         this.$router.replace(this.redirectTarget())
       } catch (e) {
         this.error = (e && e.response && e.response.data && e.response.data.bk_error_msg) || '登录失败'
