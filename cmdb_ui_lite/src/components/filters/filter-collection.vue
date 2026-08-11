@@ -2,13 +2,10 @@
   <bk-select class="filter-collection"
     ref="selector"
     searchable
-    multiple
     :popover-width="220"
     font-size="normal"
-    v-model="selected"
     v-bk-tooltips="'已收藏的条件'"
-    @click.native="loadCollections"
-    @change="handleApply">
+    @click.native="loadCollections">
     <icon-button slot="trigger"
       class="filter-trigger"
       icon="icon-cc-star"
@@ -18,9 +15,10 @@
     <bk-option v-for="collection in collections"
       :key="collection.id"
       :id="collection.id"
-      :name="collection.name">
+      :name="collection.name"
+      @click.native="handleApply(collection)">
       <div class="collection-item">
-        <i class="collection-state bk-icon icon-check-1" v-if="selected.includes(collection.id)"></i>
+        <i class="collection-state bk-icon icon-check-1" v-if="storageCollection && storageCollection.id === collection.id"></i>
         <span class="collection-name">{{collection.name}}</span>
         <span class="collection-options">
           <i class="option-icon option-edit icon-cc-edit" @click.stop="handleEdit(collection)"></i>
@@ -54,7 +52,6 @@ export default {
   },
   data() {
     return {
-      selected: []
     }
   },
   computed: {
@@ -72,12 +69,13 @@ export default {
         this.$refs.selector && this.$refs.selector.show && this.$refs.selector.show()
       })
     },
-    handleApply(value) {
-      // 选中收藏 → 交由 FilterStore 把收藏条件同步回筛选状态（selected/condition）
-      const selectedId = Array.isArray(value) && value.length > 0 ? value[value.length - 1] : null
-      const collection = this.collections.find(c => c.id === selectedId) || null
-      // 重置多选高亮，仅由 storageCollection 驱动星标选中态
-      this.selected = []
+    /**
+     * 点击某条收藏 → 直接应用该收藏（不依赖 bk-select 的 change/value 数组）。
+     * 直接传入 collection 对象，规避了本端口 bk-magic-vue 2.5.9 在 multiple 模式下
+     * 切换选项时 value 数组计算异常（点了 B 却仍把 A 当作最新项）导致「二次点击不同步」的问题。
+     * 当前激活态由 storageCollection 驱动（星标高亮 + 选项勾选）。
+     */
+    handleApply(collection) {
       FilterStore.setActiveCollection(collection)
       this.$emit('apply', collection)
     },
