@@ -7,7 +7,8 @@
     font-size="normal"
     v-model="selected"
     v-bk-tooltips="'已收藏的条件'"
-    @click.native="loadCollections">
+    @click.native="loadCollections"
+    @change="handleApply">
     <icon-button slot="trigger"
       class="filter-trigger"
       icon="icon-cc-star"
@@ -38,7 +39,14 @@
 
 <script>
 import IconButton from '@/components/ui/button/icon-button.vue'
+import FilterStore from './store'
 
+// 用户级「条件筛选收藏」：
+//  - 数据落在服务端 user_custom（config_key='filter_collection'，按登录用户隔离）。
+//  - 以 FilterStore 为单一数据源（collections / activeCollection，及 load/setActive/create/remove/update），
+//    与高级筛选的条件状态（selected / condition）天然同步：
+//      · 应用收藏 → setActiveCollection 把条件同步回 selected/condition；
+//      · 添加收藏 → createCollection 从 selected/condition 序列化当前条件。
 export default {
   name: 'FilterCollection',
   components: {
@@ -46,57 +54,47 @@ export default {
   },
   data() {
     return {
-      collections: [],
-      selected: [],
-      storageCollection: null,
-      loadingCollections: false
+      selected: []
+    }
+  },
+  computed: {
+    collections() {
+      return FilterStore.collections || []
+    },
+    storageCollection() {
+      return FilterStore.activeCollection
     }
   },
   methods: {
     async loadCollections() {
-      if (this.loadingCollections) return
-      this.loadingCollections = true
-      try {
-        // 简化版：从本地存储加载收藏条件
-        const stored = localStorage.getItem('cmdb_filter_collections')
-        this.collections = stored ? JSON.parse(stored) : []
-        this.$nextTick(() => {
-          this.$refs.selector && this.$refs.selector.show && this.$refs.selector.show()
-        })
-      } catch (e) {
-        console.error(e)
-      } finally {
-        this.loadingCollections = false
-      }
+      await FilterStore.loadCollections()
+      this.$nextTick(() => {
+        this.$refs.selector && this.$refs.selector.show && this.$refs.selector.show()
+      })
     },
     handleApply(value) {
+      // 选中收藏 → 交由 FilterStore 把收藏条件同步回筛选状态（selected/condition）
       const selectedId = Array.isArray(value) && value.length > 0 ? value[value.length - 1] : null
-      this.storageCollection = this.collections.find(c => c.id === selectedId) || null
-      this.$emit('apply', this.storageCollection)
+      const collection = this.collections.find(c => c.id === selectedId) || null
+      // 重置多选高亮，仅由 storageCollection 驱动星标选中态
+      this.selected = []
+      FilterStore.setActiveCollection(collection)
+      this.$emit('apply', collection)
     },
     handleEdit(collection) {
       const newName = prompt('编辑收藏条件名称', collection.name)
       if (newName && newName.trim()) {
-        collection.name = newName.trim()
-        this.saveCollections()
+        FilterStore.updateCollection({ id: collection.id, name: newName.trim() })
       }
     },
     handleRemove(collection) {
-      this.collections = this.collections.filter(c => c.id !== collection.id)
-      this.saveCollections()
+      FilterStore.removeCollection(collection)
     },
     handleCreate() {
-      const name = prompt('请输入收藏条件名称')
-      if (name && name.trim()) {
-        this.collections.push({
-          id: Date.now(),
-          name: name.trim()
-        })
-        this.saveCollections()
-      }
-    },
-    saveCollections() {
-      localStorage.setItem('cmdb_filter_collections', JSON.stringify(this.collections))
+      // 打开高级筛选抽屉，在其中通过「收藏此条件」保存当前条件（与上游一致）
+      import('./filter-form.js').then(({ default: FilterFormApi }) => {
+        FilterFormApi.show()
+      }).catch(e => console.error('[FilterCollection] 打开高级筛选失败', e))
     }
   }
 }

@@ -582,10 +582,7 @@ export default {
         this.initTopology()
       } catch (error) {
         console.error('[TopologyTree] createSet error:', error)
-        this.$bkMessage({
-          theme: 'error',
-          message: `创建集群失败：${error.message || '未知错误'}`
-        })
+        this.$handleApiError(error)
       }
     },
 
@@ -616,10 +613,7 @@ export default {
         this.initTopology()
       } catch (error) {
         console.error('[TopologyTree] createModule error:', error)
-        this.$bkMessage({
-          theme: 'error',
-          message: `创建模块失败：${error.message || '未知错误'}`
-        })
+        this.$handleApiError(error)
       }
     },
 

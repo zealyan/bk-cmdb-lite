@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from app.service.user_service import UserService
+from app.auth.identity import current_user
 from app.utils.logger import get_logger
 
 logger = get_logger('api.user')
@@ -28,7 +29,9 @@ def success_response(data=None, message=''):
 def search_user_custom():
     """获取用户配置"""
     try:
-        user_name = request.headers.get('x-user-name', 'admin')
+        # 用户名由服务端从 Bearer token 解析（current_user），不信任客户端 x-user-name 头，
+        # 否则非 admin 用户（如 tom）的个性化配置会被错误归属到 admin 名下。
+        user_name = current_user()
         
         config = UserService.get_user_custom(user_name)
         return success_response(config)
@@ -40,7 +43,9 @@ def search_user_custom():
 def save_user_custom():
     """保存用户配置"""
     try:
-        user_name = request.headers.get('x-user-name', 'admin')
+        # 用户名由服务端从 Bearer token 解析（current_user），不信任客户端 x-user-name 头，
+        # 否则非 admin 用户（如 tom）的个性化配置会被错误归属到 admin 名下。
+        user_name = current_user()
         data = request.get_json() or {}
         
         result = UserService.save_user_custom(user_name, data)
@@ -63,7 +68,9 @@ def get_users():
 def get_model_columns(obj_id):
     """获取模型的列配置"""
     try:
-        user_name = request.headers.get('x-user-name', 'admin')
+        # 用户名由服务端从 Bearer token 解析（current_user），不信任客户端 x-user-name 头，
+        # 否则非 admin 用户（如 tom）的个性化配置会被错误归属到 admin 名下。
+        user_name = current_user()
         
         columns = UserService.get_model_columns(user_name, obj_id)
         return success_response({'columns': columns})
@@ -75,7 +82,9 @@ def get_model_columns(obj_id):
 def save_model_columns(obj_id):
     """保存模型的列配置"""
     try:
-        user_name = request.headers.get('x-user-name', 'admin')
+        # 用户名由服务端从 Bearer token 解析（current_user），不信任客户端 x-user-name 头，
+        # 否则非 admin 用户（如 tom）的个性化配置会被错误归属到 admin 名下。
+        user_name = current_user()
         data = request.get_json() or {}
         columns = data.get('columns', [])
         

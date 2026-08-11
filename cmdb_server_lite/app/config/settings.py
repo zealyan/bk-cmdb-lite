@@ -76,6 +76,7 @@ class BaseConfig:
     AUTH_ERR_UNAUTHORIZED = 1302100   # 未登录 / 登录失效
     AUTH_ERR_BAD_CREDENTIAL = 1302101 # 用户名或密码错误
     AUTH_ERR_NO_PERMISSION = 1302102  # 无操作权限（CCNoPermission）
+    AUTH_ERR_NO_PERMISSION_MSG = '无操作权限'  # 无权限统一提示文案（全站唯一）
 
     # ── RBAC 总开关（模式 B：内置轻量权限）──
     # ENABLE_AUTH=False（默认）时全局短路放行，行为与现状完全一致（零回归）。

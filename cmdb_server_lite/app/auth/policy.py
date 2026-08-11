@@ -53,12 +53,13 @@ def query_allow(supplier, principal, res_type, obj_id, actions):
 
 
 def grant_creator(model_id, supplier, principal,
-                   actions=('create', 'update', 'updateMany', 'delete', 'deleteMany')):
+                   actions=('update', 'delete', 'find')):
     """创建者自动授权（对齐上游 RegisterResourceCreatorAction）。
 
-    实例创建成功后对该模型写 allow（含批量动作），使创建者凭【模型级策略】即可管理
-    自身实例，亦配合实例级 owner 判定（manager.check_instances 的 c 分支）形成双重保险。
-    批量动作（updateMany/deleteMany）一并授权，避免被粗粒度网关层误拒（见 §4.4）。
+    动作集对齐上游 ac/iam/initial_resource_creator_actions.go：创建者获得
+    Edit / Delete / Find，【不含 Create】——资源已由其创建，无需再授创建权。
+    批量动作亦不再授予：上游 parser 已将批量端点逐实例展开为单动作资源
+    （见 auth/parser.py），故 update/delete 即可覆盖批量场景。
     """
     for action in actions:
         exists = query_one(

@@ -129,16 +129,13 @@ export default {
           RouterQuery.set({ _t: Date.now() })
         } else {
           this.$bkMessage({
-            message: '更新失败',
+            message: '未获取到更新结果',
             theme: 'error'
           })
         }
       } catch (e) {
         console.error('[edit-multiple-host] 批量更新主机失败:', e)
-        this.$bkMessage({
-          message: '更新失败，请稍后重试',
-          theme: 'error'
-        })
+        this.$handleApiError(e)
       } finally {
         this.slider.props = { ...this.slider.props, submitting: false }
       }

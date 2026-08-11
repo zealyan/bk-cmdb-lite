@@ -358,11 +358,7 @@ export default {
         this.editingPropertyId = null
       } catch (error) {
         console.error('更新属性失败:', error)
-        let errorMsg = error.message || '未知错误'
-        this.$bkMessage({
-          message: errorMsg,
-          theme: 'error'
-        })
+        this.$handleApiError(error)
         // 保存失败，保持编辑态打开，让用户可以继续编辑
       }
     }

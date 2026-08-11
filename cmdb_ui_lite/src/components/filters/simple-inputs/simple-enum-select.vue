@@ -1,9 +1,21 @@
 <template>
   <bk-select
     v-model="localValue"
-    :options="options"
     :multiple="multiple"
-    :placeholder="placeholder">
+    :placeholder="placeholder"
+    :clearable="!multiple">
+    <!--
+      bk-select 的 option 项必须用 <bk-option> 子组件显式声明（id / name 必填），
+      组件内部通过 registerOption 收集渲染。直接传 :options 在本版本不会渲染，
+      这正是“枚举下拉为空 / 数据丢失”的根因。选中值取枚举 id（如 '1'），
+      与后端实例存储的枚举值（bk_os_type='1'）一致。
+    -->
+    <bk-option
+      v-for="item in optionList"
+      :key="String(item.id)"
+      :id="item.id"
+      :name="item.name">
+    </bk-option>
   </bk-select>
 </template>
 
@@ -28,15 +40,15 @@ export default {
     multiple() {
       return this.property.ismultiple || this.property.bk_property_type === 'enummulti'
     },
-    options() {
+    optionList() {
       try {
         const option = this.property.option
         if (!option) return []
         const parsed = typeof option === 'string' ? JSON.parse(option) : option
         if (Array.isArray(parsed)) {
           return parsed.map(item => ({
-            label: item.name || item.id,
-            value: item.id || item.name
+            id: item.id,
+            name: item.name || item.id
           }))
         }
       } catch (e) {

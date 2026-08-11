@@ -103,7 +103,42 @@
           @click="handleSearch">
           查询
         </bk-button>
-        <bk-button class="option-reset" theme="default" @click="handleReset">清空</bk-button>
+        <bk-button class="option-reset mr10" theme="default" @click="handleReset">清空</bk-button>
+        <bk-popover
+          ref="collectionPopover"
+          class="option-collect-popover"
+          placement="top"
+          trigger="click"
+          :tippy-options="{ boundary: 'window' }">
+          <bk-button
+            class="option-collect"
+            theme="default"
+            :disabled="!allowCollect"
+            v-bk-tooltips.top="allowCollect ? '' : '请先设置筛选条件，再收藏当前条件'">
+            <i class="bk-icon icon-cc-star"></i>
+            收藏此条件
+          </bk-button>
+          <div slot="content" class="collection-form">
+            <label class="collection-title">收藏此条件</label>
+            <bk-input
+              class="collection-name"
+              ref="collectionName"
+              v-model.trim="collectionForm.name"
+              placeholder="请输入收藏名称"
+              @enter="handleSaveCollection"></bk-input>
+            <div class="collection-options">
+              <bk-button
+                size="small"
+                theme="primary"
+                :disabled="!collectionForm.name.length"
+                :loading="collectionSaving"
+                @click="handleSaveCollection">
+                确定
+              </bk-button>
+              <bk-button size="small" theme="default" @click="closeCollectionForm">取消</bk-button>
+            </div>
+          </div>
+        </bk-popover>
       </div>
     </div>
   </bk-sideslider>
@@ -159,6 +194,10 @@ export default {
       scrollToBottom: false,
       isShow: false,
       withoutOperator: ['date', 'time', 'bool'],
+      collectionForm: {
+        name: ''
+      },
+      collectionSaving: false,
       IPCondition: Utils.getDefaultIP(),
       originIPCondition: { ...FilterStore.IP },
       condition: {},
@@ -198,6 +237,9 @@ export default {
     },
     storageIPCondition() {
       return FilterStore.IP
+    },
+    allowCollect() {
+      return this.selected.length > 0
     }
   },
   watch: {
@@ -460,6 +502,44 @@ export default {
       this.IPCondition = Utils.getDefaultIP()
       this.clearCondition()
     },
+    handleCreateCollection() {
+      const popover = this.$refs.collectionPopover
+      if (popover && popover.instance) {
+        popover.instance.show()
+      }
+    },
+    closeCollectionForm() {
+      const popover = this.$refs.collectionPopover
+      if (popover && popover.instance) {
+        popover.instance.hide()
+      }
+      this.collectionForm.name = ''
+    },
+    async handleSaveCollection() {
+      if (!this.collectionForm.name || !this.collectionForm.name.trim()) {
+        return
+      }
+      // 从当前抽屉的 selected/condition 序列化 live 条件（不与 FilterStore.condition 的滞后状态耦合）
+      const conditions = {}
+      this.selected.forEach((property) => {
+        const id = property.bk_property_id
+        const cond = this.condition[id]
+        if (cond) {
+          conditions[id] = { operator: cond.operator, value: cond.value }
+        }
+      })
+      this.collectionSaving = true
+      try {
+        await FilterStore.createCollection({ name: this.collectionForm.name.trim(), conditions })
+        this.$success('收藏成功')
+        this.closeCollectionForm()
+      } catch (e) {
+        console.error('[filter-form] 收藏条件失败', e)
+        this.$bkMessage && this.$bkMessage({ message: '收藏失败', theme: 'error' })
+      } finally {
+        this.collectionSaving = false
+      }
+    },
     clearCondition() {
       Object.keys(this.condition).forEach(id => {
         const property = this.selected.find(p => p.bk_property_id?.toString() === id?.toString())
@@ -662,5 +742,34 @@ export default {
 
 .r0 {
   border-radius: 0;
+}
+</style>
+
+<!-- popover 内容被 teleport 到 body，scoped 样式无法命中，单独用非 scoped 块 -->
+<style lang="scss">
+.collection-form {
+  padding: 12px;
+  width: 240px;
+
+  .collection-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #313238;
+    margin-bottom: 8px;
+  }
+
+  .collection-name {
+    margin-bottom: 12px;
+  }
+
+  .collection-options {
+    display: flex;
+    justify-content: flex-end;
+
+    .bk-button {
+      margin-left: 8px;
+    }
+  }
 }
 </style>

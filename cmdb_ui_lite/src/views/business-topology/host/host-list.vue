@@ -451,18 +451,31 @@ export default {
     },
 
     /**
-     * 直接监听 FilterStore 的 condition / IP 变化来触发列表重载。
-     * 这是修复“关闭筛选 tag 后列表不联动重新查询”的关键：
-     * 关闭 tag 时 FilterStore.resetValue 会将条件值置空（属于 condition 的响应式变更），
-     * 此处 deep watch 必然触发，从而在当前拓扑节点下重新查询。
+     * 直接监听「有效筛选签名」来触发列表重载，而非原始 FilterStore.condition 对象。
+     *
+     * 为什么不能 deep watch FilterStore.condition：
+     * 在高级筛选抽屉中点击「添加其他条件」时，handleConditionPickerChange 会更新
+     * FilterStore.selected，进而触发 store 内部 selected 监听 → initCondition()，
+     * 给新属性写入默认空值（Utils.getDefaultData 返回 value: '' / []），从而替换掉
+     * FilterStore.condition 的对象引用。若此处 deep watch 整个 condition 对象，
+     * 这次“仅添加空条件行、尚未查询”的变更就会被判定为 condition 变化并立即发起重载，
+     * 表现为“添加条件后主机列表 loading 转圈”——但列表内容其实没变。
+     *
+     * 改为监听 FilterStore.getQuery() 序列化后的有效查询串（filter|ip），
+     * 它与 loadHostList 实际发出的请求完全一致（空值被忽略）。
+     * 因此：
+     *  - 添加一条尚未填值的空条件 → 签名不变 → 不重载（修复本 bug）；
+     *  - 填值后点「查询」/ 删 tag（resetValue 置空）/ 清空条件 → 签名变化 → 重载。
      */
     registerFilterStoreWatch() {
       this.unwatchFilterStore = this.$watch(
-        () => [FilterStore.condition, FilterStore.IP],
+        () => {
+          const q = FilterStore.getQuery(FilterStore.condition)
+          return `${q.filter}|${q.ip}`
+        },
         () => {
           this.scheduleLoadHostList()
-        },
-        { deep: true }
+        }
       )
     },
 
@@ -1158,8 +1171,7 @@ export default {
         })
       } catch (e) {
         console.error('[HostList] 转移失败:', e)
-        const msg = (e && e.message) ? e.message : String(e)
-        this.$bkMessage({ message: `转移失败: ${msg}`, theme: 'error' })
+        this.$handleApiError(e)
       } finally {
         this.transferDialog.confirmLoading = false
       }

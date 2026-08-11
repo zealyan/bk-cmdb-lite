@@ -258,6 +258,12 @@ def update_instance(model_id, instance_id):
         data = request.get_json() or {}
         instance_data = data.get('data', {})
 
+        # 模式 B：打标最后修改者（bk_modifier 维度；对齐上游 owner/modifier），写入前 stamp。
+        # 仅 host 等含 modifier 列的表会落库；自定义模型无该列时由 service 层 real_cols 收敛丢弃。
+        if is_enabled():
+            from app.auth.identity import current_user
+            instance_data['modifier'] = current_user()
+
         # 模式 B：实例级鉴权（supplier 隔离 / 创建者自管 / 模型级策略）
         if is_enabled():
             deny = check_instances(model_id, [int(instance_id)], Action.UPDATE)

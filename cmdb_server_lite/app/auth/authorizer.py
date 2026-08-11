@@ -42,8 +42,8 @@ class BuiltinAuthorizer(Authorizer):
         # 管理员全权（bk_role == 1）
         if role == 1:
             return Decision(True, 'admin')
-        # 模型级策略：updateMany/deleteMany 同时匹配 update/delete（见文档 §4.4
-        # action IN ('update','updateMany')），避免批量端点被粗粒度层误拒。
+        # 兼容层：parser 已对齐上游，批量端点逐实例展开为 update/delete 单动作，
+        # 正常不会再收到 many 动作。此处保留映射仅为防御历史调用路径。
         actions = [res.action]
         if res.action == Action.UPDATE_MANY:
             actions.append(Action.UPDATE)

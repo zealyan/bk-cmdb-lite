@@ -292,10 +292,7 @@ export default {
         this.$emit('updated', this.node)
       } catch (error) {
         console.error('[NodeInfo] 更新失败:', error)
-        this.$bkMessage({
-          theme: 'error',
-          message: error.message || '更新失败'
-        })
+        this.$handleApiError(error)
       } finally {
         this.editLoading = false
       }
@@ -329,10 +326,7 @@ export default {
             this.$emit('deleted', this.node)
           } catch (error) {
             console.error('[NodeInfo] 删除失败:', error)
-            this.$bkMessage({
-              theme: 'error',
-              message: error.message || '删除失败'
-            })
+            this.$handleApiError(error)
           }
         }
       })

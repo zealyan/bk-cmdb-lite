@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { showNoPermission, NO_PERMISSION_CODE } from '@/utils/error-handler';
 
 const baseURL = '/';
 
@@ -51,10 +52,15 @@ http.interceptors.response.use(
         // 这里仅把业务错误抛出，交由调用方 / 守卫处理。
         const code = data.bk_error_code
         // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
-        const error = new Error(data.bk_error_msg || '业务处理失败')
+        const error = new Error(data.bk_error_msg || '请求处理未完成')
         error.response = { data }
         error.bk_error_code = code
         error.isBusinessError = true
+        // 无权限（1302102）：全局兜底弹出统一对话框，并标记 handled 避免组件层重复提示
+        if (code === NO_PERMISSION_CODE) {
+          showNoPermission(error)
+          error.handled = true
+        }
         return Promise.reject(error)
       }
       // 成功：返回 data 字段内容
@@ -67,13 +73,18 @@ http.interceptors.response.use(
     // HTTP 层错误（网络超时、状态码非 2xx 等）
     // 统一处理：若响应体符合 BaseResp 格式（含 result:false），提取 bk_error_msg
     // 作为错误信息，避免上层只拿到 "Request failed with status code 400" 这类传输层文案。
+    // 无权限（1302102）在此全局兜底弹出统一对话框，并标记 handled，避免组件层重复提示。
     const resp = error.response
     if (resp && resp.data && typeof resp.data === 'object'
         && 'result' in resp.data && resp.data.result === false) {
-      const bizError = new Error(resp.data.bk_error_msg || '业务处理失败')
+      const bizError = new Error(resp.data.bk_error_msg || '请求处理未完成')
       bizError.response = resp
       bizError.bk_error_code = resp.data.bk_error_code
       bizError.isBusinessError = true
+      if (bizError.bk_error_code === NO_PERMISSION_CODE) {
+        showNoPermission(bizError)
+        bizError.handled = true
+      }
       return Promise.reject(bizError)
     }
     return Promise.reject(error)

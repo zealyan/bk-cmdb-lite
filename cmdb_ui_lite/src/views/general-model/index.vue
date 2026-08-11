@@ -1135,7 +1135,7 @@ export default {
           return
         }
         console.error('[ERROR] 加载数据失败:', error)
-        this.$bkMessage({ message: '加载数据失败', theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.table.loading = false
       }
@@ -1849,11 +1849,11 @@ export default {
           this.selectedIds = []
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: '更新失败', theme: 'error' })
+          this.$bkMessage({ message: '未获取到更新结果', theme: 'error' })
         }
       } catch (error) {
         console.error('Batch update error:', error)
-        this.$bkMessage({ message: '更新失败，请稍后重试', theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.batchUpdateFormLoading = false
       }
@@ -1931,7 +1931,7 @@ export default {
                 await this.loadModelData(this.currentSearchParams)
               } catch (error) {
                 console.error('Delete error:', error)
-                this.$bkMessage({ message: '删除失败，请稍后重试', theme: 'error' })
+                this.$handleApiError(error)
               } finally {
                 this.table.loading = false
               }
@@ -1944,7 +1944,7 @@ export default {
         })
         .catch(error => {
           console.error('Check associations error:', error)
-          this.$bkMessage({ message: '检查关联关系失败，请稍后重试', theme: 'error' })
+          this.$handleApiError(error)
           this.table.loading = false
         })
     },
@@ -2079,12 +2079,11 @@ export default {
           // 刷新列表
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: '创建失败', theme: 'error' })
+          this.$bkMessage({ message: '未获取到创建结果', theme: 'error' })
         }
       } catch (error) {
         console.error('Create instance error:', error)
-        let errorMsg = error.message || '创建失败，请稍后重试'
-        this.$bkMessage({ message: errorMsg, theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.createFormLoading = false
       }

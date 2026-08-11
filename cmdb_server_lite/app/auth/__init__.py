@@ -71,12 +71,18 @@ def ensure_creator_columns():
 
 
 def no_permission(permission):
-    """统一无权限响应（HTTP 200 + BaseResp，bk_error_code=AUTH_ERR_NO_PERMISSION）"""
+    """统一无权限响应（HTTP 200 + BaseResp，bk_error_code=AUTH_ERR_NO_PERMISSION）。
+
+    全站唯一的「无权限」出口：网关粗粒度门禁（auth_filter）与实例级 handler 检查
+    （model.py 的 update/delete/batch_update）都收敛到此函数，保证同一 API 在任意
+    路径下都返回完全一致的错误码、提示文案与 permission 载荷形状，供前端统一弹窗。
+    """
+    cfg = get_config()
     return jsonify({
         'result': False,
-        'bk_error_code': get_config().AUTH_ERR_NO_PERMISSION,
-        'bk_error_msg': '无操作权限',
-        'permission': permission,
+        'bk_error_code': cfg.AUTH_ERR_NO_PERMISSION,
+        'bk_error_msg': cfg.AUTH_ERR_NO_PERMISSION_MSG,
+        'permission': permission if permission is not None else {},
     }), 200
 
 

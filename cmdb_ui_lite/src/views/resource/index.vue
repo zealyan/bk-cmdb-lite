@@ -230,10 +230,7 @@ export default {
         })
       } catch (error) {
         console.error('[ResourceIndex] 收藏操作失败:', error)
-        this.$bkMessage({
-          message: '操作失败，请重试',
-          theme: 'error'
-        })
+        this.$handleApiError(error)
       }
     }
   }

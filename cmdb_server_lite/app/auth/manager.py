@@ -58,7 +58,18 @@ def current_identity():
 # ───────────────────────────────────────────────────────────
 
 def coarse_authorize(resources):
-    """模型级鉴权。返回 (permission_or_None, ok)"""
+    """网关层鉴权。返回 (permission_or_None, ok)
+
+    parser 已对齐上游把批量端点逐实例展开，资源普遍携带 instance_id。
+    因此判定分两路（对齐上游 AuthorizeByInstances 的逐实例 decision）：
+
+    - 带 instance_id：下沉到实例级判定 check_instances
+      （supplier 隔离 → 创建者自管 → 模型级策略），使「创建者自管」
+      在网关层即可生效，无需再向 cc_AuthPolicy 写模型级 allow。
+    - 不带 instance_id：退化为模型级策略判定。
+
+    任一资源无权 → 整体拒绝（对齐上游 GetPermissionToApply 的整体语义）。
+    """
     if not is_enabled():
         return None, True
     # 读操作默认放行（对齐上游 SkipReadAuthorization），与是否认证无关
@@ -67,10 +78,30 @@ def coarse_authorize(resources):
     user, supplier, role, authenticated = current_identity()
     if not authenticated:
         return permission_to_apply(resources, supplier), False
-    decisions = _authorizer.authorize(user, supplier, role, *resources)
-    if all(d.authorized for d in decisions):
-        return None, True
-    return permission_to_apply(resources, supplier), False
+    if role == 1:
+        return None, True  # 管理员全权
+
+    identity = (user, supplier, role, authenticated)
+
+    # 按 (模型, 动作) 归并带实例 ID 的资源，逐组做实例级判定
+    grouped = {}
+    model_level = []
+    for r in resources:
+        if r.instance_id is not None:
+            grouped.setdefault((r.obj_id, r.action), []).append(r.instance_id)
+        else:
+            model_level.append(r)
+
+    for (obj_id, action), ids in grouped.items():
+        if check_instances(obj_id, ids, action, identity):
+            return permission_to_apply(resources, supplier), False
+
+    if model_level:
+        decisions = _authorizer.authorize(user, supplier, role, *model_level)
+        if not all(d.authorized for d in decisions):
+            return permission_to_apply(resources, supplier), False
+
+    return None, True
 
 
 # ───────────────────────────────────────────────────────────
@@ -123,13 +154,18 @@ def pre_authorize_update(model_id, ids, identity=None):
 
 
 def on_instance_created(model_id, identity=None):
-    """实例创建成功后写「创建者自动授权」策略（模式 B；对齐 RegisterResourceCreatorAction）。"""
-    if not is_enabled():
-        return
-    user, supplier, role, authenticated = identity or current_identity()
-    if not authenticated:
-        return
-    grant_creator(model_id, supplier, user)
+    """实例创建成功后的「创建者自动授权」（对齐上游 RegisterResourceCreatorAction）。
+
+    上游该机制是【实例级】的：把新建实例注册到 IAM，创建者仅对「该实例」获得
+    Edit/Delete/Find。lite 的等价物是实例表的 creator 列（写入时打标）+
+    manager.check_instances 的创建者分支——已在写入路径完成，此处无需再做。
+
+    历史实现曾在此调用 grant_creator 写【模型级】allow，这会造成权限放大：
+    创建一个实例即获得该模型下【全部实例】的 update/delete 权，可绕过针对
+    该模型的权限收紧。cc_AuthPolicy 无 instance_id 列，无法表达实例级授权，
+    故不再写策略行，改由 creator 列承担（网关层已在 coarse_authorize 下沉判定）。
+    """
+    return
 
 
 # ───────────────────────────────────────────────────────────
