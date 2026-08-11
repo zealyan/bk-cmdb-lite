@@ -56,22 +56,18 @@ const FilterStore = new Vue({
       this.modelPropertyMap = map
     },
     updateSelected(selected) {
-      console.log('[FilterStore] updateSelected:', selected.map(p => p.bk_property_id))
       this.selected = selected
     },
     updateCondition(condition) {
       this.condition = { ...this.condition, ...condition }
     },
     setCondition(data) {
-      console.log('[FilterStore] setCondition → data:', JSON.stringify(data))
       if (data.condition) {
         this.condition = data.condition
       }
       if (data.IP) {
         this.IP = data.IP
       }
-      console.log('[FilterStore] setCondition → this.condition:', JSON.stringify(this.condition))
-      console.log('[FilterStore] setCondition → this.selected:', this.selected.map(p => p.bk_property_id))
       this.dispatchSearch()
     },
     updateIP(IP) {
@@ -131,6 +127,9 @@ const FilterStore = new Vue({
      */
     setActiveCollection(collection) {
       if (!collection) {
+        // 幂等保护：集合已处于未激活态时直接返回，避免 resetAll() 重新赋值 selected=[]（新引用）
+        // 触发 filter-tag 的 watch(selected) 再次调用本方法，形成响应式无限循环（主线程卡死、浏览器无响应）。
+        if (this.activeCollection === null) return
         this.activeCollection = null
         this.resetAll()
         return
@@ -195,12 +194,17 @@ const FilterStore = new Vue({
         this.activeCollection = null
       }
     },
-    async updateCollection({ id, name }) {
-      const collections = this.collections.map(c => (c.id === id ? { ...c, name } : c))
+    async updateCollection({ id, name, conditions }) {
+      const collections = this.collections.map((c) => {
+        if (c.id !== id) return c
+        const next = { ...c, name }
+        if (conditions !== undefined) next.conditions = conditions
+        return next
+      })
       await this.saveCollections(collections)
       this.collections = collections
       if (this.activeCollection && this.activeCollection.id === id) {
-        this.activeCollection = { ...this.activeCollection, name }
+        this.activeCollection = { ...this.activeCollection, name, ...(conditions !== undefined ? { conditions } : {}) }
       }
     },
     async saveCollections(collections) {
@@ -387,8 +391,6 @@ const FilterStore = new Vue({
       }
     },
     initCondition() {
-      console.log('[FilterStore] initCondition → current condition:', JSON.stringify(this.condition))
-      console.log('[FilterStore] initCondition → selected keys:', this.selected.map(p => p.bk_property_id))
       const newCondition = {}
       this.selected.forEach((property) => {
         const id = property.bk_property_id
@@ -403,12 +405,8 @@ const FilterStore = new Vue({
       // 只在 key 集合变化时才替换，避免覆盖已有值
       const oldKeys = Object.keys(this.condition).sort().join(',')
       const newKeys = Object.keys(newCondition).sort().join(',')
-      console.log('[FilterStore] initCondition → oldKeys:', oldKeys, 'newKeys:', newKeys)
       if (oldKeys !== newKeys) {
         this.condition = newCondition
-        console.log('[FilterStore] initCondition → REPLACED condition:', JSON.stringify(this.condition))
-      } else {
-        console.log('[FilterStore] initCondition → NO CHANGE (keys match)')
       }
     }
   }
