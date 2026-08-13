@@ -1,5 +1,5 @@
 """
-内置 RBAC 策略存储（SQLite，复用现有 db）
+内置 RBAC 策略存储（多方言，复用现有 db 引擎）
 
 表 cc_AuthPolicy：supplier / principal / res_type / obj_id / action / effect
 判定规则（对齐上游 ac/extensions 语义）：
@@ -13,42 +13,65 @@
 """
 
 from app.db.executor import query_one, insert, execute
-from app.config.settings import get_config
+from app.db.sql_loader import load_sql
+from app.db.dialect import dialect_converter
+from app.config.settings import get_config, DialectType
 
 TABLE = 'cc_AuthPolicy'
 
+# SQL 文件书写所用的规范方言（DialectType.POSTGRESQL = 'postgres'）
+_SOURCE_DIALECT = DialectType.POSTGRESQL.value
+
+
+def _target_dialect() -> str:
+    """当前数据库方言（sqlglot 书写名）。"""
+    return {
+        'sqlite': DialectType.SQLITE.value,         # 'sqlite'
+        'postgresql': DialectType.POSTGRESQL.value,  # 'postgres'
+        'mysql': DialectType.MYSQL.value,           # 'mysql'
+    }.get(get_config().DATABASE_TYPE, DialectType.SQLITE.value)
+
+
+def _sql(filename: str) -> str:
+    """加载 SQL 文件并转译到当前方言（多方言核心）。"""
+    raw = load_sql('auth', filename)
+    return dialect_converter.transpile(
+        raw, source_dialect=_SOURCE_DIALECT, target_dialect=_target_dialect())
+
 
 def init_policy_table():
-    """幂等建表"""
-    execute(f"""
-        CREATE TABLE IF NOT EXISTS {TABLE} (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            supplier  TEXT NOT NULL,
-            principal TEXT NOT NULL,
-            res_type  TEXT NOT NULL,
-            obj_id    TEXT,
-            action    TEXT NOT NULL,
-            effect    TEXT NOT NULL DEFAULT 'allow'
-        )
-    """)
+    """幂等建表（多方言 DDL，PostgreSQL 规范方言经转译执行）。
+
+    旧库兼容：CREATE TABLE IF NOT EXISTS 不会为已存在的表补列，故若 business_id 列
+    缺失则按需 ALTER（对齐上游 per-biz 授权所需的独立列；重复执行会因 duplicate column 忽略）。
+    """
+    execute(_sql('create_policy_table.sql'), {})
+    try:
+        execute("ALTER TABLE cc_AuthPolicy ADD COLUMN business_id VARCHAR(64)", {})
+    except Exception:
+        pass
 
 
-def query_allow(supplier, principal, res_type, obj_id, actions):
-    """模型级策略命中：该用户对【整个模型】（obj_id 或 NULL=全部）是否有 actions 中任一 allow。"""
+def query_allow(supplier, principal, res_type, obj_id, actions, business_id=None):
+    """模型级策略命中：该用户对【整个模型/拓扑资源】（obj_id 或 NULL=全部）在
+    【指定业务 business_id，或 NULL=全部业务】是否有 actions 中任一 allow。
+
+    多方言：SQL 骨架取自 app/sql/auth/policy_query_allow.sql（PostgreSQL 规范方言），
+    经 _sql() 转译到当前方言；动态 IN 列表（__ACTIONS__ 哨兵）由 Python 组装，
+    占位符 :a_0,:a_1… 各方言通用，不参与转译。
+    business_id 语义（对齐上游 bizTopology 以 business 为父级作用域）：
+      - 请求带 business_id=B → 命中 business_id=B 的专属策略，或 business_id=NULL 的类级策略
+      - 请求 business_id=None  → 仅命中 business_id=NULL 的策略（模型实例等无 biz 维度的资源）
+    """
     if isinstance(actions, str):
         actions = [actions]
     placeholders = ','.join([f':a_{i}' for i in range(len(actions))])
     params = {f'a_{i}': a for i, a in enumerate(actions)}
     params.update({'supplier': supplier, 'principal': principal,
-                   'res_type': res_type, 'obj_id': obj_id})
-    row = query_one(f"""
-        SELECT effect FROM {TABLE}
-        WHERE supplier = :supplier AND principal = :principal
-          AND res_type = :res_type
-          AND (obj_id = :obj_id OR obj_id IS NULL)
-          AND action IN ({placeholders})
-        LIMIT 1
-    """, params)
+                   'res_type': res_type, 'obj_id': obj_id,
+                   'business_id': business_id})
+    sql = _sql('policy_query_allow.sql').replace('__ACTIONS__', placeholders)
+    row = query_one(sql, params)
     return bool(row and row.get('effect') == 'allow')
 
 
@@ -63,9 +86,7 @@ def grant_creator(model_id, supplier, principal,
     """
     for action in actions:
         exists = query_one(
-            f"""SELECT id FROM {TABLE}
-                WHERE supplier=:s AND principal=:p
-                  AND res_type='modelInstance' AND obj_id=:o AND action=:a""",
+            _sql('policy_grant_creator_check.sql'),
             {'s': supplier, 'p': principal, 'o': model_id, 'a': action})
         if not exists:
             insert(TABLE, {

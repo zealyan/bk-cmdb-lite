@@ -1756,78 +1756,238 @@ def update_node(bk_obj_id: str, bk_inst_id: int, params: Dict[str, Any]) -> Dict
     return {'bk_inst_id': bk_inst_id}
 
 
+def _check_inst_associated(obj_id: str, inst_id: int) -> bool:
+    """检查实例是否被其它实例关联引用（作为目标）。
+
+    对齐上游 deleteInsts 内 asst.CheckAssociations：被其它实例关联引用的实例不允许删除。
+    """
+    from app.service.association_service import get_inst_asst_table_name
+    table = get_inst_asst_table_name(obj_id)
+    row = query_one(
+        f'SELECT COUNT(*) as count FROM "{table}" '
+        f'WHERE bk_asst_inst_id = :inst_id AND bk_asst_obj_id = :obj_id',
+        {'inst_id': inst_id, 'obj_id': obj_id})
+    return bool(row and row['count'] > 0)
+
+
+def _mainline_descendant_module_ids(obj_id: str, inst_id: int,
+                                    bk_biz_id: int, supplier_account: str) -> List[int]:
+    """沿主线从当前节点向下，收集其下所有 module 实例 id（用于 hasHost 校验）。
+
+    对齐上游 inst.hasHost 的 mainlineHasHost：沿主线子级递归定位所有下游模块。
+    """
+    from app.service.instance_service import InstanceService
+    model_tree = get_mainline_model_top(supplier_account)
+    levels = model_tree.leftest_object_id_list()
+    if obj_id not in levels:
+        return []
+    idx = levels.index(obj_id)
+    child_levels = levels[idx + 1:]
+    if not child_levels:
+        return []
+
+    frontier = [inst_id]
+    module_ids: List[int] = []
+    for lvl in child_levels:
+        if lvl == MAINLINE_MODEL_MODULE:
+            module_ids = frontier
+            break
+        table = InstanceService._get_table_name(lvl)
+        id_field = InstanceService._get_id_field(lvl)
+        placeholders = ','.join(str(i) for i in frontier)
+        rows = query_all(
+            f'SELECT "{id_field}" FROM "{table}" '
+            f'WHERE bk_supplier_account = :supplier AND bk_biz_id = :biz_id '
+            f'AND "bk_parent_id" IN ({placeholders})',
+            {'supplier': supplier_account, 'biz_id': bk_biz_id})
+        frontier = [r[id_field] for r in rows]
+        if not frontier:
+            break
+    return module_ids
+
+
+def _delete_custom_mainline_node(bk_obj_id: str, bk_inst_id: int, bk_biz_id: int,
+                                 supplier_account: str, executor) -> None:
+    """自定义业务拓扑模型（自定义层级）节点删除。
+
+    对齐上游通用 DeleteInst：关联引用校验 + hasHost（沿主线递归下游模块查主机）
+    + 级联删下游 + 删自身。lite 当前主线仅 biz/set/module（无自定义层级数据），
+    此分支为前瞻实现，未来引入自定义层级时自动生效。
+    """
+    from app.service.instance_service import InstanceService
+    from app.service.association_service import get_inst_asst_table_name
+    from app.utils.exceptions import APIException, CCErrorCode
+
+    model_tree = get_mainline_model_top(supplier_account)
+    levels = model_tree.leftest_object_id_list()
+    if bk_obj_id not in levels:
+        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+
+    # 1. 关联引用校验（被其它实例引用禁止删除）
+    if _check_inst_associated(bk_obj_id, bk_inst_id):
+        raise APIException('节点被其它实例关联引用, 不允许删除',
+                           error_code=CCErrorCode.CCErrorTopoInstHasAssociation)
+
+    # 2. 沿主线递归下游模块，查是否挂载主机
+    module_ids = _mainline_descendant_module_ids(bk_obj_id, bk_inst_id, bk_biz_id, supplier_account)
+    if module_ids:
+        placeholders = ','.join(str(m) for m in module_ids)
+        host_count = query_one(
+            f'SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig '
+            f'WHERE bk_module_id IN ({placeholders})')
+        if host_count and host_count['count'] > 0:
+            raise APIException('目标包含主机, 不允许删除',
+                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+
+    # 3. 级联删除下游各层级实例（最深层级先删）+ 删自身 + 清理关联分表
+    idx = levels.index(bk_obj_id)
+    child_levels = levels[idx + 1:]
+    frontier = [bk_inst_id]
+    for lvl in child_levels:
+        if not frontier:
+            break
+        table = InstanceService._get_table_name(lvl)
+        id_field = InstanceService._get_id_field(lvl)
+        placeholders = ','.join(str(i) for i in frontier)
+        rows = query_all(
+            f'SELECT "{id_field}" FROM "{table}" '
+            f'WHERE bk_supplier_account = :supplier AND bk_biz_id = :biz_id '
+            f'AND "bk_parent_id" IN ({placeholders})',
+            {'supplier': supplier_account, 'biz_id': bk_biz_id})
+        child_ids = [r[id_field] for r in rows]
+        executor.execute(
+            f'DELETE FROM "{table}" WHERE "{id_field}" IN ({placeholders}) AND bk_biz_id = :biz_id',
+            {'biz_id': bk_biz_id})
+        frontier = child_ids
+
+    self_table = InstanceService._get_table_name(bk_obj_id)
+    self_id_field = InstanceService._get_id_field(bk_obj_id)
+    executor.execute(
+        f'DELETE FROM "{self_table}" WHERE "{self_id_field}" = :inst_id AND bk_biz_id = :biz_id',
+        {'inst_id': bk_inst_id, 'bk_biz_id': bk_biz_id})
+    asst_table = get_inst_asst_table_name(bk_obj_id)
+    executor.execute(
+        f'DELETE FROM "{asst_table}" WHERE bk_inst_id = :inst_id OR bk_asst_inst_id = :inst_id',
+        {'inst_id': bk_inst_id})
+
+
 def delete_node(bk_obj_id: str, bk_inst_id: int,
                 bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER) -> None:
     """
-    删除节点（biz/set/module）
+    删除业务拓扑节点（biz/set/module 及自定义层级），与原项目删除冲突校验一致：
+
+    - 业务(biz)：内置业务(default=1)禁删；业务下存在集群禁删；业务下存在主机禁删
+    - 集群(set)：集群下模块存在主机禁删；校验通过后级联删除集群下所有模块再删集群
+    - 模块(module)：模块下存在主机禁删；模块被其它实例关联引用禁删
+    - 自定义层级：沿主线递归下游模块查主机(有主机禁删)；被关联引用禁删；级联删下游再删自身
 
     Args:
-        bk_obj_id: 节点类型
+        bk_obj_id: 节点类型（主线模型ID）
         bk_inst_id: 节点实例ID
-        bk_biz_id: 业务ID（set/module时必填）
+        bk_biz_id: 业务ID（set/module/自定义层级时必填）
         supplier_account: 供应商账号
     """
+    from app.utils.exceptions import APIException, CCErrorCode, NotFoundException
     from app.db.executor import SQLExecutor
 
     executor = SQLExecutor()
 
-    if bk_obj_id == 'biz':
-        # 检查业务下是否有集群
-        set_count = query_one("""
-            SELECT COUNT(*) as count FROM cc_SetBase WHERE bk_biz_id = :biz_id
-        """, {'biz_id': bk_inst_id})
+    if bk_obj_id == MAINLINE_MODEL_BIZ:
+        # 1. 内置业务（资源池，default=1）禁止删除 —— 对齐上游 checkHasBuiltInBiz
+        builtin = query_one(
+            'SELECT COUNT(*) as count FROM cc_ApplicationBase '
+            'WHERE bk_biz_id = :biz_id AND "default" = 1',
+            {'biz_id': bk_inst_id})
+        if builtin and builtin['count'] > 0:
+            raise APIException('内置业务(资源池)不允许删除',
+                               error_code=CCErrorCode.CCErrorTopoForbiddenDeleteBuiltInBiz)
+
+        # 2. 业务下存在集群禁止删除
+        set_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_SetBase WHERE bk_biz_id = :biz_id',
+            {'biz_id': bk_inst_id})
         if set_count and set_count['count'] > 0:
             raise ValueError('业务下存在集群，无法删除')
 
-        executor.execute("""
-            DELETE FROM cc_ApplicationBase WHERE bk_biz_id = :biz_id
-        """, {'biz_id': bk_inst_id})
-    elif bk_obj_id == 'set':
+        # 3. 业务下存在主机禁止删除 —— 对齐上游 checkHasHost
+        host_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_biz_id = :biz_id',
+            {'biz_id': bk_inst_id})
+        if host_count and host_count['count'] > 0:
+            raise APIException('业务下存在主机, 不允许删除',
+                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+
+        executor.execute(
+            'DELETE FROM cc_ApplicationBase WHERE bk_biz_id = :biz_id',
+            {'biz_id': bk_inst_id})
+
+    elif bk_obj_id == MAINLINE_MODEL_SET:
         if not bk_biz_id:
             raise ValueError('删除集群需要 bk_biz_id')
 
-        # 复刻原项目：检查集群下的模块是否有关联主机
-        # 先获取集群下所有模块ID
-        module_ids = query_all("""
-            SELECT bk_module_id FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
-        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        # 归属校验：集群必须确实属于该业务，避免 bk_biz_id 不匹配导致静默空删
+        # （对齐上游：实例不存在于指定业务时返回 not found）
+        owned = query_one(
+            'SELECT COUNT(*) as count FROM cc_SetBase '
+            'WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        if not owned or owned['count'] == 0:
+            raise NotFoundException(f'集群 {bk_inst_id} 不存在于业务 {bk_biz_id}')
 
+        # 复刻原项目 DeleteSet：先查集群下模块是否有关联主机
+        module_ids = query_all(
+            'SELECT bk_module_id FROM cc_ModuleBase '
+            'WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
         if module_ids:
             module_id_list = [str(m['bk_module_id']) for m in module_ids]
             placeholders = ','.join(module_id_list)
-            # 检查这些模块是否有主机关联（cc_ModuleHostConfig）
-            host_count_sql = f"""
-                SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig
-                WHERE bk_module_id IN ({placeholders})
-            """
-            host_count = query_one(host_count_sql)
+            host_count = query_one(
+                f'SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig '
+                f'WHERE bk_module_id IN ({placeholders})')
             if host_count and host_count['count'] > 0:
-                from app.utils.exceptions import APIException, CCErrorCode
-                raise APIException(
-                    '目标包含主机, 不允许删除',
-                    error_code=CCErrorCode.CCErrTopoHasHostCheckFailed
-                )
+                raise APIException('目标包含主机, 不允许删除',
+                                   error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
 
-        executor.execute("""
-            DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
-        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
-    elif bk_obj_id == 'module':
+        # 对齐上游 DeleteSet：先级联删除集群下的所有模块，再删除集群本身，避免孤儿模块
+        executor.execute(
+            'DELETE FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        executor.execute(
+            'DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+
+    elif bk_obj_id == MAINLINE_MODEL_MODULE:
         if not bk_biz_id:
             raise ValueError('删除模块需要 bk_biz_id')
 
-        # 复刻原项目：检查模块是否有关联主机
-        host_count = query_one("""
-            SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_module_id = :module_id
-        """, {'module_id': bk_inst_id})
-        if host_count and host_count['count'] > 0:
-            from app.utils.exceptions import APIException, CCErrorCode
-            raise APIException(
-                '目标包含主机, 不允许删除',
-                error_code=CCErrorCode.CCErrTopoHasHostCheckFailed
-            )
+        # 归属校验：模块必须确实属于该业务，避免 bk_biz_id 不匹配导致静默空删
+        owned = query_one(
+            'SELECT COUNT(*) as count FROM cc_ModuleBase '
+            'WHERE bk_module_id = :module_id AND bk_biz_id = :bk_biz_id',
+            {'module_id': bk_inst_id, 'bk_biz_id': bk_biz_id})
+        if not owned or owned['count'] == 0:
+            raise NotFoundException(f'模块 {bk_inst_id} 不存在于业务 {bk_biz_id}')
 
-        executor.execute("""
-            DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id
-        """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id})
+        # 复刻原项目 DeleteModule：模块下存在主机禁止删除
+        host_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_module_id = :module_id',
+            {'module_id': bk_inst_id})
+        if host_count and host_count['count'] > 0:
+            raise APIException('目标包含主机, 不允许删除',
+                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+
+        # 对齐上游 deleteInsts 的 CheckAssociations：模块被其它实例关联引用禁止删除
+        if _check_inst_associated(MAINLINE_MODEL_MODULE, bk_inst_id):
+            raise APIException('模块被其它实例关联引用, 不允许删除',
+                               error_code=CCErrorCode.CCErrorTopoInstHasAssociation)
+
+        executor.execute(
+            'DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :bk_biz_id',
+            {'module_id': bk_inst_id, 'bk_biz_id': bk_biz_id})
+
     else:
-        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+        # 自定义业务拓扑模型（自定义层级）节点删除
+        # 对齐上游通用 DeleteInst：hasHost(沿主线递归下游模块查主机) + 关联引用校验
+        # + 级联删下游 + 删自身
+        _delete_custom_mainline_node(bk_obj_id, bk_inst_id, bk_biz_id, supplier_account, executor)

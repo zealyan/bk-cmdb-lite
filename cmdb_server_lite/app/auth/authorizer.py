@@ -49,7 +49,7 @@ class BuiltinAuthorizer(Authorizer):
             actions.append(Action.UPDATE)
         elif res.action == Action.DELETE_MANY:
             actions.append(Action.DELETE)
-        # 模型级策略（obj_id 命中具体模型 或 NULL=该类全部）
-        if query_allow(supplier, user, res.type, res.obj_id, actions):
+        # 模型级策略（obj_id 命中具体模型 或 NULL=该类全部；business_id 限定业务或 NULL=全部业务）
+        if query_allow(supplier, user, res.type, res.obj_id, actions, business_id=res.business_id):
             return Decision(True, 'model policy')
         return Decision(False, 'no model policy')

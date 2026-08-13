@@ -1141,7 +1141,8 @@ class DatabaseMigrator:
                     config_key VARCHAR NOT NULL,
                     config_value TEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_name, config_key)
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    UNIQUE(user_name, config_key, bk_supplier_account)
                 )
             """,
         }

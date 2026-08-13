@@ -123,7 +123,8 @@ def check_instances(model_id, ids, action, identity=None):
     if not ids:
         return []
     rows = InstanceService.get_instances_by_ids(model_id, ids)
-    model_allow = query_allow(supplier, user, ResourceType.MODEL_INSTANCE, model_id, action)
+    model_allow = query_allow(supplier, user, ResourceType.MODEL_INSTANCE, model_id, action,
+                              business_id=None)
     id_field = InstanceService._get_id_field(model_id)
     deny = []
     for inst in rows:
@@ -182,6 +183,7 @@ def permission_to_apply(resources, supplier=None):
         'obj_id': r.obj_id,
         'instance_id': r.instance_id,
         'supplier': supplier,
+        'business_id': r.business_id,
     } for r in resources]
     return {'permissions': perms}
 

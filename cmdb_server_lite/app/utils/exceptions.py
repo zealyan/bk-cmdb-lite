@@ -21,6 +21,8 @@ class CCErrorCode:
     CCErrCommNotFound = 1199019
     CCErrCommInternalServerError = 1199999
     CCErrTopoHasHostCheckFailed = 1101030
+    CCErrorTopoForbiddenDeleteBuiltInBiz = 1101031
+    CCErrorTopoInstHasAssociation = 1101032
 
 
 class APIException(Exception):

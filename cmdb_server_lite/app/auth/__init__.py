@@ -13,7 +13,6 @@
 
 from flask import jsonify
 from app.config.settings import get_config
-from app.auth.resource import Action
 from app.auth.token import make_token, load_token
 from app.auth.identity import (
     current_user_payload,
@@ -91,8 +90,15 @@ def auth_filter():
 
     - ENABLE_AUTH=False：直接放行（上游 EnableAuthorize 短路）
     - parse_route 返回 None 的路由：不拦截（零回归）
-    - 创建在粗粒度层放开（实例创建后由创建者自动授权策略接管所有权）
-    - 其余写操作：模型级 Authorize；无权返回 1302102
+    - 读操作（find）：默认放行（对齐上游 SkipReadAuthorization）
+    - create 也纳入门禁：对齐上游——实例创建是独立注册的动作
+      （ac/iam/adaptor.go genDynamicAction 的 Create_<模型>），创建前需单独授予
+      Create 策略；未授权即拒绝（1302102）。
+      ⚠️ 注意这与「创建者自管」是两件独立的事：创建者自管是「创建后」凭实例
+      creator 列获得自身实例的 edit/delete/find，而 create 动作本身在创建前
+      就必须过门禁（与上游一致——上游 RegisterResourceCreatorAction 只授
+      edit/delete/find，不含 create）。
+    - 其余写操作（update/delete）：模型级 Authorize；无权返回 1302102
     """
     from flask import request
     from app.auth.parser import parse_route
@@ -103,9 +109,6 @@ def auth_filter():
         return
     resources = parse_route(request)
     if not resources:
-        return
-    # 创建开放（与上游 RegisterResourceCreatorAction 哲学一致：所有权在写入时确立）
-    if all(r.action == Action.CREATE for r in resources):
         return
     permission, ok = coarse_authorize(resources)
     if not ok:

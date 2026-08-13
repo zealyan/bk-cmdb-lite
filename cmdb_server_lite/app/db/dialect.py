@@ -4,7 +4,7 @@ sqlglot 方言转译模块
 """
 
 import sqlglot
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from app.config.settings import DatabaseType, DialectType
 
 class DialectConverter:
@@ -46,7 +46,7 @@ class DialectConverter:
             print(f"[DialectConverter] Transpile error: {e}")
             return sql
     
-    def parse(self, sql: str, dialect: str = None) -> sqlglot.AST:
+    def parse(self, sql: str, dialect: str = None) -> Optional[Any]:
         """
         解析 SQL 语句为 AST
         

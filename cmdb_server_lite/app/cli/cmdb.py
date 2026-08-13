@@ -32,24 +32,14 @@ from app.cli.io_utils import (
     read_csv_rows, write_seed_csv, sha256_of, coerce_value, parse_bool,
     RejectStore, write_manifest, now_iso, profile_source,
 )
+from app.service.user_service import UserService
 
 # ---------------------------------------------------------------------------
-# 退出码（§9）
+# 退出码与 CliError 统一来自 app/cli/errors（单一来源，规避 -m 双模块导致的类分裂）
 # ---------------------------------------------------------------------------
-EXIT_OK = 0
-EXIT_GENERAL = 1
-EXIT_PARAM = 2
-EXIT_DEP = 3
-EXIT_EXISTS = 4
-EXIT_DB = 5
-
-
-class CliError(Exception):
-    """带退出码的结构化错误。"""
-
-    def __init__(self, code: int, msg: str, step: Optional[str] = None):
-        self.code, self.msg, self.step = code, msg, step
-        super().__init__(msg)
+from app.cli.errors import (  # noqa: E402,F401
+    CliError, EXIT_OK, EXIT_GENERAL, EXIT_PARAM, EXIT_DEP, EXIT_EXISTS, EXIT_DB,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1065,6 +1055,27 @@ def cmd_table_create(args):
     return EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# user：用户管理（创建用户走 app.db.user 公共逻辑层，与后端 API 共用同一 SQL/方言）
+# ---------------------------------------------------------------------------
+def cmd_user_create(args):
+    name = (args.name or '').strip()
+    if not name:
+        raise CliError(EXIT_PARAM, "用户名不能为空（--name 必填）", "create_user")
+    try:
+        user = UserService.create_user(
+            name=name, password=args.password, role=args.role, supplier=args.supplier)
+    except ValueError as e:
+        msg = str(e)
+        code = EXIT_EXISTS if '已存在' in msg else EXIT_PARAM
+        raise CliError(code, msg, "create_user")
+    emit_result({
+        **user,
+        'human': f"用户 {name} 创建成功（bk_role={args.role}）",
+    }, args.json)
+    return EXIT_OK
+
+
 def cmd_model_show(args):
     oid = args.bk_obj_id
     validate_identifier(oid)
@@ -1857,6 +1868,19 @@ def build_parser():
     x.add_argument('--no-skip-if-exists', dest='skip_if_exists', action='store_false')
     x.set_defaults(func=cmd_table_create)
 
+    # user：用户管理
+    sp = sub.add_parser('user', help='用户管理（创建用户，无 UI）')
+    us = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = us.add_parser('create', help='创建用户')
+    x.add_argument('--name', required=True, help='用户名（bk_user_name，唯一）')
+    x.add_argument('--password', required=True, help='密码明文（werkzeug 哈希后存储，绝不落库明文）')
+    x.add_argument('--role', type=int, default=2, choices=[1, 2],
+                   help='角色：1=超级管理员 2=普通用户（默认 2）')
+    x.add_argument('--supplier', default=None,
+                   help='供应商账户（多租户隔离；默认 settings.DEFAULT_SUPPLIER=0）')
+    x.set_defaults(func=cmd_user_create)
+
     # scaffold
     sp = sub.add_parser('scaffold', help='规格驱动（spec / seed / apply）')
     scs = sp.add_subparsers(dest='sub', required=True,
@@ -1888,6 +1912,10 @@ def build_parser():
     x.add_argument('--classification-name', default=None, help='分类中文名（缺省 分类-<id>）')
     x.add_argument('--model-name', default=None, help='模型中文名 bk_obj_name（缺省 模型-<模型id>）')
     x.set_defaults(func=cmd_scaffold_from_csv)
+
+    # auth（鉴权管理：用户 / 策略 / 按场景批量授权）
+    from app.cli import auth_cmd
+    auth_cmd.register(sub, common)
 
     return p
 

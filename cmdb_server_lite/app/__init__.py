@@ -10,6 +10,8 @@ from app.utils.logger import setup_logger
 from app.utils.exceptions import APIException
 from app.api.v1 import register_v1_routes
 from app.auth import init_user_table, bootstrap_admin, init_policy_table, ensure_creator_columns, auth_filter
+from app.service.favourite_service import init_favourite_table
+from app.db.user import ensure_user_custom_supplier_column
 
 def create_app(config=None):
     """
@@ -45,6 +47,14 @@ def create_app(config=None):
     # ENABLE_AUTH 默认 False，本步仅建表/补列，不改变任何鉴权行为（零回归）。
     init_policy_table()
     ensure_creator_columns()
+
+    # 初始化 Host Favorite（业务拓扑-主机列表已收藏条件）表：三层隔离
+    # user + bk_supplier_account + bk_biz_id，与上游 FavouriteMeta 一致。
+    init_favourite_table()
+
+    # 幂等为 user_custom 表补 bk_supplier_account 列（多租户隔离维度，对齐上游
+    # cc_UserCustom 的 user + supplier 隔离）。已有库经 ALTER 加列兜底，可重复执行。
+    ensure_user_custom_supplier_column()
 
     # 注册所有 v1 版本路由
     register_v1_routes(app)
