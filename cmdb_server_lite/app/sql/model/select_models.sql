@@ -1,0 +1,1 @@
+SELECT * FROM cc_ObjDes WHERE COALESCE(bk_ispaused, 0) != 1

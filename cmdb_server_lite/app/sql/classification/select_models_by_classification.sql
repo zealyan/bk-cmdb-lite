@@ -1,0 +1,1 @@
+SELECT * FROM cc_ObjDes WHERE bk_classification_id = :classification_id AND COALESCE(bk_ispaused, 0) != 1 ORDER BY obj_sort_number

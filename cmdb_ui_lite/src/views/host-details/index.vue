@@ -246,7 +246,7 @@ export default {
     topologyList() {
       const paths = []
       this.topologyData.forEach(biz => {
-          biz.sets.forEach(set => {
+        biz.sets.forEach(set => {
           set.modules.forEach(module => {
             // 优先使用后端返回的通用主线路径 module.topo_path（含自定义层
             // appsys/appsubsys 等），保持 biz→...→set→module 完整层级链。
@@ -263,15 +263,7 @@ export default {
               path: chain.map(n => n.bk_inst_name).join(' / '),
               bizId: biz.bk_biz_id,
               setId: set.bk_set_id,
-              moduleId: module.bk_module_id,
-              // 复刻原项目 bk-cmdb：所属拓扑路径按 biz / set / module 拆成可单独点击的分段，
-              // 每段映射到一个 topo tree node（biz-<id> / set-<id> / module-<id>），
-              // 点击后在【新窗口】打开业务拓扑并定位展开到该 node。
-              nodes: [
-                { id: biz.bk_biz_id, name: biz.bk_biz_name, node: `biz-${biz.bk_biz_id}` },
-                { id: set.bk_set_id, name: set.bk_set_name, node: `set-${set.bk_set_id}` },
-                { id: module.bk_module_id, name: module.bk_module_name, node: `module-${module.bk_module_id}` }
-              ]
+              moduleId: module.bk_module_id
             })
           })
         })

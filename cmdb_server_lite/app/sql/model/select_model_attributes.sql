@@ -1,0 +1,1 @@
+SELECT * FROM cc_ObjAttDes WHERE bk_obj_id = :model_id ORDER BY bk_property_index

@@ -1,0 +1,9 @@
+# Python virtual environment (created for local dev; not portable)
+.venv/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Runtime logs
+app/logs/*.log
