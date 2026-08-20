@@ -1,1 +1,0 @@
-SELECT * FROM {table_name} WHERE id = :instance_id

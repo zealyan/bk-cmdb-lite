@@ -1,1 +1,0 @@
-SELECT * FROM cc_ObjClassification WHERE bk_classification_id = :classification_id
