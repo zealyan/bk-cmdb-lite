@@ -14,7 +14,7 @@
 from flask import Blueprint, request, jsonify
 
 from app.service import host_transfer_service
-from app.utils.exceptions import APIException
+from app.utils.exceptions import APIException, CCErrorCode
 
 host_transfer_bp = Blueprint('host_transfer', __name__, url_prefix='')
 
@@ -162,3 +162,69 @@ def transfer_host_modules():
         raise APIException(str(e), 400)
     except Exception as e:
         raise APIException(f'主机转移失败: {str(e)}', 500)
+
+
+@host_transfer_bp.route('/modules/across/biz', methods=['POST'])
+def transfer_host_across_biz():
+    """
+    执行跨业务主机转移（源业务 A → 目标业务 B 的指定模块）
+
+    对应原项目: POST /hosts/modules/across/biz（TransferHostAcrossBusiness）
+    解除源业务下这些主机的全部模块绑定，再在目标业务指定模块建立绑定
+    （绑定记录 bk_biz_id 写为目标业务）。
+
+    Body (JSON):
+        src_bk_biz_id: 源业务ID（必填）
+        dst_bk_biz_id: 目标业务ID（必填，须与目标模块所属业务一致）
+        bk_host_id: 待转移主机ID列表（必填）
+        module_id: 目标业务下的目标模块ID列表（必填）
+        bk_supplier_account: 供应商账号，默认 '0'
+
+    Returns:
+        { result: true, code: 0, message: '转移成功', data: {...} }
+    """
+    data = request.get_json(silent=True) or {}
+    src_biz_id = data.get('src_bk_biz_id')
+    dst_biz_id = data.get('dst_bk_biz_id')
+    if not src_biz_id or not dst_biz_id:
+        raise APIException('缺少源/目标业务ID参数 (src_bk_biz_id / dst_bk_biz_id)',
+                           error_code=CCErrorCode.CCErrCommParamsInvalid)
+    try:
+        src_biz_id = int(src_biz_id)
+        dst_biz_id = int(dst_biz_id)
+    except (TypeError, ValueError):
+        raise APIException('src_bk_biz_id / dst_bk_biz_id 必须为整数',
+                           error_code=CCErrorCode.CCErrCommParamsInvalid)
+
+    raw_host_ids = data.get('bk_host_id') or []
+    raw_module_ids = data.get('module_id') or []
+    try:
+        host_ids = [int(x) for x in raw_host_ids]
+        module_ids = [int(x) for x in raw_module_ids]
+    except (TypeError, ValueError):
+        raise APIException('bk_host_id / module_id 必须为整数列表',
+                           error_code=CCErrorCode.CCErrCommParamsInvalid)
+    if not host_ids:
+        raise APIException('bk_host_id 不能为空',
+                           error_code=CCErrorCode.CCErrCommParamsInvalid)
+    if not module_ids:
+        raise APIException('module_id 不能为空',
+                           error_code=CCErrorCode.CCErrCommParamsInvalid)
+
+    supplier = data.get('bk_supplier_account') or '0'
+
+    try:
+        result = host_transfer_service.transfer_across_biz(
+            src_biz_id, dst_biz_id, host_ids, module_ids, supplier
+        )
+        return jsonify({
+            'result': True,
+            'code': 0,
+            'message': '转移成功',
+            'data': result
+        })
+    except ValueError as e:
+        raise APIException(str(e), error_code=CCErrorCode.CCErrCommParamsInvalid)
+    except Exception as e:
+        raise APIException(f'跨业务转移失败: {str(e)}',
+                           error_code=CCErrorCode.CCErrTopoInstCreateFailed)

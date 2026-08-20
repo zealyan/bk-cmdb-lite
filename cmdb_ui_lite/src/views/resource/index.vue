@@ -51,6 +51,7 @@
 import { mapState, mapGetters, mapActions } from 'vuex'
 import debounce from 'lodash.debounce'
 import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_COLLECTION } from '@/dictionary/menu-symbol'
+import { BUILTIN_MODELS } from '@/dictionary/model-constants'
 import InstanceCount from '@/components/instance-count/index.vue'
 import { modelAPI } from '@/api/client'
 
@@ -79,8 +80,13 @@ export default {
       const result = []
       this.classifications.forEach((classification) => {
         const models = classification.bk_objects.filter((model) => {
+          // 隐藏不可见模型（与原项目 resource-manage 一致）
+          if (model.bk_ishidden) return false
           // 隐藏已停用的模型（与原项目 resource-manage 一致）
           if (model.bk_ispaused) return false
+          // 集群/模块暂不允许在资源目录查看实例（与原项目 resource-manage 一致）
+          const isModuleOrSet = [BUILTIN_MODELS.SET, BUILTIN_MODELS.MODULE].includes(model.bk_obj_id)
+          if (isModuleOrSet) return false
           const isMatched = this.matchedModels ? this.matchedModels.includes(model.bk_obj_id) : true
           return isMatched
         })
@@ -230,10 +236,7 @@ export default {
         })
       } catch (error) {
         console.error('[ResourceIndex] 收藏操作失败:', error)
-        this.$bkMessage({
-          message: '操作失败，请重试',
-          theme: 'error'
-        })
+        this.$handleApiError(error)
       }
     }
   }

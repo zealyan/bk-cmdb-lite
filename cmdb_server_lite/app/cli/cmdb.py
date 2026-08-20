@@ -21,9 +21,10 @@ from typing import Optional
 
 from sqlalchemy.exc import OperationalError
 
-from app.definitions import get_sql_type, VALID_PROPERTY_TYPES
-from app.migrate.migrate import SYSTEM_PROPERTIES, convert_enum_option
-from app.utils.tools import generate_id, parse_json
+from app.definitions import get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES, model_name_property
+from app.migrate.migrate import (
+    SYSTEM_PROPERTIES, BUILTIN_TIME_PROPERTIES, convert_enum_option)
+from app.utils.tools import generate_id, parse_json, generate_group_id
 from app.cli.safety import (
     validate_identifier, quote_ident, quote_ident_raw, InvalidIdentifierError)
 from app.cli import db as dbmod
@@ -31,24 +32,14 @@ from app.cli.io_utils import (
     read_csv_rows, write_seed_csv, sha256_of, coerce_value, parse_bool,
     RejectStore, write_manifest, now_iso, profile_source,
 )
+from app.service.user_service import UserService
 
 # ---------------------------------------------------------------------------
-# 退出码（§9）
+# 退出码与 CliError 统一来自 app/cli/errors（单一来源，规避 -m 双模块导致的类分裂）
 # ---------------------------------------------------------------------------
-EXIT_OK = 0
-EXIT_GENERAL = 1
-EXIT_PARAM = 2
-EXIT_DEP = 3
-EXIT_EXISTS = 4
-EXIT_DB = 5
-
-
-class CliError(Exception):
-    """带退出码的结构化错误。"""
-
-    def __init__(self, code: int, msg: str, step: Optional[str] = None):
-        self.code, self.msg, self.step = code, msg, step
-        super().__init__(msg)
+from app.cli.errors import (  # noqa: E402,F401
+    CliError, EXIT_OK, EXIT_GENERAL, EXIT_PARAM, EXIT_DEP, EXIT_EXISTS, EXIT_DB,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -56,11 +47,14 @@ class CliError(Exception):
 # ---------------------------------------------------------------------------
 INSTANCE_TABLE_DDL = """CREATE TABLE IF NOT EXISTS {tbl} (
     _id TEXT,
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     bk_inst_id INTEGER NOT NULL,
     bk_inst_name VARCHAR NOT NULL,
     bk_supplier_account VARCHAR DEFAULT '0',
     bk_obj_id VARCHAR NOT NULL,
+    bk_biz_id INTEGER DEFAULT 0,
+    bk_parent_id INTEGER DEFAULT 0,
+    "default" INTEGER DEFAULT 0,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     bk_operate_time TIMESTAMP
@@ -68,7 +62,7 @@ INSTANCE_TABLE_DDL = """CREATE TABLE IF NOT EXISTS {tbl} (
 
 ASSOC_TABLE_DDL = """CREATE TABLE IF NOT EXISTS {tbl} (
     _id TEXT,
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     bk_obj_id VARCHAR NOT NULL,
     bk_inst_id INTEGER NOT NULL,
     bk_asst_obj_id VARCHAR NOT NULL,
@@ -99,17 +93,29 @@ ATTR_COLS = [
 ]
 
 # upsert 更新时排除的标识列（§5.8.2）
-UPDATE_EXCLUDE = {'id', 'bk_inst_id', 'bk_obj_id', '_id', 'bk_supplier_account', 'bk_inst_name'}
+# create_time 为内置只读属性：一经写入不可被后续导入覆盖（与 API
+# InstanceService.update_instance 的 system_fields_to_exclude 语义一致）。
+UPDATE_EXCLUDE = {'id', 'bk_inst_id', 'bk_obj_id', '_id', 'bk_supplier_account',
+                  'bk_inst_name', 'create_time'}
 
-# 上游已知分组 ID -> 标准显示名（与 app/migrate/migrate.py 的 EXTRA_GROUP_DEFS 保持一致）。
-# 分组 ID 一律小写：'default' 来自上游 NewGroupID(true)，'auto' 来自 mCommon.HostAutoFields。
-# --group-auto-create 建分组时命中则用标准名，未命中才退回用 ID 当显示名。
-KNOWN_GROUP_NAMES = {
-    'default': '基础信息',
-    'auto': '自动发现信息（需要安装agent）',
-    'role': '角色',
-    'proc_port': '监听信息',
-}
+# 内置时间属性（单一真相源：app/migrate/migrate.py 的 BUILTIN_TIME_PROPERTIES）：
+# CLI 写实例时由工具自动填充，用户在 CSV 里不给也不会缺失；
+# 属性定义本身由 migrate / model create 统一下发，不允许 attribute 命令改写。
+TIME_CREATE_FIELD = 'create_time'
+TIME_LAST_FIELD = 'last_time'
+BUILTIN_TIME_PROPERTY_IDS = {tp['bk_property_id'] for tp in BUILTIN_TIME_PROPERTIES}
+
+
+def _now_ts():
+    """当前时间戳，格式与 API 层 InstanceService 一致（YYYY-mm-dd HH:MM:SS）。"""
+    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+# 上游已知分组 ID -> 标准显示名。
+# 已从 app/definitions.py 统一导入（单一来源，与 migrate 的 EXTRA_GROUP_DEFS 对齐），
+# 此处不再重复定义，避免漂移。
+# --group-auto-create 建分组时：若用户仅给了 ID 列（未给 bk_group_name），命中则用标准名，
+# 未命中才退回用 ID 当显示名；若用户给了 bk_group_name，则以用户给的显示名为准。
+assert KNOWN_GROUP_NAMES, "KNOWN_GROUP_NAMES 必须已从 app.definitions 导入"
 
 
 # ---------------------------------------------------------------------------
@@ -177,13 +183,13 @@ def locate_header_row(rows, marker='bk_property_id'):
 # ---------------------------------------------------------------------------
 # 核心：分类
 # ---------------------------------------------------------------------------
-def create_classification_core(c, cid, cname, icon, ispre, on_dup, dry_run):
+def create_classification_core(c, cid, cname, icon, ispre, classification_index=0, on_dup='error', dry_run=False):
     if dry_run:
         existing = c.query_one(
             "SELECT 1 FROM cc_ObjClassification WHERE bk_classification_id=:cid",
             {"cid": cid})
         action = 'create' if not existing else ('overwrite' if on_dup != 'skip' else 'skip')
-        print(f"[dry-run] 分类 {cid}: {action}")
+        print(f"[dry-run] 分类 {cid}: {action} (classification_index={classification_index})")
         return {'action': action}
     # 依赖调用方事务（cmd_* / do_*_import 负责开启）
     existing = c.query_one(
@@ -196,17 +202,17 @@ def create_classification_core(c, cid, cname, icon, ispre, on_dup, dry_run):
             return {'action': 'skip'}
         c.exec(
             "UPDATE cc_ObjClassification SET bk_classification_name=:n, "
-            "bk_classification_icon=:i, ispre=:p WHERE bk_classification_id=:cid",
-            {"n": cname, "i": icon, "p": ispre, "cid": cid})
+            "bk_classification_icon=:i, ispre=:p, classification_index=:idx WHERE bk_classification_id=:cid",
+            {"n": cname, "i": icon, "p": ispre, "idx": classification_index, "cid": cid})
         return {'action': 'overwrite'}
     c.exec(
         "INSERT INTO cc_ObjClassification "
         "(id, bk_classification_id, bk_classification_name, bk_classification_icon, "
-        "ispre, bk_supplier_account) VALUES "
+        "ispre, classification_index, bk_supplier_account) VALUES "
         "(:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, "
-        ":ispre, '0')",
+        ":ispre, :idx, '0')",
         {"id": generate_id(), "bk_classification_id": cid, "bk_classification_name": cname,
-         "bk_classification_icon": icon, "ispre": ispre})
+         "bk_classification_icon": icon, "ispre": ispre, "idx": classification_index})
     return {'action': 'create'}
 
 
@@ -243,7 +249,8 @@ def create_model_core(c, o, dry_run):
     oid = o['bk_obj_id']
     validate_identifier(oid)
     if dry_run:
-        print(f"[dry-run] CREATE MODEL {oid} (group+4系统属性+2分表+唯一约束)")
+        print(f"[dry-run] CREATE MODEL {oid} "
+              f"(group+{len(SYSTEM_PROPERTIES)}系统属性+2分表+唯一约束)")
         return {'action': 'create'}
     warning = None
     # 依赖调用方事务（cmd_* / do_*_import 负责开启）
@@ -283,44 +290,532 @@ def create_model_core(c, o, dry_run):
          "obj_sort_number": o['obj_sort_number']})
     # 2) 默认分组（对齐上游 logics/model/object.go:147-154 创建自定义模型时的 default 分组：
     #    GroupID = NewGroupID(true) = "default"（小写ID）、IsDefault = true、GroupIndex = -1；
-    #    显示名上游硬编码英文 "Default"，此处取中文语境的标准名「基础信息」
-    #    （admin_server/common/definitions.go:22 BaseInfoName，亦为上游 UI 中文 i18n 值）
+    #    显示名上游硬编码英文 "Default"（通用/普通模型的标准默认分组名），
+    #    CLI 创建的是通用/普通模型，故此处用 "Default"（非内置模型的「基础信息」）。
     c.exec(
         "INSERT INTO cc_PropertyGroup "
         "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
         "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
         "bk_supplier_account) VALUES "
-        "(:_id, :id, :bk_obj_id, 'default', '基础信息', -1, true, false, true, 0, "
+        "(:_id, :id, :bk_obj_id, 'default', 'Default', -1, true, false, true, 0, "
         "'admin', 'admin', '0')",
         {"_id": f"{oid}.default", "id": generate_id(), "bk_obj_id": oid})
-    # 3) 4 个系统属性（逐行独立 generate_id，C2）
+    # 3) 系统属性（4 个标识属性 + create_time / last_time 两个内置时间属性；
+    #    逐行独立 generate_id，C2）
     for sp in SYSTEM_PROPERTIES:
         c.exec(
             "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
             + ", ".join(f":{col}" for col in SYS_ATTR_COLS) + ")",
             _sys_attr_params(oid, sp))
+    # 3.1) 主线模型额外注册 bk_parent_id 系统属性（isonly=true），
+    #      对齐上游 createDefaultAttrs 中「仅 mainline 才写入 bk_parent_id」的逻辑；
+    #      它是 (bk_parent_id, bk_inst_name) 复合唯一约束的键之一。
+    if o.get('mainline'):
+        c.exec(
+            "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
+            + ", ".join(f":{col}" for col in SYS_ATTR_COLS) + ")",
+            _sys_attr_params(oid, MAINLINE_PARENT_ATTR))
     # 4) 实例分表 + 关联分表
     c.exec(INSTANCE_TABLE_DDL.format(tbl=quote_ident_raw(dbmod.instance_table(oid))))
     c.exec(ASSOC_TABLE_DDL.format(tbl=quote_ident_raw(dbmod.assoc_table(oid))))
-    # 5) 默认唯一约束（C3，以 --unique-by 默认 bk_inst_name）
+    # 5) 默认唯一约束（C3）
+    #    - 主线模型：内置 (bk_parent_id, bk_inst_name) 复合唯一，对齐上游
+    #      CreateObject(isMainline=true) 由 createDefaultAttrs 写入的 IsOnly 属性组合；
+    #      保证「同一父节点下实例名唯一」，而非全模型全局唯一。
+    #    - 非主线模型：单一 bk_inst_name 唯一（保持原行为）。
     if o['with_tables'] and o['unique_by']:
-        key_attr = c.query_one(
-            "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
-            {"o": oid, "p": o['unique_by']})
-        if key_attr:
-            keys = json.dumps(
-                [{"key_kind": "property", "key_id": key_attr['id']}],
-                ensure_ascii=False)
-            c.exec(
-                "INSERT OR REPLACE INTO cc_ObjectUnique "
-                "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
-                "(:_id, :id, :bk_obj_id, :keys, 1, '0')",
-                {"_id": f"{oid}_{o['unique_by']}", "id": generate_id(),
-                 "bk_obj_id": oid, "keys": keys})
+        if o.get('mainline'):
+            pid_attr = c.query_one(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_parent_id'",
+                {"o": oid})
+            name_attr = c.query_one(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
+                {"o": oid, "p": o['unique_by']})
+            if pid_attr and name_attr:
+                keys = json.dumps(
+                    [{"key_kind": "property", "key_id": pid_attr['id']},
+                     {"key_kind": "property", "key_id": name_attr['id']}],
+                    ensure_ascii=False)
+                c.exec(
+                    "INSERT OR REPLACE INTO cc_ObjectUnique "
+                    "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+                    "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+                    {"_id": f"{oid}_name_unique", "id": generate_id(),
+                     "bk_obj_id": oid, "keys": keys})
+            else:
+                warning = ("主线模型缺少 bk_parent_id/bk_inst_name 属性，"
+                           "跳过复合唯一约束写入")
         else:
-            warning = (f"唯一约束键属性 '{o['unique_by']}' 不存在，"
-                       f"跳过 cc_ObjectUnique 写入（该模型实例导入将退为纯 INSERT）")
+            key_attr = c.query_one(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
+                {"o": oid, "p": o['unique_by']})
+            if key_attr:
+                keys = json.dumps(
+                    [{"key_kind": "property", "key_id": key_attr['id']}],
+                    ensure_ascii=False)
+                c.exec(
+                    "INSERT OR REPLACE INTO cc_ObjectUnique "
+                    "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+                    "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+                    {"_id": f"{oid}_name_unique", "id": generate_id(),
+                     "bk_obj_id": oid, "keys": keys})
+            else:
+                warning = (f"唯一约束键属性 '{o['unique_by']}' 不存在，"
+                           f"跳过 cc_ObjectUnique 写入（该模型实例导入将退为纯 INSERT）")
     return {'action': 'create', 'warning': warning}
+
+
+# ---------------------------------------------------------------------------
+# 核心：自定义业务拓扑模型（主线 mainline 关联）
+# 对齐上游 CreateMainlineAssociation：在指定父模型下注册子模型进主线
+# （cc_ObjAsst.bk_asst_id='bk_mainline'），并把旧子重挂到新模型，
+# 可选为父下每个实例批量生成一级子实例（对齐 SetMainlineInstAssociation 回填 bk_parent_id）。
+# ---------------------------------------------------------------------------
+
+def ensure_mainline_unique_core(c, obj_id):
+    """对齐上游 CreateObject(isMainline=true) 的内置初始化（幂等）：
+
+    为自定义主线模型注册 bk_parent_id 系统属性（isonly=true），并保证其唯一约束为
+    复合键（同父节点下实例名唯一）。名称「键」按模型真实名称字段解析：
+    - 自定义主线（有 bk_inst_name，如 appsys）→ (bk_parent_id, bk_inst_name)；
+    - 内置主线 set/module → (bk_parent_id, bk_set_name / bk_module_name)；
+    - biz（无 bk_parent_id）→ 单键 (bk_biz_name) 全局唯一。
+
+    - bk_parent_id 属性缺失则补建；
+    - 清理任何旧规则（含仅 bk_inst_name 单键），确保最终只有一条期望唯一约束；
+    - 供 CLI mainline add（覆盖已存在模型）与一次性修复复用。
+    """
+    # 1) 注册 bk_parent_id 属性（仅 mainline 有）
+    if not c.query_one(
+            "SELECT 1 FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_parent_id'",
+            {"o": obj_id}):
+        c.exec(
+            "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
+            + ", ".join(f":{col}" for col in SYS_ATTR_COLS) + ")",
+            _sys_attr_params(obj_id, MAINLINE_PARENT_ATTR))
+
+    pid_attr = c.query_one(
+        "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_parent_id'",
+        {"o": obj_id})
+
+    # 解析名称字段：自定义主线用 bk_inst_name，内置 set/module/biz 用专属名称字段
+    inst_name = c.query_one(
+        "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_inst_name'",
+        {"o": obj_id})
+    name_field = model_name_property(obj_id, bool(inst_name))
+    if not name_field:
+        return  # 无可用名称字段，跳过
+    name_attr = c.query_one(
+        "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
+        {"o": obj_id, "p": name_field})
+    if not name_attr:
+        return  # 名称属性缺失，跳过
+
+    # 复合键（有 bk_parent_id）或单键（biz 无父）
+    expect = []
+    if pid_attr:
+        expect.append({"key_kind": "property", "key_id": pid_attr['id']})
+    expect.append({"key_kind": "property", "key_id": name_attr['id']})
+    expect_json = json.dumps(expect, ensure_ascii=False)
+
+    # 2) 清理所有旧规则（含仅 bk_inst_name 单键），仅保留期望唯一约束
+    existing = c.query_all(
+        "SELECT id, keys FROM cc_ObjectUnique WHERE bk_obj_id=:o AND bk_supplier_account='0'",
+        {"o": obj_id})
+    has_expect = False
+    for r in existing:
+        try:
+            parsed = json.loads(r['keys']) if r.get('keys') else []
+        except (json.JSONDecodeError, TypeError):
+            parsed = []
+        if parsed == expect:
+            has_expect = True
+        else:
+            c.exec("DELETE FROM cc_ObjectUnique WHERE id=:id", {"id": r['id']})
+
+    if not has_expect:
+        c.exec(
+            "INSERT INTO cc_ObjectUnique "
+            "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+            "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+            {"_id": f"{obj_id}_name_unique", "id": generate_id(),
+             "bk_obj_id": obj_id, "keys": expect_json})
+    return {'action': 'ensure_unique'}
+MAINLINE_ASST = 'bk_mainline'
+MAINLINE_MODEL_BIZ = 'biz'
+MAINLINE_MODEL_SET = 'set'
+MAINLINE_MODEL_MODULE = 'module'
+
+# 主线自动创建的实例名称需剔除的特殊字符
+# 对齐上游 inst/mainline_association.go: mainlineSpecialCharacterRegexp = [#/,><|]
+MAINLINE_SPECIAL_CHAR_RE = __import__('re').compile(r'[#/,><|]')
+
+# 主线自定义模型额外注册的系统属性模板（仅 mainline 模型创建时写入）。
+# 对齐上游 logics/model/object.go createDefaultAttrs：仅当 isMainline=true 时，
+# 除 bk_inst_name 外再写入 bk_parent_id（IsOnly:true, IsSystem:true）。
+# 该属性是 (bk_parent_id, bk_inst_name) 复合唯一约束的键之一，用于保证
+# 「同一父节点下实例名唯一」，故 isonly=true；bk_issystem=true 使其不出现在前端。
+MAINLINE_PARENT_ATTR = {
+    "bk_property_id": "bk_parent_id",
+    "bk_property_name": "父节点ID",
+    "bk_property_type": "int",
+    "isrequired": True,
+    "isreadonly": True,
+    "isonly": True,
+    "editable": False,
+    "bk_ispassword": False,
+    "bk_ishidden": False,
+    "bk_isapi": False,
+    "bk_issystem": True,
+    "ispre": True,
+    "bk_property_index": -1,
+    "bk_property_group": "default",
+    "placeholder": "",
+    "unit": "",
+    "option": None,
+}
+
+
+def add_mainline_core(c, obj_id, parent_obj_id, opts, dry_run):
+    validate_identifier(obj_id)
+    validate_identifier(parent_obj_id)
+    if dry_run:
+        print(f"[dry-run] MAINLINE ADD {obj_id} under {parent_obj_id} "
+              f"(spawn={opts.get('spawn', False)})")
+        return {'action': 'create'}
+
+    # 父模型必须存在
+    if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": parent_obj_id}):
+        raise CliError(EXIT_DEP, f"父模型不存在: {parent_obj_id}", "check_parent")
+
+    # 子模型不存在时可按 --obj-name 自动创建（含实例表 + 系统属性）
+    if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": obj_id}):
+        if opts.get('obj_name'):
+            cls = opts.get('classification') or 'bk_biz_topo'
+            # 分类缺失时一并自动创建，保证单步可用（不要求先建分类）
+            if not c.query_one(
+                    "SELECT 1 FROM cc_ObjClassification WHERE bk_classification_id=:cid",
+                    {"cid": cls}):
+                create_classification_core(
+                    c, cls, opts.get('cls_name') or cls,
+                    opts.get('icon') or 'icon-cc-default', False, 0, 'skip', False)
+            create_model_core(c, {
+                'bk_obj_id': obj_id,
+                'bk_obj_name': opts['obj_name'],
+                'bk_classification_id': cls,
+                'bk_obj_icon': opts.get('icon') or 'icon-cc-default',
+                'ispre': False,
+                'bk_ishidden': False,
+                'bk_ispaused': False,
+                'obj_sort_number': opts.get('sort', 0),
+                'with_system_props': True,
+                'with_tables': True,
+                'unique_by': 'bk_inst_name',
+                'mainline': True,
+                'on_dup': 'skip',
+            }, dry_run)
+        else:
+            raise CliError(EXIT_DEP,
+                           f"模型不存在: {obj_id}（可加 --obj-name 自动创建）",
+                           "check_model")
+
+    # 对齐上游 CreateObject(isMainline=true) 的内置初始化：保证该主线模型具备
+    # (bk_parent_id, bk_inst_name) 复合唯一约束（幂等，覆盖模型已存在但旧逻辑未建约束的情况）。
+    ensure_mainline_unique_core(c, obj_id)
+
+    # 已在主线则拒绝重复注册
+    existing = c.query_one(
+        "SELECT target_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND bk_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+    if existing:
+        raise CliError(EXIT_EXISTS,
+                       f"模型 {obj_id} 已在主线（父={existing['target_obj_id']}）",
+                       "dup_mainline")
+
+    # 父的当前子模型（用于重挂）
+    child = c.query_one(
+        "SELECT bk_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND target_obj_id=:p",
+        {"aid": MAINLINE_ASST, "p": parent_obj_id})
+    child_id = child['bk_obj_id'] if child else None
+
+    parent_name = (c.query_one(
+        "SELECT bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o",
+        {"o": parent_obj_id}) or {}).get('bk_obj_name', parent_obj_id)
+
+    c.exec(
+        "INSERT INTO cc_ObjAsst "
+        "(id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id, "
+        "bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete, "
+        "creator, modifier, bk_supplier_account) "
+        "VALUES (:id, :bk_obj_id, :target_obj_id, :target_obj_name, :aid, "
+        ":bk_obj_asst_id, :bk_obj_asst_name, :mapping, 'none', "
+        "'admin', 'admin', '0')",
+        {"id": generate_id(), "bk_obj_id": obj_id, "target_obj_id": parent_obj_id,
+         "target_obj_name": parent_name, "aid": MAINLINE_ASST,
+         "bk_obj_asst_id": f"{obj_id}_mainline_{parent_obj_id}",
+         "bk_obj_asst_name": f"属于{parent_name}", "mapping": "1:n"})
+
+    # 重挂：旧子 -> 新模型（cc_ObjAsst 模型关联层）
+    # 注意：必须同步更新 target_obj_name / bk_obj_asst_id / bk_obj_asst_name，
+    # 否则出现「target_obj_id 已是新父、但关联ID/名称仍是旧父」的数据不一致
+    # （此前只 UPDATE target_obj_id，导致 set 记录 target=subsys 却叫 set_mainline_biz）。
+    if child_id:
+        child_name = (c.query_one(
+            "SELECT bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o",
+            {"o": child_id}) or {}).get('bk_obj_name', child_id)
+        new_parent_name = (c.query_one(
+            "SELECT bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o",
+            {"o": obj_id}) or {}).get('bk_obj_name', obj_id)
+        c.exec(
+            "UPDATE cc_ObjAsst SET target_obj_id=:new, target_obj_name=:tname, "
+            "bk_obj_asst_id=:aid, bk_obj_asst_name=:aname "
+            "WHERE bk_asst_id=:aid0 AND bk_obj_id=:child AND target_obj_id=:old",
+            {"new": obj_id, "tname": new_parent_name,
+             "aid": f"{child_id}_mainline_{obj_id}",
+             "aname": f"属于{new_parent_name}",
+             "child": child_id, "old": parent_obj_id,
+             "aid0": MAINLINE_ASST})
+
+    # 上游步骤8：实例层重挂（建新模型实例 + 改写旧子实例 bk_parent_id）。
+    # 仅当插入在「已有父子」之间（child_id 存在）时执行；末端新增（无旧子）则跳过。
+    reparented_instances = 0
+    if child_id:
+        reparented_instances = _reparent_mainline_instances(
+            c, parent_obj_id, obj_id, child_id, opts.get('obj_name') or obj_id)
+
+    # 可选：--spawn 为每个父实例建一层子实例。
+    # 插入层时步骤8已建好实例，--spawn 仅对「末端新增（无旧子）」场景生效。
+    spawned = 0
+    if opts.get('spawn') and not child_id:
+        spawned = _spawn_mainline_instances(c, parent_obj_id, obj_id)
+
+    return {'action': 'create', 'reparented': child_id,
+            'reparented_instances': reparented_instances, 'spawned': spawned}
+
+
+def _spawn_mainline_instances(c, parent_obj_id, obj_id):
+    """为父模型每个实例在其下生成一级子实例（对齐上游 SetMainlineInstAssociation）。
+
+    注意：必须在调用方事务连接 c 上直接插入，而非 InstanceService.create_instance
+    （后者使用独立连接，既看不到本事务内新建的实例表 DDL，又会在异常时回滚整段
+    事务）。此处复用 c.exec，保证与主线关联注册原子可见。
+    """
+    from app.service.instance_service import InstanceService
+    from app.utils.tools import generate_id
+    import time
+
+    parent_table = InstanceService._get_table_name(parent_obj_id)
+    parent_id_field = InstanceService._get_id_field(parent_obj_id)
+    child_table = InstanceService._get_table_name(obj_id)
+    child_id_field = InstanceService._get_id_field(obj_id)
+
+    rows = c.query_all(
+        f'SELECT "{parent_id_field}" AS pid, bk_biz_id FROM "{parent_table}" '
+        f'WHERE bk_supplier_account=:sup',
+        {"sup": dbmod.SUPPLIER})
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    n = 0
+    seen = set()
+    for r in rows:
+        pid = r['pid']
+        biz = r.get('bk_biz_id') or 0
+        # 对齐上游 SetMainlineInstAssociation：自动生成的实例名剔除主线特殊字符
+        name = MAINLINE_SPECIAL_CHAR_RE.sub('', f"{obj_id}_{pid}")
+        if name in seen:
+            continue
+        seen.add(name)
+        c.exec(
+            f'INSERT INTO "{child_table}" '
+            f'({child_id_field}, bk_inst_name, bk_supplier_account, bk_obj_id, '
+            f'bk_biz_id, bk_parent_id, "default", create_time, last_time) '
+            f'VALUES (:iid, :name, :sup, :oid, :biz, :pid, 0, :ct, :lt)',
+            {"iid": generate_id(), "name": name, "sup": dbmod.SUPPLIER, "oid": obj_id,
+             "biz": biz, "pid": pid, "ct": now, "lt": now})
+        n += 1
+    return n
+
+
+def _reparent_mainline_instances(c, parent_obj_id, new_obj_id, old_child_obj_id, new_obj_name):
+    """上游 CreateMainlineAssociation 步骤8（SetMainlineInstAssociation）：
+
+    把新模型插入主线（parent 与 old_child 之间）后，为**每个已有父实例**建一层新模型实例
+    （bk_parent_id = 父实例ID），并把**旧子实例**的 bk_parent_id 从「父实例ID」改写为
+    「新模型实例ID」，使已有 set/module/host 数据原样保留、仅向上多挂一层。
+
+    这是 mainline add 此前漏做的环节——只改了 cc_ObjAsst 模型关联、未重挂实例，导致新模型
+    在拓扑树中与旧子实例成为兄弟（孤儿）。补齐后拓扑树恢复 parent -> new -> old_child。
+
+    幂等：已存在 bk_parent_id=父实例ID 的新模型实例则复用，不重复建。
+    返回：被重挂的旧子实例总数。
+    """
+    from app.service.instance_service import InstanceService
+    from app.service.topo_service import model_name_field
+
+    sup = dbmod.SUPPLIER
+    parent_table = InstanceService._get_table_name(parent_obj_id)
+    parent_id_field = InstanceService._get_id_field(parent_obj_id)
+    parent_name_field = model_name_field(parent_obj_id)
+    new_table = InstanceService._get_table_name(new_obj_id)
+    new_id_field = InstanceService._get_id_field(new_obj_id)
+    old_table = InstanceService._get_table_name(old_child_obj_id)
+
+    parents = c.query_all(
+        f'SELECT "{parent_id_field}" AS pid, bk_biz_id, "{parent_name_field}" AS pname '
+        f'FROM "{parent_table}" WHERE bk_supplier_account=:sup',
+        {"sup": sup})
+    if not parents:
+        return 0
+
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    reparented = 0
+    for p in parents:
+        pid = p['pid']
+        biz = p.get('bk_biz_id') or 0
+        pname = (p.get('pname') or '').strip() or str(pid)
+
+        # 取或建新模型实例（bk_parent_id = 父实例ID）
+        exist = c.query_one(
+            f'SELECT "{new_id_field}" FROM "{new_table}" '
+            f'WHERE bk_parent_id=:pid AND bk_supplier_account=:sup',
+            {"pid": pid, "sup": sup})
+        if exist:
+            nid = exist[new_id_field]
+        else:
+            nid = generate_id()
+            # 对齐上游 SetMainlineInstAssociation：自动生成的实例名剔除主线特殊字符
+            raw_name = f"{new_obj_name}_{pname}" if new_obj_name else f"{new_obj_id}_{pname}"
+            name = MAINLINE_SPECIAL_CHAR_RE.sub('', raw_name)
+            c.exec(
+                f'INSERT INTO "{new_table}" '
+                f'({new_id_field}, bk_inst_name, bk_supplier_account, bk_obj_id, '
+                f'bk_biz_id, bk_parent_id, "default", create_time, last_time) '
+                f'VALUES (:iid, :name, :sup, :oid, :biz, :pid, 0, :ct, :lt)',
+                {"iid": nid, "name": name, "sup": sup, "oid": new_obj_id,
+                 "biz": biz, "pid": pid, "ct": now, "lt": now})
+
+        # 对齐上游 getMainlineChildInst：旧子为 set 时排除空闲机池（default=1），
+        # 空闲机池(bk_parent_id=biz 的 default=1 set) 永远留在业务下，不随层级重挂。
+        extra_cond = ''
+        if old_child_obj_id == MAINLINE_MODEL_SET:
+            extra_cond = ' AND "default" != 1'
+        # 重挂旧子实例：bk_parent_id 由 pid -> nid（同业务内，仅普通实例）
+        before = c.query_one(
+            f'SELECT COUNT(*) AS c FROM "{old_table}" '
+            f'WHERE bk_parent_id=:pid AND bk_biz_id=:biz AND bk_supplier_account=:sup{extra_cond}',
+            {"pid": pid, "biz": biz, "sup": sup})
+        c.exec(
+            f'UPDATE "{old_table}" SET bk_parent_id=:nid '
+            f'WHERE bk_parent_id=:pid AND bk_biz_id=:biz AND bk_supplier_account=:sup{extra_cond}',
+            {"nid": nid, "pid": pid, "biz": biz, "sup": sup})
+        reparented += (before['c'] if before else 0)
+    return reparented
+
+
+def show_mainline_core(c, supplier='0'):
+    from app.service.topo_service import get_mainline_model_top
+    root = get_mainline_model_top(supplier)
+    chain = root.leftest_object_id_list()
+    rows = []
+    for i, oid in enumerate(chain):
+        rows.append({'level': i, 'bk_obj_id': oid})
+    return {'chain': chain, 'levels': rows}
+
+
+def remove_mainline_core(c, obj_id, delete_instances, dry_run):
+    validate_identifier(obj_id)
+    if dry_run:
+        print(f"[dry-run] MAINLINE REMOVE {obj_id} (delete_instances={delete_instances})")
+        return {'action': 'delete'}
+
+    row = c.query_one(
+        "SELECT target_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND bk_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+    if not row:
+        raise CliError(EXIT_PARAM, f"模型 {obj_id} 不在主线", "not_mainline")
+    parent = row['target_obj_id']
+
+    child = c.query_one(
+        "SELECT bk_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND target_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+    child_id = child['bk_obj_id'] if child else None
+
+    # —— 实例级重挂（先于删除本层级实例）——
+    # 每个子模型实例当前 bk_parent_id 指向某「本层级实例」，需改为该本层级实例的
+    # bk_parent_id（即父层级实例），保持实例树在摘除后仍然连续。
+    # 仅处理真正挂在「本层级实例」下的子实例（bk_parent_id IN 本层级主键集合），
+    # 避免误改历史遗留的子实例（其 bk_parent_id 直接指向更上层）。
+    if child_id:
+        from app.service.instance_service import InstanceService
+        child_tbl = InstanceService._get_table_name(child_id)
+        child_idf = InstanceService._get_id_field(child_id)
+        obj_tbl = InstanceService._get_table_name(obj_id)
+        obj_idf = InstanceService._get_id_field(obj_id)
+
+        # —— 重名预检（对齐上游 ResetMainlineInstAssociation.checkInstNameRepeat）——
+        # 子实例上提（bk_parent_id 改为本层级实例的父）后，同一目标父下不得互相重名，
+        # 否则违反 (bk_parent_id, bk_inst_name) 复合唯一约束；有冲突则拒绝删除。
+        obj_insts = c.query_all(
+            f'SELECT "{obj_idf}" AS oid, bk_parent_id FROM "{obj_tbl}" '
+            f'WHERE bk_supplier_account=:sup', {"sup": dbmod.SUPPLIER})
+        parent_of = {r['oid']: r['bk_parent_id'] for r in obj_insts}
+        child_insts = c.query_all(
+            f'SELECT "{child_idf}" AS cid, bk_inst_name, bk_parent_id FROM "{child_tbl}" '
+            f'WHERE bk_supplier_account=:sup AND bk_parent_id IN ('
+            f'SELECT "{obj_idf}" FROM "{obj_tbl}" WHERE bk_supplier_account=:sup)',
+            {"sup": dbmod.SUPPLIER})
+        name_by_target: dict = {}
+        for ch in child_insts:
+            target = parent_of.get(ch['bk_parent_id'])
+            if target is None:
+                continue
+            bucket = name_by_target.setdefault(target, set())
+            if ch['bk_inst_name'] in bucket:
+                raise CliError(
+                    EXIT_EXISTS,
+                    f"删除主线模型 {obj_id} 后，其子实例上提到同一父节点下将重名: "
+                    f"{ch['bk_inst_name']}（对齐上游 checkInstNameRepeat）",
+                    "name_repeat")
+            bucket.add(ch['bk_inst_name'])
+
+        c.exec(
+            f'UPDATE "{child_tbl}" SET bk_parent_id = ('
+            f'SELECT o.bk_parent_id FROM "{obj_tbl}" o '
+            f'WHERE o."{obj_idf}" = "{child_tbl}".bk_parent_id '
+            f"AND o.bk_supplier_account = :sup) "
+            f'WHERE bk_supplier_account = :sup '
+            f'AND bk_parent_id IN ('
+            f'SELECT "{obj_idf}" FROM "{obj_tbl}" WHERE bk_supplier_account = :sup)',
+            {"sup": dbmod.SUPPLIER})
+        # 子为 module 时，bk_set_id 同步为新的父（set）实例
+        if child_id == MAINLINE_MODEL_MODULE:
+            c.exec(
+                f'UPDATE "{child_tbl}" SET bk_set_id = bk_parent_id '
+                f'WHERE bk_supplier_account = :sup',
+                {"sup": dbmod.SUPPLIER})
+
+    # —— 模型级重挂：把旧子模型重新挂到本层级的父模型，保持主线连续 ——
+    if child_id:
+        c.exec(
+            "UPDATE cc_ObjAsst SET target_obj_id=:new "
+            "WHERE bk_asst_id=:aid AND bk_obj_id=:child",
+            {"new": parent, "child": child_id, "aid": MAINLINE_ASST})
+
+    c.exec(
+        "DELETE FROM cc_ObjAsst WHERE bk_asst_id=:aid AND bk_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+
+    # 删除该层级全部实例（必须在子级重挂之后，因重挂依赖本层级实例的 bk_parent_id）
+    if delete_instances:
+        from app.service.instance_service import InstanceService
+        tbl = InstanceService._get_table_name(obj_id)
+        c.exec(f'DELETE FROM "{tbl}" WHERE bk_supplier_account=:sup', {"sup": dbmod.SUPPLIER})
+
+    return {'action': 'delete', 'reparented': child_id,
+            'deleted_instances': delete_instances}
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +835,14 @@ def _normalize_option(ptype, option_raw):
 def add_attribute_core(c, oid, p, dry_run, on_dup='error'):
     validate_identifier(oid)
     validate_identifier(p['bk_property_id'])
+    # 内置时间属性由 migrate / model create 统一下发（ispre + 只读），
+    # 禁止经 attribute create/import 重定义，避免把系统维护字段改成可编辑业务字段。
+    if p['bk_property_id'] in BUILTIN_TIME_PROPERTY_IDS:
+        raise CliError(
+            EXIT_PARAM,
+            f"{p['bk_property_id']} 是内置时间属性（系统自动维护），不支持通过 "
+            f"attribute 命令创建或覆盖",
+            "builtin_attr")
     if dry_run:
         print(f"[dry-run] ADD ATTR {oid}.{p['bk_property_id']} + ALTER TABLE")
         return {'action': 'create'}
@@ -406,8 +909,11 @@ def add_attribute_core(c, oid, p, dry_run, on_dup='error'):
         + ", ".join(f":{col}" for col in ATTR_COLS) + ")",
         params)
     # ALTER 实例表加列（M5：先探测已存在列则跳过）
+    # 注意：必须用当前连接 c 查询列，禁止调用 get_column_names()（其内部 inspect(_engine())
+    # 会另开一个连接/事务；在 SQLite StaticPool 下与当前写事务共享同一底层连接，
+    # 会冲掉未提交的 INSERT，导致属性元数据丢失、仅实例表列生效）。
     tbl = dbmod.instance_table(oid)
-    cols = [r['name'] for r in c.query_all(f"PRAGMA table_info({quote_ident_raw(tbl)})")]
+    cols = [row['name'] for row in c.query_all(f"PRAGMA table_info({quote_ident_raw(tbl)})")]
     if p['bk_property_id'] not in cols:
         c.exec(
             f"ALTER TABLE {quote_ident_raw(tbl)} ADD COLUMN "
@@ -435,6 +941,7 @@ def do_classification_import(c, csv_path, opts, dry_run, skip_empty=False):
         'bk_classification_name': ['bk_classification_name', '分类名称'],
         'bk_classification_icon': ['bk_classification_icon', '图标'],
         'ispre': ['ispre', '是否预置'],
+        'classification_index': ['classification_index', 'index', '排序', '排序序号', 'sort_index', '索引'],
     }, required=['bk_classification_id', 'bk_classification_name'])
     added = skipped = overwritten = failed = 0
     on_dup = opts.get('on_dup', 'overwrite')
@@ -456,7 +963,14 @@ def do_classification_import(c, csv_path, opts, dry_run, skip_empty=False):
                 ispre = False
                 if 'ispre' in idx and idx['ispre'] < len(row) and row[idx['ispre']].strip():
                     ispre = parse_bool(row[idx['ispre']])
-                r = create_classification_core(c, cid, cname, icon, ispre, on_dup, dry_run)
+                # classification_index 排序字段：缺列/空值/非法值统一回退 0（与对象 obj_sort_number 语义一致）
+                classification_index = 0
+                if 'classification_index' in idx and idx['classification_index'] < len(row) and row[idx['classification_index']].strip():
+                    try:
+                        classification_index = int(row[idx['classification_index']])
+                    except ValueError:
+                        classification_index = 0
+                r = create_classification_core(c, cid, cname, icon, ispre, classification_index, on_dup, dry_run)
                 if r['action'] == 'create':
                     added += 1
                 elif r['action'] == 'overwrite':
@@ -542,6 +1056,85 @@ def do_model_import(c, csv_path, opts, dry_run, skip_empty=False):
             'failed': failed, 'human': f"模型导入：{summarize_import(locals())}"}
 
 
+def resolve_or_create_group(c, oid, grp_id, grp_name, auto_create, name_cache):
+    """解析属性归属的分组（显示名优先；bk_group_id 由系统自动生成）。
+
+    对齐上游 bk-cmdb 语义（attribute.go:1699-1718）：分组 ID 与显示名是两个独立概念，
+    且分组 ID（bk_group_id）由系统随机生成（generate_group_id），**用户无需也不会输入 ID**。
+    用户只需给出显示名（bk_group_name，支持中文/英文），系统按名查/建分组，
+    并在查不到且允许时自动建组（随机 ID），且按显示名去重复用。
+
+    解析优先级（以显示名为唯一用户态输入）：
+    1. grp_name 已存在（DB 或本轮已建，见 name_cache）-> 复用其 bk_group_id；
+    2. grp_name 不存在且 auto_create -> generate_group_id() 生成随机 ID，按 grp_name 建组；
+    3. grp_name 为空时的**遗留兼容**：仅当显式给出 grp_id（旧 CSV 仅有 ID 列）且该 ID
+       能定位到已有分组则复用；否则 auto_create 时按该 ID 建组（须过 C1 白名单）。
+       此分支为兼容旧数据，新流程不应再依赖——新流程只用 bk_group_name。
+    4. 都没有 -> 'default'（默认分组：内置模型为「基础信息」，通用模型为「Default」）。
+
+    :param c: 数据库连接（事务内）
+    :param oid: 模型 ID
+    :param grp_id: 遗留分组 ID 列（bk_property_group，可空；新流程无需提供）
+    :param grp_name: 分组显示名（推荐输入；支持中文/英文）
+    :param auto_create: 是否允许按显示名自动建组（--group-auto-create）
+    :param name_cache: dict，本轮已按显示名建/查到的 {显示名: bk_group_id}，跨行复用
+    :returns: 最终写入属性 bk_property_group 的分组 ID
+    """
+    grp_id = (grp_id or '').strip()
+    grp_name = (grp_name or '').strip()
+    name_cache = name_cache if isinstance(name_cache, dict) else {}
+
+    # 1) 显示名优先：按名复用（已存在或本轮已建）
+    if grp_name:
+        if grp_name in name_cache:
+            return name_cache[grp_name]
+        row = c.query_one(
+            "SELECT bk_group_id FROM cc_PropertyGroup WHERE bk_obj_id=:o AND bk_group_name=:n",
+            {"o": oid, "n": grp_name})
+        if row:
+            name_cache[grp_name] = row['bk_group_id']
+            return row['bk_group_id']
+        # 2) 自动建组：ID 由系统随机生成，显示名即用户输入（支持中文/英文）
+        if auto_create:
+            new_id = generate_group_id()  # 随机全局唯一串，对齐上游 xid.New()
+            c.exec(
+                "INSERT INTO cc_PropertyGroup "
+                "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+                "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
+                "bk_supplier_account) VALUES "
+                "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+                "false, false, true, 0, 'admin', 'admin', '0')",
+                {"_id": f"{oid}.{new_id}", "id": generate_id(), "bk_obj_id": oid,
+                 "bk_group_id": new_id, "bk_group_name": grp_name,
+                 "bk_group_index": 99})
+            name_cache[grp_name] = new_id
+            return new_id
+
+    # 3) 遗留兼容：无显示名但显式给了旧 ID 列（不推荐，仅兼容旧 CSV）
+    if grp_id:
+        row = c.query_one(
+            "SELECT bk_group_id FROM cc_PropertyGroup WHERE bk_obj_id=:o AND bk_group_id=:g",
+            {"o": oid, "g": grp_id})
+        if row:
+            return row['bk_group_id']
+        if auto_create:
+            validate_identifier(grp_id)  # 仅遗留 ID 路径才校验 C1 白名单
+            c.exec(
+                "INSERT INTO cc_PropertyGroup "
+                "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+                "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
+                "bk_supplier_account) VALUES "
+                "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+                "false, false, true, 0, 'admin', 'admin', '0')",
+                {"_id": f"{oid}.{grp_id}", "id": generate_id(), "bk_obj_id": oid,
+                 "bk_group_id": grp_id, "bk_group_name": KNOWN_GROUP_NAMES.get(grp_id, grp_id),
+                 "bk_group_index": 99})
+            return grp_id
+
+    # 4) 兜底
+    return 'default'
+
+
 def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
     oid = opts['bk_obj_id']
     validate_identifier(oid)
@@ -575,6 +1168,7 @@ def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
             raise CliError(EXIT_PARAM, f"属性表头缺少必填列: {missing}", "header")
         added = skipped = overwritten = failed = desc_dropped = 0
         on_dup = opts.get('on_dup', 'overwrite')
+        name_cache = {}  # 本轮按显示名去重复用分组 ID（镜像上游 grpNameIDMap）
         for i, row in enumerate(data, start=hidx + 2):
             def cell(f):
                 ci = colpos.get(f)
@@ -590,29 +1184,12 @@ def do_attribute_import(c, csv_path, opts, dry_run, skip_empty=False):
             try:
                 if ptype not in VALID_PROPERTY_TYPES:
                     raise CliError(EXIT_PARAM, f"非法 bk_property_type: {ptype}", "type")
-                # 分组解析（D 列按分组名/ID 解析）
-                grp = cell('bk_property_group') or 'default'
-                grp_row = c.query_one(
-                    "SELECT bk_group_id FROM cc_PropertyGroup WHERE bk_obj_id=:o "
-                    "AND (bk_group_id=:g OR bk_group_name=:g)",
-                    {"o": oid, "g": grp})
-                if grp_row:
-                    bk_group_id = grp_row['bk_group_id']
-                elif opts.get('group_auto_create'):
-                    validate_identifier(grp)
-                    c.exec(
-                        "INSERT INTO cc_PropertyGroup "
-                        "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
-                        "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
-                        "bk_supplier_account) VALUES "
-                        "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, 0, false, false, "
-                        "true, 0, 'admin', 'admin', '0')",
-                        {"_id": f"{oid}.{grp}", "id": generate_id(), "bk_obj_id": oid,
-                         "bk_group_id": grp,
-                         "bk_group_name": KNOWN_GROUP_NAMES.get(grp, grp)})
-                    bk_group_id = grp
-                else:
-                    bk_group_id = 'default'
+                # 分组解析：scaffold 生成的属性表头仅含 bk_property_group_name（显示名，可空）；
+                # 旧 CSV 若仍带 bk_property_group（分组 ID 列）也会被兼容读取（缺失列返回空）。
+                # --group-auto-create 时按显示名去重自动建组，并生成随机 bk_group_id。
+                bk_group_id = resolve_or_create_group(
+                    c, oid, cell('bk_property_group'), cell('bk_property_group_name'),
+                    opts.get('group_auto_create'), name_cache)
                 # option 归一
                 option_raw = cell('option')
                 option_json = _normalize_option(ptype, option_raw) if option_raw else None
@@ -766,6 +1343,13 @@ def do_instance_import(c, csv_path, opts, dry_run, skip_empty=False):
             if col in ('bk_inst_name', 'bk_inst_id'):
                 continue
             write[col] = v
+        # 内置时间字段：CSV 显式给了非空值则尊重（数据迁移场景保留原始录入时间），
+        # 否则由 CLI 自动填当前时间；最后修改时间在新建时与创建时间对齐。
+        now = _now_ts()
+        if not write.get(TIME_CREATE_FIELD):
+            write[TIME_CREATE_FIELD] = now
+        if not write.get(TIME_LAST_FIELD):
+            write[TIME_LAST_FIELD] = write[TIME_CREATE_FIELD]
         return write
 
     def do_row(values):
@@ -779,8 +1363,13 @@ def do_instance_import(c, csv_path, opts, dry_run, skip_empty=False):
             if hit:
                 set_cols = [col for col in values if col not in UPDATE_EXCLUDE]
                 if set_cols:
-                    set_clause = ", ".join(f"{quote_ident(col)}=:{col}" for col in set_cols)
-                    up = {col: values[col] for col in set_cols}
+                    # 命中更新即为一次修改：强制刷新最后修改时间（忽略 CSV 传入值），
+                    # 与 API 层 update_instance 行为保持一致；create_time 已在
+                    # UPDATE_EXCLUDE 中被挡掉，导入不会篡改创建时间。
+                    up = {col: values[col] for col in set_cols
+                          if col != TIME_LAST_FIELD}
+                    up[TIME_LAST_FIELD] = _now_ts()
+                    set_clause = ", ".join(f"{quote_ident(col)}=:{col}" for col in up)
                     c.exec(f"UPDATE {quote_ident_raw(tbl)} SET {set_clause} "
                            f"WHERE {placeholders}", {**up, **params})
                 updated += 1
@@ -878,8 +1467,8 @@ def cmd_classification_create(args):
         with c.conn.begin():
             r = create_classification_core(
                 c, args.bk_classification_id, args.bk_classification_name,
-                args.bk_classification_icon, args.ispre, args.on_duplicate, args.dry_run)
-    emit_result({**r, 'human': f"分类 {args.bk_classification_id}: {r['action']}"}, args.json)
+                args.bk_classification_icon, args.ispre, args.classification_index, args.on_duplicate, args.dry_run)
+    emit_result({**r, 'human': f"分类 {args.bk_classification_id}: {r['action']} (classification_index={args.classification_index})"}, args.json)
     return EXIT_OK
 
 
@@ -908,25 +1497,30 @@ def cmd_model_create(args):
 
 
 def cmd_attribute_create(args):
-    p = {
-        'bk_property_id': args.bk_property_id,
-        'bk_property_name': args.bk_property_name,
-        'bk_property_type': args.bk_property_type,
-        'bk_property_group': args.bk_property_group,
-        'isrequired': args.isrequired,
-        'editable': args.editable,
-        'bk_ishidden': args.bk_ishidden,
-        'bk_isapi': args.bk_isapi,
-        'bk_issystem': args.bk_issystem,
-        'ispre': args.ispre,
-        'ismultiple': args.ismultiple,
-        'bk_property_index': args.bk_property_index,
-        'option': _normalize_option(args.bk_property_type, args.option) if args.option else None,
-        'placeholder': args.placeholder or '',
-        'unit': args.unit or '',
-    }
     with dbmod.cli_conn() as c:
         with c.conn.begin():
+            # 分组解析：优先用 bk_property_group（ID），否则按 bk_group_name（显示名）查/建；
+            # 给定显示名且分组不存在时自动建组（生成随机 bk_group_id）。
+            bk_group_id = resolve_or_create_group(
+                c, args.bk_obj_id, args.bk_property_group, args.bk_group_name,
+                auto_create=bool(args.bk_group_name), name_cache={})
+            p = {
+                'bk_property_id': args.bk_property_id,
+                'bk_property_name': args.bk_property_name,
+                'bk_property_type': args.bk_property_type,
+                'bk_property_group': bk_group_id,
+                'isrequired': args.isrequired,
+                'editable': args.editable,
+                'bk_ishidden': args.bk_ishidden,
+                'bk_isapi': args.bk_isapi,
+                'bk_issystem': args.bk_issystem,
+                'ispre': args.ispre,
+                'ismultiple': args.ismultiple,
+                'bk_property_index': args.bk_property_index,
+                'option': _normalize_option(args.bk_property_type, args.option) if args.option else None,
+                'placeholder': args.placeholder or '',
+                'unit': args.unit or '',
+            }
             r = add_attribute_core(c, args.bk_obj_id, p, args.dry_run, on_dup=args.on_duplicate)
     emit_result({**r, 'human': f"属性 {args.bk_obj_id}.{args.bk_property_id}: {r['action']}"},
                 args.json)
@@ -951,6 +1545,27 @@ def cmd_table_create(args):
             c.exec(INSTANCE_TABLE_DDL.format(tbl=quote_ident_raw(itbl)))
             c.exec(ASSOC_TABLE_DDL.format(tbl=quote_ident_raw(atbl)))
     emit_result({'action': 'create', 'human': f"已补建分表: {itbl} / {atbl}"}, args.json)
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
+# user：用户管理（创建用户走 app.db.user 公共逻辑层，与后端 API 共用同一 SQL/方言）
+# ---------------------------------------------------------------------------
+def cmd_user_create(args):
+    name = (args.name or '').strip()
+    if not name:
+        raise CliError(EXIT_PARAM, "用户名不能为空（--name 必填）", "create_user")
+    try:
+        user = UserService.create_user(
+            name=name, password=args.password, role=args.role, supplier=args.supplier)
+    except ValueError as e:
+        msg = str(e)
+        code = EXIT_EXISTS if '已存在' in msg else EXIT_PARAM
+        raise CliError(code, msg, "create_user")
+    emit_result({
+        **user,
+        'human': f"用户 {name} 创建成功（bk_role={args.role}）",
+    }, args.json)
     return EXIT_OK
 
 
@@ -1032,6 +1647,68 @@ def _run_import(conn, kind, csv_path, opts, dry_run, skip_empty, json_out):
     raise CliError(EXIT_PARAM, f"未知导入类型: {kind}", "import")
 
 
+def cmd_mainline_add(args):
+    opts = {'obj_name': args.obj_name, 'classification': args.classification,
+            'icon': args.icon, 'sort': args.obj_sort_number, 'spawn': args.spawn}
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            r = add_mainline_core(c, args.obj_id, args.parent, opts, args.dry_run)
+    if r.get('reparented'):
+        sys.stderr.write(f"[INFO] 旧子模型 {r['reparented']} 已重挂到 {args.obj_id}\n")
+    if r.get('spawned'):
+        sys.stderr.write(f"[INFO] 已为父实例批量生成 {r['spawned']} 个 {args.obj_id} 实例\n")
+    emit_result({**r, 'human': f"主线注册 {args.obj_id} (父={args.parent})"},
+                args.json)
+    return EXIT_OK
+
+
+def cmd_mainline_show(args):
+    with dbmod.cli_conn() as c:
+        r = show_mainline_core(c, '0')
+    chain = ' -> '.join(r['chain'])
+    emit_result({**r, 'human': f"主线模型链: {chain}"}, args.json)
+    return EXIT_OK
+
+
+def cmd_mainline_remove(args):
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            r = remove_mainline_core(c, args.obj_id, args.delete_instances, args.dry_run)
+    if r.get('reparented'):
+        sys.stderr.write(f"[INFO] 子模型 {r['reparented']} 已重挂回上一级\n")
+    emit_result({**r, 'human': f"主线摘除 {args.obj_id} (删实例={args.delete_instances})"},
+                args.json)
+    return EXIT_OK
+
+
+def cmd_mainline_fix_unique(args):
+    """为已有主线模型补齐/修正 (bk_parent_id, bk_inst_name) 内置唯一约束。
+
+    适用于：模型此前经由旧逻辑创建（仅 (bk_inst_name) 单键规则、缺 bk_parent_id 属性），
+    与上游 CreateObject(isMainline=true) 的内置初始化不一致。幂等，可重复执行。
+    """
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            if args.obj_id:
+                targets = [args.obj_id]
+            else:
+                rows = c.query_all(
+                    "SELECT DISTINCT bk_obj_id FROM cc_ObjAsst "
+                    "WHERE bk_asst_id='bk_mainline' AND bk_supplier_account='0'")
+                targets = [r['bk_obj_id'] for r in rows]
+            fixed = []
+            for oid in targets:
+                if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": oid}):
+                    sys.stderr.write(f"[WARN] 模型不存在，跳过: {oid}\n")
+                    continue
+                ensure_mainline_unique_core(c, oid)
+                fixed.append(oid)
+    emit_result({'action': 'fix_unique', 'fixed': fixed,
+                 'human': f"已修正 {len(fixed)} 个主线模型的唯一约束: {', '.join(fixed) or '无'}"},
+                args.json)
+    return EXIT_OK
+
+
 def cmd_classification_import(args):
     opts = {'on_dup': args.on_duplicate, 'encoding': args.encoding,
             'delimiter': args.delimiter, 'strict': args.strict}
@@ -1110,9 +1787,9 @@ def cmd_instance_import(args):
 # scaffold
 # ---------------------------------------------------------------------------
 def _seed_content():
-    classifications = (['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre'],
-                      [['bk_network', '网络设备', 'icon-cc-network', 'false'],
-                       ['bk_application', '应用系统', 'icon-cc-application', 'false']])
+    classifications = (['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre', 'classification_index'],
+                      [['bk_network', '网络设备', 'icon-cc-network', 'false', '1'],
+                       ['bk_application', '应用系统', 'icon-cc-application', 'false', '2']])
     models = (['bk_obj_id', 'bk_obj_name', 'bk_classification_id', 'bk_obj_icon', 'ispre',
                'bk_ishidden', 'bk_ispaused', 'obj_sort_number'],
               [['bk_switch', '交换机', 'bk_network', 'icon-cc-switch', 'false', 'false', 'false', '0'],
@@ -1121,37 +1798,33 @@ def _seed_content():
                    '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
     attr_types = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
                   '布尔', '布尔', '布尔', '布尔', '整型']
-    attr_en = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group',
+    attr_en = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group_name',
                'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
                'isreadonly', 'isonly', 'bk_property_index']
     attrs_switch = (attr_header,
                     attr_types,
                     attr_en,
-                    [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['name', '名称', 'singlechar', 'default', '', '', '请输入名称', '', 'true', 'false', 'false', 'false', '10'],
-                     ['status', '状态', 'enum', 'default',
-                      '[{"id":"running","name":"运行中","type":"text","is_default":true},'
+                    [                     ['bk_inst_name', '实例名', 'singlechar', 'Default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['name', '名称', 'singlechar', 'Default', '', '请输入名称', '', '', 'true', 'false', 'false', 'false', '10'],
+                     ['status', '状态', 'enum', 'Default', '[{"id":"running","name":"运行中","type":"text","is_default":true},'
                       '{"id":"stopped","name":"已停止","type":"text","is_default":false}]',
-                      '', '状态', '', 'false', 'false', 'false', 'false', '11'],
-                     ['power_type', '电源类型', 'enummulti', 'default',
-                      '[{"id":"AC","name":"AC","type":"text","is_default":false},'
+                      '', '状态', '', '', 'false', 'false', 'false', '11'],
+                     ['power_type', '电源类型', 'enummulti', 'Default', '[{"id":"AC","name":"AC","type":"text","is_default":false},'
                       '{"id":"DC","name":"DC","type":"text","is_default":false}]',
-                      '', '电源', '', 'false', 'false', 'false', 'false', '12'],
-                     ['management_ip', '管理IP', 'list', 'default',
-                      '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', 'false', 'false', 'false', 'false', '13'],
-                     ['port_count', '端口数', 'int', 'default', '', '', '端口数量', '', 'false', 'false', 'false', 'false', '14'],
-                     ['bk_backup', '是否备份', 'bool', 'default', '', '', '是否开启备份', '', 'false', 'false', 'false', 'false', '15'],
-                     ['description', '描述', 'longchar', 'default', '', '', '设备描述', '', 'false', 'false', 'false', 'false', '16']])
+                      '', '电源', '', '', 'false', 'false', 'false', '12'],
+                     ['management_ip', '管理IP', 'list', 'Default', '["192.168.1.1","192.168.1.2"]', '', '管理地址', '', '', 'false', 'false', 'false', '13'],
+                     ['port_count', '端口数', 'int', 'Default', '', '端口数量', '', '', 'false', 'false', 'false', 'false', '14'],
+                     ['bk_backup', '是否备份', 'bool', 'Default', '', '是否开启备份', '', '', 'false', 'false', 'false', 'false', '15'],
+                     ['description', '描述', 'longchar', 'Default', '', '设备描述', '', '', 'false', 'false', 'false', 'false', '16']])
     attrs_deployment = (attr_header,
                         attr_types,
                         attr_en,
-                        [['bk_inst_name', '实例名', 'singlechar', 'default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
-                     ['dep_hosts', '部署主机', 'singlechar', 'default', '', '', '部署目标主机', '', 'true', 'false', 'false', 'false', '10'],
-                         ['dep_ns', '命名空间', 'singlechar', 'default', '', '', 'K8s 命名空间', '', 'true', 'false', 'false', 'false', '11'],
-                         ['type', '部署类型', 'enum', 'default',
-                          '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
-                          '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
-                          '', '部署策略', '', 'false', 'false', 'false', 'false', '12']])
+                        [                     ['bk_inst_name', '实例名', 'singlechar', 'Default', '', '', '', '', 'true', 'true', 'false', 'true', '0'],
+                     ['dep_hosts', '部署主机', 'singlechar', 'Default', '', '部署目标主机', '', '', 'true', 'false', 'false', 'false', '10'],
+                         ['dep_ns', '命名空间', 'singlechar', 'Default', '', 'K8s 命名空间', '', '', 'true', 'false', 'false', 'false', '11'],
+                     ['type', '部署类型', 'enum', 'Default', '[{"id":"blue","name":"蓝绿","type":"text","is_default":true},'
+                      '{"id":"canary","name":"金丝雀","type":"text","is_default":false}]',
+                      '', '部署策略', '', '', 'false', 'false', 'false', '12']])
     instances_switch = (['bk_inst_name', 'status', 'power_type', 'management_ip', 'port_count',
                          'bk_backup', 'description'],
                         [['核心交换机A', 'running', '["AC"]', '["192.168.1.1","192.168.1.2"]', '48', '1', '机房核心交换机'],
@@ -1217,11 +1890,17 @@ def cmd_scaffold_spec(args):
                 create_classification_core(c, cls['bk_classification_id'],
                                            cls['bk_classification_name'],
                                            cls.get('bk_classification_icon', 'icon-cc-default'),
-                                           cls.get('ispre', False), 'skip', False)
+                                           cls.get('ispre', False), cls.get('classification_index', 0),
+                                           'skip', False)
             create_model_core(c, o, False)
+            # 分组：显示名（bk_group_name）为唯一用户态输入；bk_group_id 缺失则由系统生成。
+            # 建立「显示名 -> bk_group_id」映射，供属性按名引用。
+            name_to_gid = {}
             for g in groups:
+                gname = (g.get('bk_group_name') or '').strip()
+                gid = (g.get('bk_group_id') or '').strip() or generate_group_id()
                 if not c.query_one("SELECT 1 FROM cc_PropertyGroup WHERE bk_obj_id=:o AND bk_group_id=:g",
-                                    {"o": o['bk_obj_id'], "g": g['bk_group_id']}):
+                                    {"o": o['bk_obj_id'], "g": gid}):
                     c.exec(
                         "INSERT INTO cc_PropertyGroup "
                         "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
@@ -1229,17 +1908,51 @@ def cmd_scaffold_spec(args):
                         "bk_supplier_account) VALUES "
                         "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
                         ":bk_isdefault, false, true, 0, 'admin', 'admin', '0')",
-                        {"_id": f"{o['bk_obj_id']}.{g['bk_group_id']}", "id": generate_id(),
-                         "bk_obj_id": o['bk_obj_id'], "bk_group_id": g['bk_group_id'],
-                         "bk_group_name": g['bk_group_name'],
+                        {"_id": f"{o['bk_obj_id']}.{gid}", "id": generate_id(),
+                         "bk_obj_id": o['bk_obj_id'], "bk_group_id": gid,
+                         "bk_group_name": gname or KNOWN_GROUP_NAMES.get(gid, gid),
                          "bk_group_index": g.get('bk_group_index', 0),
                          "bk_isdefault": g.get('bk_isdefault', False)})
+                if gname:
+                    name_to_gid[gname] = gid
+
+            def resolve_attr_group(gname, gid):
+                """属性分组解析：显示名优先（ID 系统生成，不要求用户输入）。"""
+                gname = (gname or '').strip()
+                gid = (gid or '').strip()
+                if gname:
+                    if gname in name_to_gid:
+                        return name_to_gid[gname]
+                    row = c.query_one(
+                        "SELECT bk_group_id FROM cc_PropertyGroup "
+                        "WHERE bk_obj_id=:o AND bk_group_name=:n",
+                        {"o": o['bk_obj_id'], "n": gname})
+                    if row:
+                        name_to_gid[gname] = row['bk_group_id']
+                        return row['bk_group_id']
+                    # 按显示名自动建组（ID 系统生成，支持中文/英文显示名）
+                    new_id = generate_group_id()
+                    c.exec(
+                        "INSERT INTO cc_PropertyGroup "
+                        "(_id, id, bk_obj_id, bk_group_id, bk_group_name, bk_group_index, "
+                        "bk_isdefault, is_collapse, ispre, bk_biz_id, creator, modifier, "
+                        "bk_supplier_account) VALUES "
+                        "(:_id, :id, :bk_obj_id, :bk_group_id, :bk_group_name, :bk_group_index, "
+                        "false, false, true, 0, 'admin', 'admin', '0')",
+                        {"_id": f"{o['bk_obj_id']}.{new_id}", "id": generate_id(),
+                         "bk_obj_id": o['bk_obj_id'], "bk_group_id": new_id,
+                         "bk_group_name": gname, "bk_group_index": 99})
+                    name_to_gid[gname] = new_id
+                    return new_id
+                return gid or 'default'
+
             for a in attributes:
+                a_group = resolve_attr_group(a.get('bk_property_group_name'), a.get('bk_property_group'))
                 p = {
                     'bk_property_id': a['bk_property_id'],
                     'bk_property_name': a['bk_property_name'],
                     'bk_property_type': a['bk_property_type'],
-                    'bk_property_group': a.get('bk_property_group', 'default'),
+                    'bk_property_group': a_group,
                     'isrequired': a.get('isrequired', False),
                     'editable': a.get('editable', True),
                     'bk_ishidden': a.get('bk_ishidden', False),
@@ -1339,6 +2052,220 @@ def cmd_scaffold_apply(args):
 
 
 # ---------------------------------------------------------------------------
+# 实例表系统/保留列（见 SQLITE_SYSTEM_COLS）；bk_inst_name 是实例名（放行），
+# 其余命中则自动加前缀 u_ 区分（避免 ALTER/upsert 覆盖系统列）。
+_FROM_CSV_RESERVED = SQLITE_SYSTEM_COLS - {'bk_inst_name'}
+_FROM_CSV_PREFIX = 'u_'
+
+# 13 列 seed 属性模板（与 _seed_content 同构；from-csv 用此而非 17 列 export 模板，§5.6.3）
+_FC_ATTR_ZH = ['英文名', '中文名', '数据类型', '字段分组', '数据配置', '单位', '描述', '提示',
+               '是否可编辑', '是否必填', '是否只读', '是否唯一', '字段索引']
+_FC_ATTR_TP = ['文本', '文本', '文本', '文本', '文本', '文本', '文本', '文本',
+               '布尔', '布尔', '布尔', '布尔', '整型']
+_FC_ATTR_EN = ['bk_property_id', 'bk_property_name', 'bk_property_type', 'bk_property_group_name',
+               'option', 'unit', 'description', 'placeholder', 'editable', 'isrequired',
+               'isreadonly', 'isonly', 'bk_property_index']
+
+
+def _looks_like_header_row(row):
+    """实例 CSV 表头行判定：首单元格为合法英文标识符（列名）即视为表头。
+
+    from-csv 源文件约定为「首行英文表头 + 实例数据」（§5.6.3）。当源文件混入
+    前导说明行（如中文标题）或重复表头行时，据此定位真正的表头行，避免把
+    说明/重复行误当作实例数据（规则 4 补强）。
+    """
+    if not row:
+        return False
+    try:
+        validate_identifier(str(row[0]).strip())
+    except InvalidIdentifierError:
+        return False
+    return True
+
+
+def _from_csv_build_plan(args):
+    """解析 + 校验 + 推导，返回 (plan, problems)。
+
+    - plan：含 model_id / cls_id / cls_name / model_name / attr_rows / inst_header / inst_rows / src
+    - problems：规则 1/2/5 命中的全部问题；非空时调用方据此中断（退出码 2，零落盘）
+    校验流程严格对应 §5.6.3：规则 1（模型名）、规则 2（属性名正则）、规则 2.1（保留列前缀）、
+    规则 3（默认 singlechar + 中文名同源）、规则 3.1（缺 bk_inst_name 自动补）、规则 5（去重）。
+    """
+    problems = []
+    src = os.path.abspath(args.csv)
+    stem = os.path.splitext(os.path.basename(args.csv))[0]
+
+    # 规则 1：模型名 = 文件名 stem
+    try:
+        validate_identifier(stem)
+    except InvalidIdentifierError:
+        problems.append(f"[规则1] 文件名 stem '{stem}' 不符合 ^[a-z][a-z0-9_]*$（需小写字母开头、仅含小写字母/数字/下划线）")
+
+    rows = read_csv_rows(args.csv)
+    if not rows:
+        problems.append("[规则4] 文件无有效表头（空文件）")
+        return None, problems
+    # 规则 4 补强（§5.6.3）：按「字段名」定位表头行，而非固定取首行（行号）。
+    # 优先查找含必填/已知实例字段名（bk_inst_name 等）的行作为表头；找不到时
+    # （源表头无 bk_inst_name、将由规则3.1 自动补）才回退到「首单元格为合法英文
+    # 标识符」的启发式。这样即使前导实例的 bk_inst_name 为数字编号（如 1001），
+    # 也不会被「行号/标识符启发式」误当作表头行吞掉（避免数字编号前导实例丢失）。
+    _HEADER_FIELD_HINTS = ('bk_inst_name', 'bk_host_name', 'bk_inst_id')
+    hdr_pos = None
+    for i, r in enumerate(rows[:10]):
+        if any(str(c).strip() in _HEADER_FIELD_HINTS for c in r):
+            hdr_pos = i
+            break
+    if hdr_pos is None:
+        hdr_pos = next((i for i, r in enumerate(rows[:10]) if _looks_like_header_row(r)), None)
+    if hdr_pos is None:
+        problems.append("[规则4] 文件无有效表头（前 10 行未找到含 bk_inst_name 等字段名或英文表头行）")
+        return None, problems
+    header_raw = rows[hdr_pos]
+    data_rows = rows[hdr_pos + 1:]
+    if not header_raw or all(c.strip() == '' for c in header_raw):
+        problems.append("[规则4] 文件无有效表头")
+        return None, problems
+    # 兜底：跳过与表头完全相同的重复前导数据行（导出工具常见的重复表头行），
+    # 否则该重复行会被误当作实例数据，生成 bk_inst_name='bk_inst_name' 的脏实例。
+    # 注意：此跳过发生在字段名定位出的表头之后，不影响数字编号前导实例。
+    _hnorm = [c.strip() for c in header_raw]
+    while data_rows and [c.strip() for c in data_rows[0]] == _hnorm:
+        data_rows = data_rows[1:]
+    if not data_rows:
+        problems.append("[规则4] 实例 CSV 无数据行（预检失败）")
+        return None, problems
+
+    # 归一（strip）+ 规则 5（去重）+ 规则 2（正则）+ 规则 2.1（保留列前缀）
+    header = [c.strip() for c in header_raw]
+    seen = {}
+    for k in header:
+        seen[k] = seen.get(k, 0) + 1
+    for k, n in seen.items():
+        if n > 1:
+            problems.append(f"[重复] 表头重复列 '{k}'")
+
+    key_map = {}          # 原 key -> 最终属性 id（= 实例列名）
+    assigned = set()      # 已分配的最终 id
+    has_name = 'bk_inst_name' in header
+    for i, k in enumerate(header):
+        try:
+            validate_identifier(k)
+        except InvalidIdentifierError:
+            problems.append(f"[规则2] 第 {i + 1} 列 '{k}' 不符合属性 ID 正则")
+            continue
+        if k == 'bk_inst_name':
+            final = 'bk_inst_name'                       # 规则 2.1：实例名，原样保留
+        elif k in _FROM_CSV_RESERVED:
+            cand = _FROM_CSV_PREFIX + k                  # 规则 2.1：其余保留列加前缀区分
+            base_cols = set(header)
+            if cand in assigned or cand in base_cols:
+                j = 2
+                while f"{cand}_{j}" in assigned or f"{cand}_{j}" in base_cols:
+                    j += 1
+                cand = f"{cand}_{j}"
+            final = cand
+        else:
+            final = k
+        key_map[k] = final
+        assigned.add(final)
+
+    if problems:
+        return None, problems
+
+    # 最终列顺序：bk_inst_name 置首（缺则由规则 3.1 补）
+    others = [k for k in header if k != 'bk_inst_name']
+    ordered_keys = (['bk_inst_name'] + others) if has_name else (['bk_inst_name'] + header)
+
+    attr_rows = []
+    inst_header = []
+    idx = 10
+    for k in ordered_keys:
+        if k == 'bk_inst_name':
+            final, is_req = 'bk_inst_name', 'true'        # 规则 3.1：必填
+        else:
+            final, is_req = key_map[k], 'false'
+        # 规则 3：singlechar + 中文名默认取英文 key 原值（保留列前缀下仍为原 key）
+        attr_rows.append([final, k, 'singlechar', 'Default', '', '', '', '',
+                          'true', is_req, 'false', 'false', str(idx)])
+        inst_header.append(final)
+        idx += 1
+
+    # 实例数据行：按 inst_header 顺序从原数据取列；bk_inst_name 缺列则占位 bk_<model>_<行号>
+    src_idx = {k: i for i, k in enumerate(header)}
+    name_src = src_idx.get('bk_inst_name')
+    inst_rows = []
+    for r_i, drow in enumerate(data_rows):
+        out = []
+        for col in inst_header:
+            if col == 'bk_inst_name':
+                if has_name:
+                    out.append(drow[name_src] if name_src < len(drow) else '')
+                else:
+                    out.append(f"bk_{stem}_{r_i + 1}")     # 规则 3.1 占位
+            else:
+                orig = next((ok for ok, fv in key_map.items() if fv == col), None)
+                oi = src_idx.get(orig) if orig else None
+                out.append(drow[oi] if (oi is not None and oi < len(drow)) else '')
+        inst_rows.append(out)
+
+    cls_id = args.classification_id
+    cls_name = args.classification_name or f"分类-{cls_id}"
+    model_name = args.model_name or f"模型-{stem}"
+    plan = {
+        'model_id': stem, 'cls_id': cls_id, 'cls_name': cls_name, 'model_name': model_name,
+        'attr_rows': attr_rows, 'inst_header': inst_header, 'inst_rows': inst_rows, 'src': src,
+    }
+    return plan, problems
+
+
+def cmd_scaffold_from_csv(args):
+    plan, problems = _from_csv_build_plan(args)
+    # 规则 4：校验失败 → 输出问题记录报告、退出码 2、不生成任何文件
+    if problems:
+        report = ("[from-csv] 校验未通过，已中断（退出码 2），未生成任何文件。\n"
+                  f"源文件: {os.path.abspath(args.csv)}\n问题记录:\n"
+                  + "\n".join(f"  {p}" for p in problems)
+                  + "\n请修正后重试。")
+        raise CliError(EXIT_PARAM, report, "validation")
+
+    ts = time.strftime('%y%m%d%H%M%S')
+    out_dir = os.path.join(args.out_dir, ts)
+    model_id = plan['model_id']
+
+    cls_header = ['bk_classification_id', 'bk_classification_name', 'bk_classification_icon', 'ispre', 'classification_index']
+    cls_rows = [[plan['cls_id'], plan['cls_name'], 'icon-cc-default', 'false', '0']]
+    model_header = ['bk_obj_id', 'bk_obj_name', 'bk_classification_id', 'bk_obj_icon',
+                    'ispre', 'bk_ishidden', 'bk_ispaused', 'obj_sort_number']
+    model_rows = [[model_id, plan['model_name'], plan['cls_id'], 'icon-cc-default',
+                   'false', 'false', 'false', '0']]
+    # attributes_<oid>.csv：3 行表头（zh 作为 write_seed_csv 的 header，rows 含 tp/en + 数据行）
+    attr_rows = [_FC_ATTR_TP, _FC_ATTR_EN] + plan['attr_rows']
+
+    if getattr(args, 'dry_run', False):
+        print(f"[dry-run] from-csv 将生成目录: {out_dir}")
+        print(f"  模型: {model_id}（{plan['model_name']}）  分类: {plan['cls_id']}")
+        print(f"  属性数: {len(plan['attr_rows'])}  实例数据行: {len(plan['inst_rows'])}")
+        print(f"  属性 id: {[r[0] for r in plan['attr_rows']]}")
+        print(f"  实例表头: {plan['inst_header']}")
+        emit_result({'action': 'from-csv', 'dry_run': True, 'dir': out_dir, 'model_id': model_id,
+                     'attributes': [r[0] for r in plan['attr_rows']],
+                     'instance_columns': plan['inst_header'], 'instance_rows': len(plan['inst_rows']),
+                     'human': f"from-csv(预演) {model_id}：属性 {len(plan['attr_rows'])} / 实例 {len(plan['inst_rows'])} -> {out_dir}"},
+                    getattr(args, 'json', False))
+        return EXIT_OK
+
+    write_seed_csv(os.path.join(out_dir, 'classifications.csv'), cls_header, cls_rows)
+    write_seed_csv(os.path.join(out_dir, 'models.csv'), model_header, model_rows)
+    write_seed_csv(os.path.join(out_dir, f'attributes_{model_id}.csv'), _FC_ATTR_ZH, attr_rows)
+    write_seed_csv(os.path.join(out_dir, f'instances_{model_id}.csv'), plan['inst_header'], plan['inst_rows'])
+    emit_result({'action': 'from-csv', 'dir': out_dir, 'model_id': model_id,
+                 'attributes': len(plan['attr_rows']), 'instance_rows': len(plan['inst_rows']),
+                 'human': f"已生成 from-csv 目录: {out_dir}（模型 {model_id}，属性 {len(plan['attr_rows'])}，实例 {len(plan['inst_rows'])}）"},
+                getattr(args, 'json', False))
+    return EXIT_OK
+
+# ---------------------------------------------------------------------------
 # argparse
 # ---------------------------------------------------------------------------
 def build_parser():
@@ -1368,6 +2295,8 @@ def build_parser():
     x.add_argument('--bk_classification_name', required=True)
     x.add_argument('--bk_classification_icon', default='icon-cc-default')
     x.add_argument('--ispre', type=parse_bool, default=False)
+    x.add_argument('--classification_index', '--index', type=int, default=0,
+                   help='分类排序序号（升序，越小越靠前；--index 为兼容别名）')
     add_dup(x, 'error')
     x.set_defaults(func=cmd_classification_create)
     x = css.add_parser('import')
@@ -1420,6 +2349,35 @@ def build_parser():
     x.add_argument('--bk_obj_id', required=True)
     x.set_defaults(func=cmd_model_delete)
 
+    # mainline：自定义业务拓扑模型（多模型多层级主线注册）
+    sp = sub.add_parser('mainline', help='自定义业务拓扑模型（主线 mainline）')
+    ml = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = ml.add_parser('add')
+    x.add_argument('--obj-id', required=True,
+                   help='待注册进主线的子模型ID（不存在时可用 --obj-name 自动建模型）')
+    x.add_argument('--parent', required=True,
+                   help='父模型ID（主线链中作为上级的模型，如 biz/set/module/自定义模型）')
+    x.add_argument('--obj-name', default=None, help='可选：模型不存在时自动创建的模型名称')
+    x.add_argument('--classification', default='bk_biz_topo',
+                   help='可选：自动建模型所属分类（默认 bk_biz_topo）')
+    x.add_argument('--icon', default='icon-cc-default', help='可选：模型图标')
+    x.add_argument('--obj-sort-number', dest='obj_sort_number', type=int, default=0)
+    x.add_argument('--spawn', action='store_true',
+                   help='为每个父实例批量生成一级子实例（对齐上游 SetMainlineInstAssociation 回填 bk_parent_id）')
+    x.set_defaults(func=cmd_mainline_add)
+    x = ml.add_parser('show')
+    x.set_defaults(func=cmd_mainline_show)
+    x = ml.add_parser('remove')
+    x.add_argument('--obj-id', required=True, help='从主线摘除的模型ID')
+    x.add_argument('--delete-instances', dest='delete_instances', action='store_true',
+                   help='同时删除该层级全部实例')
+    x.set_defaults(func=cmd_mainline_remove)
+    x = ml.add_parser('fix-unique',
+                      help='为已有主线模型补齐/修正 (bk_parent_id, bk_inst_name) 内置唯一约束')
+    x.add_argument('--obj-id', default=None, help='可选：仅修复指定模型；省略则修复全部主线模型')
+    x.set_defaults(func=cmd_mainline_fix_unique)
+
     # attribute
     sp = sub.add_parser('attribute', help='属性')
     asp = sp.add_subparsers(dest='sub', required=True,
@@ -1429,7 +2387,11 @@ def build_parser():
     x.add_argument('--bk_property_id', required=True)
     x.add_argument('--bk_property_name', required=True)
     x.add_argument('--bk_property_type', required=True)
-    x.add_argument('--bk_property_group', default='default')
+    x.add_argument('--bk_property_group', default='default',
+                   help='可选：引用已存在的分组 ID（bk_group_id）；留空即可，无需用户输入 ID')
+    x.add_argument('--bk_group_name', default=None,
+                   help='分组显示名（bk_group_name，支持中文/英文）；给定且分组不存在时'
+                        '自动建组（bk_group_id 由系统随机生成），同名复用同一组')
     x.add_argument('--isrequired', type=parse_bool, default=False)
     x.add_argument('--editable', type=parse_bool, default=True)
     x.add_argument('--bk_ishidden', type=parse_bool, default=False)
@@ -1490,6 +2452,19 @@ def build_parser():
     x.add_argument('--no-skip-if-exists', dest='skip_if_exists', action='store_false')
     x.set_defaults(func=cmd_table_create)
 
+    # user：用户管理
+    sp = sub.add_parser('user', help='用户管理（创建用户，无 UI）')
+    us = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = us.add_parser('create', help='创建用户')
+    x.add_argument('--name', required=True, help='用户名（bk_user_name，唯一）')
+    x.add_argument('--password', required=True, help='密码明文（werkzeug 哈希后存储，绝不落库明文）')
+    x.add_argument('--role', type=int, default=2, choices=[1, 2],
+                   help='角色：1=超级管理员 2=普通用户（默认 2）')
+    x.add_argument('--supplier', default=None,
+                   help='供应商账户（多租户隔离；默认 settings.DEFAULT_SUPPLIER=0）')
+    x.set_defaults(func=cmd_user_create)
+
     # scaffold
     sp = sub.add_parser('scaffold', help='规格驱动（spec / seed / apply）')
     scs = sp.add_subparsers(dest='sub', required=True,
@@ -1513,6 +2488,18 @@ def build_parser():
     x.add_argument('--verbose', action='store_true')
     x.add_argument('--manifest-out', default=None)
     x.set_defaults(func=cmd_scaffold_apply)
+    x = scs.add_parser('from-csv',
+                       help='从实例 CSV（首行英文表头+实例数据）反向生成 seed 同构目录（§5.6.3）')
+    x.add_argument('--csv', required=True, help='输入实例 CSV（首行英文表头，其余为实例数据）')
+    x.add_argument('--out-dir', default='./seed', help='输出根目录（默认 ./seed，内部建 12 位时间戳子目录）')
+    x.add_argument('--classification-id', default='bk_import', help='生成 classifications.csv 的分类 ID')
+    x.add_argument('--classification-name', default=None, help='分类中文名（缺省 分类-<id>）')
+    x.add_argument('--model-name', default=None, help='模型中文名 bk_obj_name（缺省 模型-<模型id>）')
+    x.set_defaults(func=cmd_scaffold_from_csv)
+
+    # auth（鉴权管理：用户 / 策略 / 按场景批量授权）
+    from app.cli import auth_cmd
+    auth_cmd.register(sub, common)
 
     return p
 

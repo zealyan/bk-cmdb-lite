@@ -222,7 +222,22 @@ class AssociationService:
         asst_inst_id = data.get('bk_asst_inst_id')
         bk_obj_id = data.get('bk_obj_id')
         bk_asst_obj_id = data.get('bk_asst_obj_id')
-        
+
+        # 校验源/目标实例是否存在（遵循原项目 bk-cmdb 逻辑：
+        # 创建关联前必须先确认两端实例真实存在，避免产生指向不存在实例的孤儿记录）。
+        from app.service.instance_service import InstanceService
+        from app.utils.exceptions import ValidationException
+        if not bk_obj_id or inst_id is None:
+            raise ValidationException('关联源模型或源实例ID缺失')
+        if not bk_asst_obj_id or asst_inst_id is None:
+            raise ValidationException('关联目标模型或目标实例ID缺失')
+        src_instance = InstanceService.get_instance(bk_obj_id, inst_id)
+        if not src_instance:
+            raise ValidationException(f'关联源实例不存在: {bk_obj_id}/{inst_id}')
+        dst_instance = InstanceService.get_instance(bk_asst_obj_id, asst_inst_id)
+        if not dst_instance:
+            raise ValidationException(f'关联目标实例不存在: {bk_asst_obj_id}/{asst_inst_id}')
+
         if obj_asst_id and inst_id and asst_inst_id:
             AssociationService.check_association_mapping(obj_asst_id, inst_id, asst_inst_id)
         

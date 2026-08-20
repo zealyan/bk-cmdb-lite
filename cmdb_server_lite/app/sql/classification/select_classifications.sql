@@ -1,1 +1,1 @@
-SELECT * FROM cc_ObjClassification ORDER BY id
+SELECT * FROM cc_ObjClassification ORDER BY classification_index, id

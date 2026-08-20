@@ -4,6 +4,12 @@ from app.service.instance_service import InstanceService
 from app.service.association_service import AssociationService
 from app.utils.logger import get_logger
 from app.utils.exceptions import APIException, ValidationException, NotFoundException
+from app.auth.manager import (
+    is_enabled, check_instances, pre_authorize_update,
+    on_instance_created, permission_for_instances,
+)
+from app.auth.resource import Action
+from app.auth import no_permission
 
 logger = get_logger('api.model')
 model_bp = Blueprint('model', __name__)
@@ -90,6 +96,61 @@ def get_model_property_groups(model_id):
         logger.error(f"Error getting model property groups: {e}")
         return error_response(f'获取属性分组失败: {str(e)}')
 
+@model_bp.route('/<model_id>/property-groups', methods=['POST'])
+def create_model_property_group(model_id):
+    """新建属性分组。
+
+    请求体：{ bk_group_name: str(必填), bk_group_index?: int, is_collapse?: bool }
+    bk_group_id 由系统随机生成（对齐上游 xid），返回新建分组整行。
+    """
+    try:
+        data = request.get_json() or {}
+        bk_group_name = data.get('bk_group_name')
+        group = ModelService.create_model_property_group(
+            model_id,
+            bk_group_name,
+            bk_group_index=data.get('bk_group_index', 99),
+            is_collapse=data.get('is_collapse', False))
+        return success_response({'group': group}, '分组创建成功')
+    except ValueError as e:
+        return error_response(str(e))
+    except Exception as e:
+        logger.error(f"Error creating model property group: {e}")
+        return error_response(f'创建属性分组失败: {str(e)}')
+
+@model_bp.route('/<model_id>/property-groups/<group_id>', methods=['PUT'])
+def update_model_property_group(model_id, group_id):
+    """修改属性分组（显示名 / 排序 / 折叠）。
+
+    请求体（部分字段）：{ bk_group_name?: str, bk_group_index?: int, is_collapse?: bool }
+    """
+    try:
+        data = request.get_json() or {}
+        group = ModelService.update_model_property_group(
+            model_id,
+            group_id,
+            bk_group_name=data.get('bk_group_name'),
+            bk_group_index=data.get('bk_group_index'),
+            is_collapse=data.get('is_collapse'))
+        return success_response({'group': group}, '分组更新成功')
+    except ValueError as e:
+        return error_response(str(e))
+    except Exception as e:
+        logger.error(f"Error updating model property group: {e}")
+        return error_response(f'更新属性分组失败: {str(e)}')
+
+@model_bp.route('/<model_id>/property-groups/<group_id>', methods=['DELETE'])
+def delete_model_property_group(model_id, group_id):
+    """删除属性分组（默认分组不可删；其下属性回落 default）。"""
+    try:
+        ModelService.delete_model_property_group(model_id, group_id)
+        return success_response({}, '分组删除成功')
+    except ValueError as e:
+        return error_response(str(e))
+    except Exception as e:
+        logger.error(f"Error deleting model property group: {e}")
+        return error_response(f'删除属性分组失败: {str(e)}')
+
 @model_bp.route('/<model_id>/associations', methods=['GET'])
 def get_model_associations(model_id):
     """获取模型的关联关系"""
@@ -168,8 +229,18 @@ def create_instance(model_id):
     try:
         data = request.get_json() or {}
         instance_data = data.get('data', {})
-        
+
+        # 模式 B：打标创建者（用于「创建者自管」实例级判定），写入前 stamp
+        if is_enabled():
+            from app.auth.identity import current_user
+            instance_data['creator'] = current_user()
+
         result = InstanceService.create_instance(model_id, instance_data)
+
+        # 模式 B：创建成功后写「创建者自动授权」策略（对齐 RegisterResourceCreatorAction）
+        if is_enabled():
+            on_instance_created(model_id)
+
         return success_response(result, '实例创建成功')
     except APIException as e:
         # 业务异常统一上抛，由全局 handle_api_exception 以
@@ -187,6 +258,19 @@ def update_instance(model_id, instance_id):
         data = request.get_json() or {}
         instance_data = data.get('data', {})
 
+        # 模式 B：打标最后修改者（bk_modifier 维度；对齐上游 owner/modifier），写入前 stamp。
+        # 仅 host 等含 modifier 列的表会落库；自定义模型无该列时由 service 层 real_cols 收敛丢弃。
+        if is_enabled():
+            from app.auth.identity import current_user
+            instance_data['modifier'] = current_user()
+
+        # 模式 B：实例级鉴权（supplier 隔离 / 创建者自管 / 模型级策略）
+        if is_enabled():
+            deny = check_instances(model_id, [int(instance_id)], Action.UPDATE)
+            if deny:
+                return no_permission(
+                    permission_for_instances(model_id, [int(instance_id)], Action.UPDATE, deny))
+
         result = InstanceService.update_instance(model_id, instance_id, instance_data)
         return success_response(result, '实例更新成功')
     except APIException as e:
@@ -203,8 +287,16 @@ def batch_update_instances(model_id):
     """批量更新实例"""
     try:
         data = request.get_json() or {}
-        
+
+        # 形态一：逐条 update 数组 → 收敛为一组实例 ID
         if 'update' in data:
+            ids = [item.get('inst_id') for item in data['update']
+                   if item.get('inst_id') is not None]
+            # 模式 B：批量更新预校验（文档 §4.2-4.4）；任一实例无权 → 整体拒绝，不执行写
+            if is_enabled():
+                _, deny, permission = pre_authorize_update(model_id, ids)
+                if deny:
+                    return no_permission(permission)
             updated_count = 0
             for item in data['update']:
                 inst_id = item.get('inst_id')
@@ -215,9 +307,15 @@ def batch_update_instances(model_id):
             return success_response({
                 'updated_count': updated_count
             }, f'成功更新 {updated_count} 个实例')
+        # 形态二：按 ids 批量同值
         elif 'ids' in data and 'data' in data:
             ids = data['ids']
             update_data = data['data']
+            # 模式 B：批量更新预校验；任一实例无权 → 整体拒绝，不执行写
+            if is_enabled():
+                _, deny, permission = pre_authorize_update(model_id, ids)
+                if deny:
+                    return no_permission(permission)
             updated_count = InstanceService.batch_update_instances(model_id, ids, update_data)
             return success_response({
                 'updated_count': updated_count,
@@ -245,10 +343,17 @@ def delete_instances(model_id):
     try:
         data = request.get_json() or {}
         ids = data.get('ids', [])
-        
+
         if not ids:
             return error_response('未提供实例ID', 1199006)
-        
+
+        # 模式 B：实例级鉴权（supplier 隔离 / 创建者自管 / 模型级策略）；
+        # 任一实例无权 → 整体拒绝，不执行任何删除
+        if is_enabled():
+            deny = check_instances(model_id, ids, Action.DELETE)
+            if deny:
+                return no_permission(permission_for_instances(model_id, ids, Action.DELETE, deny))
+
         deleted_count = InstanceService.delete_instances(model_id, ids)
         return success_response({
             'deleted_count': deleted_count,

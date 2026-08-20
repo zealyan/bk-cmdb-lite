@@ -32,7 +32,8 @@
 | 参数解析   | `argparse` 子命令（或 `click`/`typer`）                        | 子命令天然对应 model/attribute/table 三类操作                   |
 | 数据库访问  | **复用** `app.db.executor.{query_one, query_all, execute}` | 与后端共用连接池与方言兼容，避免重复实现                                 |
 | 类型映射   | **复用** `app.definitions.get_sql_type()`                  | 保证属性类型→SQL 类型与迁移脚本 100% 一致（单一真相源）                    |
-| ID 生成  | **复用** `app.utils.tools.generate_id()`                   | 系统属性 / 分组 / 关联记录的主键生成规则统一                            |
+| ID 生成  | **复用** `app.utils.tools.generate_id()`                   | 系统属性 / 分组记录主键（`id` 列）/ 关联记录的主键生成规则统一                 |
+| 分组 ID 生成 | **复用** `app.utils.tools.generate_group_id()`        | 分组语义标识 `bk_group_id` 的随机全局唯一串（对齐上游 `xid.New()`）；详见 §5.11.9 |
 | 系统属性模板 | **复用** `app.migrate.migrate.SYSTEM_PROPERTIES`           | 4 个系统属性的标志位（bk_isapi/bk_issystem/ispre/editable）直接复用 |
 
 **入口建议**（文档示意，非实现）：
@@ -112,15 +113,18 @@ python3 cmdb_cli.py <subcommand> [options]
 | `--bk_classification_icon` | 否  | 图标 class，默认 `icon-cc-default` |
 | `--id`                     | 否  | 数字 ID，缺省取 `MAX(id)+1`         |
 | `--ispre`                  | 否  | 是否预置，默认 `false`               |
+| `--classification_index`   | 否  | 分类**排序序号**（整数，默认 `0`；升序，越小越靠前），写入 `cc_ObjClassification.classification_index`。别名 `--index` 兼容旧写法 |
 
 **数据库操作**（对应指南 2.1）
 
 ```sql
 INSERT INTO cc_ObjClassification
-  (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, bk_supplier_account)
+  (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, classification_index, bk_supplier_account)
 VALUES
-  (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, '0');
+  (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, :classification_index, '0');
 ```
+
+> **排序机制**：资源目录页渲染顺序完全由后端 `SELECT ... FROM cc_ObjClassification ORDER BY classification_index, id` 决定（前端 `store/objectModelClassify` 不再对分类做二次排序）。分类间先后 = `classification_index` 升序；同值则按 `id` 稳定排序。缺省 `0` 即维持建表顺序。
 
 **校验**：`bk_classification_id` 已存在则按 `--on-duplicate` 处理（`error` 默认报错退出，`skip` 跳过，`overwrite` 覆盖）。
 
@@ -259,7 +263,8 @@ VALUES
 | `--bk_property_id`                                           | 是  | 属性字段名（如 `status`），即实例表列名                |
 | `--bk_property_name`                                         | 是  | 属性显示名（如 `状态`）                           |
 | `--bk_property_type`                                         | 是  | 类型，见下方映射表                               |
-| `--bk_property_group`                                        | 否  | 所属分组，默认 `default`（按本设计规则，仅需 Default 分组） |
+| `--bk_property_group`                                        | 否  | 所属分组 ID（`bk_group_id`），默认 `default`；留空则配合 `--bk_group_name` 按显示名查/建 |
+| `--bk_group_name`                                           | 否  | 分组显示名（`bk_group_name`）；给定且分组不存在时**自动建组**（随机 `bk_group_id`，见 §5.11.9） |
 | `--isrequired`                                               | 否  | 是否必填，默认 `false`                         |
 | `--editable`                                                 | 否  | 是否可编辑，默认 `true`                         |
 | `--bk_ishidden` / `--bk_isapi` / `--bk_issystem` / `--ispre` | 否  | 各标志位，默认 `false`                         |
@@ -267,6 +272,8 @@ VALUES
 | `--ismultiple`                                               | 否  | 多选（enummulti 需置 true），默认 `false`        |
 | `--option`                                                   | 否  | JSON 字符串（enum/list/范围等，见指南 2.4 格式）      |
 | `--placeholder` / `--unit`                                   | 否  | 占位符 / 单位                                |
+
+> **分组解析（与 `attribute import` 一致，见 §5.11.9）**：通过 `resolve_or_create_group()` 按 `--bk_property_group`（ID）或 `--bk_group_name`（显示名）定位/创建分组；给定 `--bk_group_name` 且分组不存在时即触发自动建组（随机 `bk_group_id` + 该显示名）。仅当显式给出 `--bk_property_group` ID 且该 ID 必须新建时才校验 C1 白名单；自动建组生成的随机 ID 不受 C1 约束。
 
 **执行步骤（事务内）**
 
@@ -343,7 +350,8 @@ VALUES
     "bk_classification_id": "bk_application",
     "bk_classification_name": "应用系统",
     "bk_classification_icon": "icon-cc-application",
-    "ispre": true
+    "ispre": true,
+    "classification_index": 10
   },
   "model": {
     "bk_obj_id": "bk_application_system",
@@ -378,7 +386,7 @@ VALUES
 
 | 顶层键 | 作用 | 缺省行为 |
 |--------|------|----------|
-| `classification` | 新建/复用模型分类，写入 `cc_ObjClassification` | 可为空（不建分类）；若提供则**必须含 `bk_classification_id`，否则 spec 预检报错（退出码 `2`）** |
+| `classification` | 新建/复用模型分类，写入 `cc_ObjClassification` | 可为空（不建分类）；若提供则**必须含 `bk_classification_id`，否则 spec 预检报错（退出码 `2`）**；可选 `classification_index`（整数，默认 `0`）控制分类显示顺序 |
 | `model` | 模型元信息，写入 `cc_ObjDes` | 必需；**`bk_obj_id` 必填，缺则 spec 预检报错（退出码 `2`）**；`bk_ispaused` 固定写 `0` |
 | `groups` | **属性分组定义**，写入 `cc_PropertyGroup` | **缺省时 CLI 自动创建 `default` 分组**（见 5.2 步骤 4）；显式给出则按规格创建（含 `base` 等） |
 | `attributes` | 业务属性列表，逐条走 5.3 流程（写 `cc_ObjAttDes` + ALTER 实例表） | 每条属性按 `bk_property_group` 归入对应分组；类型经 `get_sql_type()` 映射为列类型 |
@@ -403,12 +411,12 @@ VALUES
 
 **seed 生成的示例 CSV（参考 bk_switch + bk_deployment，覆盖多 option 类型）**
 
-`classifications.csv`（对应 §5.9）：
+`classifications.csv`（对应 §5.9）：末列 `classification_index` 控制分类显示顺序（升序，缺省 `0`）。
 
 ```csv
-bk_classification_id,bk_classification_name,bk_classification_icon,ispre
-bk_network,网络设备,icon-cc-network,false
-bk_application,应用系统,icon-cc-application,false
+bk_classification_id,bk_classification_name,bk_classification_icon,ispre,classification_index
+bk_network,网络设备,icon-cc-network,false,1
+bk_application,应用系统,icon-cc-application,false,2
 ```
 
 `models.csv`（对应 §5.10）：
@@ -424,7 +432,7 @@ bk_deployment,部署,bk_application,icon-cc-deployment,false,false,false,1
 ```csv
 英文名,中文名,数据类型,字段分组,数据配置,单位,描述,提示,是否可编辑,是否必填,是否只读,是否唯一,字段索引
 string,string,enum,string,json,string,string,string,bool,bool,bool,bool,int
-bk_property_id,bk_property_name,bk_property_type,bk_property_group,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+bk_property_id,bk_property_name,bk_property_type,bk_property_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
 name,名称,singlechar,default,,,请输入名称,true,true,false,false,10
 status,状态,enum,default,"[{""id"":""running"",""name"":""运行中"",""type"":""text"",""is_default"":true},{""id"":""stopped"",""name"":""已停止"",""type"":""text"",""is_default"":false}]",,状态,false,false,false,false,11
 power_type,电源类型,enummulti,default,"[{""id"":""AC"",""name"":""AC"",""type"":""text"",""is_default"":false},{""id"":""DC"",""name"":""DC"",""type"":""text"",""is_default"":false}]",,电源,true,false,false,false,12
@@ -439,7 +447,7 @@ description,描述,longchar,default,,,,设备描述,true,false,false,false,16
 ```csv
 英文名,中文名,数据类型,字段分组,数据配置,单位,描述,提示,是否可编辑,是否必填,是否只读,是否唯一,字段索引
 string,string,enum,string,json,string,string,string,bool,bool,bool,bool,int
-bk_property_id,bk_property_name,bk_property_type,bk_property_group,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+bk_property_id,bk_property_name,bk_property_type,bk_property_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
 dep_hosts,部署主机,singlechar,default,,,,部署目标主机,true,true,false,false,10
 dep_ns,命名空间,singlechar,default,,,,K8s 命名空间,true,true,false,false,11
 type,部署类型,enum,default,"[{""id"":""blue"",""name"":""蓝绿"",""type"":""text"",""is_default"":true},{""id"":""canary"",""name"":""金丝雀"",""type"":""text"",""is_default"":false}]",,部署策略,true,false,false,false,12
@@ -514,6 +522,152 @@ python3 -m app.cli.cmdb scaffold apply --dir ./seed/260729001336 --atomic
 
 ---
 
+#### 5.6.3 `cmdb scaffold from-csv`（从实例 CSV 反向生成 seed 目录）
+
+**背景**：面向"我手里已有一份现成的实例数据表（Excel 导出 / 外部系统 dump / 手填台账），想直接转成可 `apply` 的 CMDB 规格"的场景。用户给出一份 **首行为英文表头、其余行为实例数据** 的单模型 CSV，`from-csv` 据此**反向推导模型与属性规格**，生成与 `seed` 同构（§5.6.1）的 CSV 目录，用户可在生成结果上增改（如把某列类型从 `singlechar` 改为 `enum`、补 `option`、改 `isrequired`、`bk_obj_name`）后，直接 `scaffold apply`（§5.6.2）落库。与 §5.6.1 的区别：`seed` 提供"预填示例模板"，`from-csv` 提供"真实数据 + 自动推导的列规格"。
+
+**命令与参数**
+
+```bash
+cmdb scaffold from-csv --csv <实例数据.csv> [options]
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--csv` | 是 | 输入实例 CSV；**首行必须是英文表头，其余行为实例数据**；文件名 stem（去 `.csv` 后缀）作为模型 `bk_obj_id` |
+| `--out-dir` | 否 | 输出根目录（默认 `./seed`），内部再建 12 位时间戳子目录（同 §5.6.1） |
+| `--classification-id` | 否 | 生成的 `classifications.csv` 所用分类 ID；缺省 `bk_import` |
+| `--classification-name` | 否 | 分类中文名；缺省 `分类-<id>` |
+| `--model-name` | 否 | 模型中文名（`bk_obj_name`）；缺省 `模型-<bk_obj_id>` |
+| `--dry-run` | 否 | 仅执行校验与推导、打印将生成的文件清单与样本，**不写盘**；**仍执行规则 1/2/2.1/4 全部校验，失败同样退出码 2** |
+| `--json` | 否 | 以 JSON 输出问题报告 / 推导结果 |
+
+**5 条硬性规则（全部满足才生成，否则中断零落盘）**
+
+| # | 规则 | 校验器 | 失败处理 |
+|---|------|--------|----------|
+| 1 | CSV 文件名 stem → 模型名 `bk_obj_id`，**必须英文且匹配 `^[a-z][a-z0-9_]*$`** | `validate_identifier()`（同 §5.10 模型 ID 校验） | 计入问题记录，中断 |
+| 2 | 表头每个英文 key → 属性 `bk_property_id`，**必须逐一匹配同一正则 `^[a-z][a-z0-9_]*$`**；不匹配即按规则 4 逐条记录并中断 | `validate_identifier()`（同 §5.7 属性 ID 校验） | 逐列出错点计入问题记录，中断 |
+| 2.1 | **系统/保留列处理**（key 已通过规则 2 正则后判定）：`bk_inst_name` 属实例名，**允许原样保留**（既作属性 id 又作实例列，满足实例导入必填，不触发规则 4）；其余系统保留 id（`id`/`_id`/`bk_inst_id`/`bk_obj_id`/`bk_supplier_account`/`create_time`/`last_time`/`bk_operate_time`，见 `cmdb.py` 的 `SQLITE_SYSTEM_COLS`）**不拒绝**，而是对生成的 `bk_property_id` 与实例列**自动加前缀 `u_`** 区分（`u_`+原 key），避免 ALTER/upsert 覆盖系统列或类型冲突；若 `u_<key>` 仍与某表头 key 冲突则追加序号（`_2`/`_3`…） | 前缀映射表（key→`u_<key>`） | 属默认行为，不触发失败（`bk_inst_name` 例外、原样） |
+| 3 | 推导出的每个属性 `bk_property_type` **默认为 `singlechar`**（不解析数据内容去推断类型；类型修正留给用户编辑后再 `apply`）；**中文属性名 `bk_property_name` 默认用同一英文 key 原值补填**（同源填充，便于后续改中文） | 固定写 `singlechar` + `bk_property_name=英文key` | 属默认行为，不触发失败 |
+| 3.1 | 实例表必填列 `bk_inst_name` 若不在表头中，则**强制补入**：属性表加一条 `singlechar / isrequired=true`，并在生成 `instances_<oid>.csv` 表头前置 `bk_inst_name` 列、数据行以 `bk_<obj_id>_<行号>` 占位，确保 `apply` 的实例导入不报必填缺失 | — | 属默认行为，不触发失败 |
+| 4 | 规则 1/2 任一不通过 → **全量扫描收集全部问题 → 输出问题记录报告 → 退出码 2，不生成任何文件** | 先校验再写盘 | 中断、零落盘 |
+| 5 | 校验通过 → 输出与 `seed` 同构的目录（12 位时间戳子目录 + 同名 CSV 文件），可被 `scaffold apply` 直接消费 | 复用 §5.6.1 文件契约 | 落盘 |
+
+> **关键约束（C2，标识符同源）**：`bk_obj_id` 与 `bk_property_id` 共用同一个白名单正则 `IDENTIFIER_RE = re.compile(r'^[a-z][a-z0-9_]*$')`（见 `app/cli/safety.py`），因此规则 1、2 本质是"同一校验器分别作用于文件名 stem 与每个表头列"。校验为**严格匹配、不做隐式转换**（大写不自动转小写、非法字符不自动剔除），不通过即按规则 4 中断，由用户改名/改列后重试。
+
+> **生成契约（C1，RFC 4180）**：与 §5.6.1 一致，`from-csv` 写入端**必须**用合规 CSV 库以 `QUOTE_ALL` 包裹每个单元格，确保 `apply` 的 RFC 4180 reader 原样读回（§5.6.2）。
+
+**校验与中断流程**
+
+1. **解析 CSV**：以 RFC 4180 读入（同 `read_csv_rows`，`utf-8-sig` 兼容带 BOM）；若无法解析或无数据行则按规则 4 出报告。
+1.1 **表头定位（规则 4 补强，§5.6.3 表头鲁棒性）**：**按字段名而非行号定位表头行**——优先在首 10 行内查找含必填/已知实例字段名（`bk_inst_name` / `bk_host_name` / `bk_inst_id`）的行作为表头；找不到时（源表头无 `bk_inst_name`、将由规则 3.1 自动补）才回退到「首单元格为合法英文标识符（`validate_identifier` 通过）」的启发式。如此即使前导实例的 `bk_inst_name` 为数字编号（如 `1001`），也不会被误当作表头行吞掉（避免数字编号前导实例丢失）；其前的说明行（如中文标题行）自动跳过，其后的重复表头行（与表头完全相同的行）亦作为非数据跳过，避免把表头/说明行误当作实例数据、生成 `bk_inst_name='bk_inst_name'` 之类的脏实例。首 10 行均未找到字段名或英文表头 → 问题记录 `文件无有效表头（前 10 行未找到含 bk_inst_name 等字段名或英文表头行）`。
+2. **表头存在性 / 归一**：定位到的表头行必须非空且全部为英文标识；空表头行 → 问题记录 `文件无有效表头`；每个 key 先 `strip()` 首尾空格（避免 `' ip'` 之类因空格触发规则 2 失败）。
+3. **模型名校验（规则 1）**：对文件名 stem 调 `validate_identifier()`，失败记 `文件名 stem '<stem>' 不符合 ^[a-z][a-z0-9_]*$`。
+4. **属性名正则校验（规则 2）**：对表头每个 key 调 `validate_identifier()`，失败按 `第 N 列 '<key>' 不符合属性 ID 正则` 逐条记录（含列序号，便于定位）。
+4.1 **系统/保留列处理（规则 2.1）**：key 通过规则 2 后，`bk_inst_name` 原样保留；其余命中 `SQLITE_SYSTEM_COLS` 的 key（`id`/`_id`/`bk_inst_id`/`bk_obj_id`/`bk_supplier_account`/`create_time`/`last_time`/`bk_operate_time`）生成前缀映射 `u_<key>`，并记录到「前缀映射表」（用于生成阶段同时改写属性 id 与实例列名）；若 `u_<key>` 仍与某表头 key 冲突则追加序号。
+5. **去重校验**：表头存在重复 key（同一英文 key 出现 ≥2 次）→ 记录 `表头重复列 '<key>'`，按规则 4 中断；`bk_inst_name` 与系统保留列已在规则 2.1 单独处理，不在此判重。
+6. **汇总判定（规则 4）**：若问题列表非空 → 打印**问题记录报告**（见下表），退出码 `2`，**不创建任何目录、不写任何文件**；列表为空才进入生成。
+7. **生成（规则 5）**：按下方「生成文件集」写盘；`--dry-run` 仍执行以上全部校验，失败时同样退出码 2 且不写盘，仅打印镜像结果。
+
+**问题记录报告格式（校验失败时输出）**
+
+```text
+[from-csv] 校验未通过，已中断（退出码 2），未生成任何文件。
+源文件: /path/to/Servers.csv
+问题记录:
+  [规则1] 文件名 stem 'Servers' 不符合 ^[a-z][a-z0-9_]*$（需小写字母开头、仅含小写字母/数字/下划线）
+  [规则2] 第 3 列 'IP 地址' 不符合属性 ID 正则（含中文/空格）
+  [规则2] 第 5 列 '1st_field' 不符合属性 ID 正则（数字开头）
+请修正后重试。
+```
+
+**生成文件集（与 seed 同构，§5.6.2 `apply` 直读）**
+
+| 文件 | 对应章节 | 内容 |
+|------|----------|------|
+| `classifications.csv` | §5.9 | 1 行：`bk_classification_id`（`--classification-id`，缺省 `bk_import`）/ `bk_classification_name` / `bk_classification_icon`（`icon-cc-default`）/`ispre=false` / `classification_index=0`（缺省 `0`） |
+| `models.csv` | §5.10 | 1 行：`bk_obj_id`（文件名 stem）/ `bk_obj_name`（`--model-name` 或 `模型-<id>`）/ `bk_classification_id` / `bk_obj_icon`（`icon-cc-default`）/ `ispre=false` / `bk_ishidden=false` / `bk_ispaused=false` / `obj_sort_number=0` |
+| `attributes_<oid>.csv` | §5.7 | **3 行表头（13 列 seed 模板，仅 `bk_property_group_name` 单分组列）**；每表头 key 一行：**中文名 `bk_property_name` 默认 = 该英文 key 原值**（同源补填）、`bk_property_type=singlechar`、`bk_property_group_name=default`、`editable=true`、`isrequired=false`（`bk_inst_name` 为 `true`）、其余缺省 `false/0`；`bk_property_index` 从 10 递增（`bk_inst_name` 固定 10，与 seed 模板的 `0` 不同，仅影响展示顺序）；**系统保留 key 按规则 2.1 改写 `bk_property_id = u_<key>`**（中文名仍取原 key） |
+| `instances_<oid>.csv` | §5.8 | **单行英文表头** = 输入表头（规则 3.1 缺 `bk_inst_name` 时前置该列；规则 2.1 系统保留 key 同步改写为 `u_<key>`，数据随列名迁移），数据行原样回写（`QUOTE_ALL`）；因全部 `singlechar`，单元值即字符串，无需类型归一 |
+
+> `attributes_<oid>.csv` 采用 §5.6.1 的 13 列 seed 模板（仅 `bk_property_group_name` 单分组列，对应中文表头"字段分组"，已弃用独立的 `bk_property_group` ID 列与"分组显示名"/`bk_group_name` 列），而非 §5.7.3 的 17 列 export 模板，与 `apply` 兼容（`attribute import` / `scaffold apply` 同时接受新 13 列模板与遗留 14 列双列模板）。`description` 列在 seed 模板中存在但 `from-csv` 不产出内容（留空供编辑），符合 §5.7 对 `description` 列的"读取即丢弃"约定。
+
+**示例**
+
+输入 `servers.csv`（首行英文表头 + 实例数据）：
+
+```csv
+bk_inst_name,ip,region,owner
+web-01,10.0.0.1,sh,alice
+web-02,10.0.0.2,bj,bob
+```
+
+命令与输出：
+
+```bash
+# 反向推导 + 生成 seed 同构目录（12 位时间戳目录名）
+python3 -m app.cli.cmdb scaffold from-csv --csv servers.csv --classification-id bk_application
+# → 生成 ./seed/260805002341/{classifications,models,attributes_servers,instances_servers}.csv
+```
+
+生成的 `attributes_servers.csv`（3 行表头，13 列，全部 `singlechar`；`bk_inst_name` 必填）：
+
+```csv
+英文名,中文名,数据类型,字段分组,数据配置,单位,描述,提示,是否可编辑,是否必填,是否只读,是否唯一,字段索引
+string,string,enum,string,json,string,string,string,bool,bool,bool,bool,int
+bk_property_id,bk_property_name,bk_property_type,bk_property_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+bk_inst_name,bk_inst_name,singlechar,default,,,,true,true,false,false,10
+ip,ip,singlechar,default,,,,true,false,false,false,11
+region,region,singlechar,default,,,,true,false,false,false,12
+owner,owner,singlechar,default,,,,true,false,false,false,13
+```
+
+生成的 `instances_servers.csv`（表头回映输入，数据原样）：
+
+```csv
+bk_inst_name,ip,region,owner
+web-01,10.0.0.1,sh,alice
+web-02,10.0.0.2,bj,bob
+```
+
+规则 3.1 触发示例（表头缺 `bk_inst_name`，自动补列）：
+
+```csv
+# 输入 missing_name.csv（无 bk_inst_name 列）
+ip,region
+10.0.0.1,sh
+```
+```bash
+python3 -m app.cli.cmdb scaffold from-csv --csv missing_name.csv
+# attributes_missing_name.csv 中自动补 bk_inst_name(singlechar/isrequired=true, index=10)
+# instances_missing_name.csv 表头前置 bk_inst_name，数据行填 bk_missing_name_1 / bk_missing_name_2
+```
+
+规则 2.1 触发示例（表头含系统保留列，自动加前缀区分，不拒绝）：
+
+```csv
+# 输入 with_sys.csv（含 bk_obj_id、id 等系统保留列）
+bk_inst_name,ip,bk_obj_id,id
+srv-01,10.0.0.1,app,1001
+srv-02,10.0.0.2,db,1002
+```
+```bash
+python3 -m app.cli.cmdb scaffold from-csv --csv with_sys.csv
+# 前缀映射表：bk_obj_id -> u_bk_obj_id；id -> u_id（均为业务属性，不触碰系统列）
+# attributes_with_sys.csv：bk_property_id 改写为 u_bk_obj_id / u_id（中文名仍为 bk_obj_id / id）
+# instances_with_sys.csv 表头同步改写为 bk_inst_name,ip,u_bk_obj_id,u_id，数据随列名迁移
+```
+
+随后用户编辑（如把 `region` 改为 `enum` 并补 `option`）即可：
+
+```bash
+python3 -m app.cli.cmdb scaffold apply --dir ./seed/260805002341 --atomic
+```
+
+---
+
+
 ### 5.7 `cmdb attribute import`（CSV 批量导入属性）
 
 **背景**：原项目提供属性描述导入模板（CSV），其列结构为
@@ -529,7 +683,9 @@ python3 -m app.cli.cmdb scaffold apply --dir ./seed/260729001336 --atomic
 | A | 英文名(必填) | `bk_property_id` | — | — | — | 主键，必填；用于"同 id 覆盖 / 异 id 新增"判定 |
 | B | 中文名(必填) | `bk_property_name` | — | — | — | 必填 |
 | C | 数据类型(必填) | `bk_property_type` | — | — | — | 经 `get_sql_type()` 校验，必须在 16 种合法类型内 |
-| D | 字段分组 | `bk_property_group` | ✅ | ✅ | ✅ | 按**分组名**解析为 `bk_group_id`；未命中则按 `--group-auto-create` 建分组（默认归 `default`） |
+| D | 字段分组 | `bk_property_group` | ✅ | ✅ | ✅ | **分组 ID（遗留兼容列）**（`bk_group_id`）；可空，缺省 `default`。与 `bk_property_group_name` / `bk_group_name` 共同决定分组归属（见 §5.11.9） |
+| **新增列** | 字段分组（显示名） | `bk_property_group_name` | ✅ | ✅ | ✅ | **分组显示名（scaffold 生成模板用此单列，对应中文表头"字段分组"）**；可空，缺省 `default`。`--group-auto-create` 时按显示名去重自动建组（随机 `bk_group_id`）；命中已有分组（按显示名）则复用。**新模板已收敛为单列，弃用独立的 `bk_group_name` 列** |
+| **遗留列** | 分组显示名 | `bk_group_name` | ✅ | ✅ | ✅ | **分组显示名（遗留兼容列）**；语义同 `bk_property_group_name`，为早期双列格式所用，与 `bk_property_group` 列配合；新模板不再产出此列，但 `attribute import` 仍接受 |
 | E | 数据配置 | `option` | ✅ | ✅ | ✅ | enum/enummulti/list 解析 JSON；list 简单数组经 `convert_enum_option()` |
 | **F** | 单位 | `unit` | ✅ | ✅ | ✅ | 直接写入（`int.vue`/`float.vue` 作单位后缀） |
 | **G** | 描述 | `description` | ❌ | ❌ | ❌ | **lite 三层均未实现**；默认丢弃并告警；本 CLI **不提供补齐开关**（加列会产生 API/UI 不消费的孤儿数据，见 H2） |
@@ -560,7 +716,7 @@ cmdb attribute import --csv <path> --bk_obj_id <model> [options]
 | `--delimiter` | 否 | 分隔符，默认 `,` |
 | `--on-duplicate` | 否 | 重复策略：`overwrite`（默认，同 `bk_property_id` 覆盖）/ `skip`（跳过已存在） |
 | `--atomic` / `--no-atomic` | 否 | **事务开关（问题 2 核心）**：所有写入与 `ALTER` 是否包在**同一事务**；默认开启（`--atomic`） |
-| `--group-auto-create` | 否 | D 列分组名在 `cc_PropertyGroup` 中不存在时，自动创建该分组 |
+| `--group-auto-create` | 否 | 分组（按 `bk_property_group` ID 或 `bk_group_name` 显示名）不存在时**自动创建**：给定 `bk_group_name` 则生成随机 `bk_group_id`（`generate_group_id()`）并以该显示名命名；仅给 `bk_property_group` ID 则按该 ID 建组（须过 C1 白名单），显示名取 `KNOWN_GROUP_NAMES` 兜底 |
 | `--create-unique` | 否 | 当 L 列 `isonly=TRUE` 时，同步向 `cc_ObjectUnique` 写入单字段唯一约束 |
 | `--strict` | 否 | 任意行校验失败即整体终止（默认仅跳过该行并计入错误清单） |
 | `--dry-run` | 否 | 仅打印将执行的 SQL 与映射结果，不落库 |
@@ -570,7 +726,7 @@ cmdb attribute import --csv <path> --bk_obj_id <model> [options]
 1. **定位表头**：扫描首单元格为 `bk_property_id` 的行作为字段名行，其下为数据行。
 2. **逐行处理**（校验：`bk_property_id` / `bk_property_name` / `bk_property_type` 必填且类型合法，否则按 `--strict` 决定跳过或终止）：
    - 解析布尔列 I/J/K/L（`TRUE/FALSE` → `1/0`）；解析 E 列 `option`（enum/list 经 `convert_enum_option()`）；
-   - 解析 D 列分组名 → `bk_group_id`（查 `cc_PropertyGroup.bk_group_name`；未命中按 `--group-auto-create` 建分组，默认归 `default`）；
+   - 解析分组（`bk_property_group_name` = 分组显示名，`bk_group_name` = 显示名（遗留兼容列），`bk_property_group` = 分组 ID（遗留兼容列））：经 `resolve_or_create_group()` 按"ID 精确匹配 → 显示名去重复用 → `--group-auto-create` 建组"顺序得出最终 `bk_group_id`（见 §5.11.9）；给定显示名（`bk_property_group_name` 或 `bk_group_name`）时自动建组生成随机 ID，同一显示名在导入批次内去重复用同一 ID，默认归 `default`；scaffold 生成模板仅含 `bk_property_group_name` 单列
    - G 列 `description`：lite 三层均未实现该列（与上游一致），**默认丢弃并告警**；本 CLI 不提供补齐开关（加列会产生 API/UI 不消费的孤儿数据，见 H2），若项目确需应在 API/UI 端到端支持后由迁移脚本加列；
    - **查重**：`SELECT 1 FROM cc_ObjAttDes WHERE bk_obj_id=:oid AND bk_property_id=:pid`
      - 存在 + `overwrite` → `UPDATE` 全部可写字段；若类型变化，SQLite 下 `ALTER COLUMN` 能力有限，默认不改列类型并提示；
@@ -599,6 +755,31 @@ python3 -m app.cli.cmdb attribute import \
   --csv ./bk_cmdb_model_deployment.csv \
   --bk_obj_id bk_deployment \
   --no-atomic --create-unique --group-auto-create
+```
+
+**遗留双列分组 + 显示名去重示例**（CSV 14 列，D=`bk_property_group` + 新增 E=`bk_group_name`；仍可被 `attribute import` 消费）：
+
+```csv
+bk_property_id,bk_property_name,bk_property_type,bk_property_group,bk_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+ip,IP,singlechar,network,网络配置,,,,,,true,false,false,false,10
+port,端口,int,network,网络配置,,,,,,false,false,false,false,11
+remark,备注,longchar,,网络配置,,,,,,false,false,false,false,12
+```
+
+**scaffold 生成的 13 列模板（单列 `bk_property_group_name`，对应中文表头"字段分组"）**：
+
+```csv
+bk_property_id,bk_property_name,bk_property_type,bk_property_group_name,option,unit,description,placeholder,editable,isrequired,isreadonly,isonly,bk_property_index
+ip,IP,singlechar,网络配置,,,,,,true,false,false,false,10
+port,端口,int,网络配置,,,,,,false,false,false,false,11
+remark,备注,longchar,网络配置,,,,,,false,false,false,false,12
+```
+
+```bash
+# 三条属性均填 bk_group_name=网络配置：--group-auto-create 时仅建一个随机 bk_group_id，
+# 三条属性共享该 ID（按显示名去重，镜像上游 grpNameIDMap）；remark 未填 ID 也按显示名归同组
+python3 -m app.cli.cmdb attribute import \
+  --csv ./grp_demo.csv --bk_obj_id bk_deployment --group-auto-create
 ```
 
 ---
@@ -688,6 +869,7 @@ python3 -m app.cli.cmdb instance import \
 | 分类名称 | `bk_classification_name` | 是 | 前端导航显示 |
 | 图标 | `bk_classification_icon` | 否 | 默认 `icon-cc-default` |
 | 是否预置 | `ispre` | 否 | `TRUE/FALSE` → `1/0`，默认 `0` |
+| 排序序号 | `classification_index`（别名：`index`/`排序`/`排序序号`/`sort_index`/`索引`） | 否 | 整数，默认 `0`；写入 `cc_ObjClassification.classification_index`，决定资源目录分类显示顺序（升序，越小越靠前）。缺列/空值/非法值统一回退 `0` |
 
 **命令与参数**
 
@@ -882,13 +1064,29 @@ python3 -m app.cli.cmdb model import \
 | 索引 | 导入前若实例表已有大量唯一索引，upsert 的 `SELECT` 命中查询应确保走 `cc_ObjectUnique` 对应索引 |
 | 超时 | 超大型导入建议在事务外分批，避免长事务锁表（尤其 SQLite 单写锁） |
 
-#### 5.11.9 字段分组解析一致性（attribute import 专项）
+#### 5.11.9 字段分组解析一致性（attribute import / attribute create 专项）
+
+**列语义（对齐上游 bk-cmdb，并收敛 scaffold 生成模板）**：`bk_property_group` = 分组 **ID**（`bk_group_id`，语义标识，遗留兼容列）；`bk_group_name` = 分组 **显示名**（遗留兼容列）；`bk_property_group_name` = 分组 **显示名**（scaffold 生成模板所用单列，对应中文表头"字段分组"）。三者共同决定分组归属——scaffold 生成的 `attributes_*.csv` 现已收敛为**仅含 `bk_property_group_name` 单列**（13 列），不再产出独立的 `bk_property_group` / `bk_group_name` 列；`attribute import` / `scaffold apply` 仍向后兼容遗留双列格式。
+
+**`resolve_or_create_group(c, oid, grp_id, grp_name, auto_create, name_cache)` 解析顺序**：
+
+| 优先级 | 条件 | 行为 |
+|------|------|------|
+| 1 | 显式 `grp_id` 且 `cc_PropertyGroup.bk_group_id` 已存在 | 直接返回该 `bk_group_id` |
+| 2 | `grp_name` 已命中（已存在或本轮 `name_cache` 已建） | 返回同一 `bk_group_id`（**显示名去重**，镜像上游 `grpNameIDMap`） |
+| 3 | `auto_create` 且给了 `grp_name` | `bk_group_id = generate_group_id()`（随机全局唯一串），以该 `grp_name` 命名建组，写入 `name_cache` |
+| 4 | `auto_create` 且仅给 `grp_id` | 经 C1 白名单 `validate_identifier(grp_id)` 后以其为 ID 建组，显示名取 `KNOWN_GROUP_NAMES.get(grp_id, grp_id)` |
+| 5 | 其它（未命中且不建组） | 回落 `default` |
+
+> `generate_group_id()`（`app.utils.tools`）：20 位 base32 小写随机串（`abcdefghijklmnopqrstuvwxyz234567`），对齐上游 `group.go:NewGroupID(false)` 的 `xid.New()`——**非顺序、不要求小写标识符**，与记录主键 `id`（`generate_id()` 自增）是两回事。
 
 | 规则 | 说明 |
 |------|------|
-| 分组名 → `bk_group_id` | D 列按**分组名**（`bk_group_name`）查 `cc_PropertyGroup` 反查 `bk_group_id`；未命中按 `--group-auto-create` 建分组（默认归 `default`） |
+| 显示名去重 | 同一导入批次内，相同 `bk_group_name` 复用同一随机 `bk_group_id`，不会因多行而出现多个同名分组 |
 | 缺省分组 | 未显式指定分组时，所有业务属性归入 `default`（与 §1 核心约束一致，**不再强制 base**） |
-| 与 scaffold 对齐 | 分组解析逻辑应与 §5.6 `groups` 定义保持一致，避免"同一个分组名映射出不同 `bk_group_id`" |
+| 显示名单一来源 | `KNOWN_GROUP_NAMES`（`app.definitions`，原 `default→基础信息 / auto→自动发现信息… / role→角色 / proc_port→监听信息`）为内置 ID→显示名唯一真相源；CLI 与 `migrate.py` 共用，避免漂移 |
+| C1 适用范围收窄 | 自动建组生成的随机 `bk_group_id` **不受 C1 白名单约束**；仅当用户显式给出 `bk_property_group` ID 且该 ID 必须新建（规则 4）时才校验 C1 |
+| 与 scaffold / API 对齐 | 解析逻辑与 §5.6 `groups`、后端分组 API（POST/PUT/DELETE `/models/<id>/property-groups`）保持一致，避免"同一显示名映射出不同 ID" |
 
 #### 5.11.10 同步（Sync）场景扩展建议
 
@@ -981,7 +1179,10 @@ ETL 可追溯性要求"这批行来自哪次运行"，否则无法按批次回�
 | `get_sql_type(type)`                  | `app.definitions`     | 属性类型→SQL 类型映射（单一真相源，仅认 16 种 Go 合法类型） |
 | `SYSTEM_PROPERTIES`                   | `app.migrate.migrate` | 4 个系统属性模板                            |
 | `convert_enum_option()`               | `app.migrate.migrate` | 简单数组→标准 enum option                  |
-| `generate_id()`                       | `app.utils.tools`     | 分组 / 属性 / 关联记录 ID 生成                 |
+| `generate_id()`                       | `app.utils.tools`     | 分组记录主键（`id` 列）/ 属性 / 关联记录 ID 生成（全局唯一递增） |
+| `generate_group_id()`                | `app.utils.tools`     | 分组语义标识 `bk_group_id` 的随机全局唯一串（详见 §5.11.9） |
+| `resolve_or_create_group()`          | `app.cli.cmdb`        | 分组"按 ID/显示名查重 → `--group-auto-create` 建组（随机 ID）"统一解析 |
+| `KNOWN_GROUP_NAMES`                  | `app.definitions`     | 内置分组 ID→显示名单一真相源（CLI 与 migrate 共用） |
 | `settings.DATABASE_URI`               | `app.config.settings` | 默认数据库连接                              |
 | `config_by_env`                       | `app.config`          | `--env` 联动多库                         |
 
@@ -989,7 +1190,7 @@ ETL 可追溯性要求"这批行来自哪次运行"，否则无法按批次回�
 
 **ID 生成契约（C2）**：所有写入行的 `_id` / `id` 必须由调用方**逐行独立生成**——`_id = "{bk_obj_id}.{bk_property_id}"`（分组为 `"{bk_obj_id}.{bk_group_id}"`、模型自身为 `bk_obj_id`），`id = generate_id()`；**禁止多行复用同一 `id`**（否则 `cc_ObjAttDes.id` 主键冲突，整事务回滚）。`generate_id()` 与后端 API **共用同一序列**，避免前后端撞号。**作用域说明（F）**：`generate_id()` 产出**全局唯一**递增整数；即便 `migrate.py` 对 `cc_ObjAttDes.id` 采用每模型局部计数器，CLI 的全局 id 也更为严格、不会撞号；若 `cc_ObjAttDes` 以 `(bk_obj_id, id)` 为唯一键，全局 id 仍安全。
 
-**标识符安全（C1，单一强制入口）**：所有拼入 DDL 的标识符（`bk_obj_id` / `bk_property_id` / 分组 ID / CSV 表头列名）**必须**经 `^[a-z][a-z0-9_]*$` 白名单校验、转义内部 `"` 后加双引号包裹；命名参数（`:key`）仅保护 VALUE，**标识符不得直接插值**进表名/列名。**实现要求（D）**：新增 `app.utils.safety.validate_identifier(name) -> bool`（不合法抛 `InvalidIdentifierError`）作为**唯一**校验入口，所有命令在拼 DDL 前统一调用，**禁止在各命令内散落正则**。
+**标识符安全（C1，单一强制入口）**：所有拼入 DDL 的标识符（`bk_obj_id` / `bk_property_id` / **显式给定的分组 ID** / CSV 表头列名）**必须**经 `^[a-z][a-z0-9_]*$` 白名单校验、转义内部 `"` 后加双引号包裹；命名参数（`:key`）仅保护 VALUE，**标识符不得直接插值**进表名/列名。**实现要求（D）**：新增 `app.utils.safety.validate_identifier(name) -> bool`（不合法抛 `InvalidIdentifierError`）作为**唯一**校验入口，所有命令在拼 DDL 前统一调用，**禁止在各命令内散落正则**。> ⚠️ C1 适用范围收窄：分组 `bk_group_id` 在 `--group-auto-create` 自动建组时由 `generate_group_id()` 生成（随机串，**不来自用户输入**，故无需也不受 C1 约束）；仅当用户**显式给出** `bk_property_group` ID 且该分组必须新建时，才对该 ID 校验 C1（见 §5.11.9 规则 4）。
 
 ---
 

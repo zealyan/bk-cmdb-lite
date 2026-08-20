@@ -14,7 +14,7 @@
   <section class="invalid-list" v-if="list.length">
     <div class="header">
       <strong class="title">{{title}}</strong>
-      <bk-button class="copy" size="small" text @click="handleCopy">{{$t('复制IP')}}</bk-button>
+      <bk-button class="copy" size="small" text @click="handleCopy">复制IP</bk-button>
     </div>
     <ul class="list clearfix">
       <li class="item fl"
@@ -43,11 +43,23 @@
     },
     methods: {
       async handleCopy() {
+        // lite 适配：原项目用 vue-clipboard2（$copyText）与 $error，lite 均未注册，
+        // 改用原生 Clipboard API + $success/$bkMessage。
+        const text = this.list.join('\n')
         try {
-          await this.$copyText(this.list.join('\n'))
-          this.$success(this.$t('复制成功'))
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text)
+          } else {
+            const textarea = document.createElement('textarea')
+            textarea.value = text
+            document.body.appendChild(textarea)
+            textarea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textarea)
+          }
+          this.$success('复制成功')
         } catch (error) {
-          this.$error(this.$t('复制失败'))
+          this.$bkMessage({ theme: 'error', message: '复制失败' })
           console.error(error)
         }
       }

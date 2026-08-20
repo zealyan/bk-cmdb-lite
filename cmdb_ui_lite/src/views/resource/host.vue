@@ -28,6 +28,8 @@
       <bk-table
         :data="filteredHosts"
         :pagination="paginationConfig"
+        :max-height="tableMaxHeight"
+        :row-key="row => row.bk_host_id"
         @page-change="handlePageChange"
         @page-limit-change="handleLimitChange"
       >
@@ -71,7 +73,7 @@
 import IconButton from '@/components/ui/button/icon-button.vue'
 import FilterForm from '@/components/filters/filter-form.js'
 import FilterStore, { setupFilterStore } from '@/components/filters/store'
-import { modelAPI } from '@/api/client'
+import { modelAPI, cancelRequest, isCancelError, freezeList } from '@/api/client'
 import { MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
 
 export default {
@@ -100,8 +102,15 @@ export default {
     if (this.unwatchFilter) {
       this.unwatchFilter()
     }
+    // 取消进行中的列表请求，释放大列表数据引用，避免组件销毁后陈旧 500+ 行响应挂载/驻留（GC）
+    cancelRequest('host-list')
   },
   computed: {
+    // 固定表头 + 视口滚动：与上游 host-list.vue 的 :max-height 一致，
+    // 仅渲染/绘制视口内行，降低 500+ 行时的 DOM 与绘制压力
+    tableMaxHeight () {
+      return Math.max(300, window.innerHeight - 320)
+    },
     filteredHosts () {
       if (!this.searchKeyword) return this.hosts
       const keyword = this.searchKeyword.toLowerCase()
@@ -118,12 +127,20 @@ export default {
         modelIds: ['host'],
         searchHandler: this.searchHandler.bind(this)
       })
+      // 监听「有效筛选签名」而非原始 FilterStore.condition 对象：
+      // 在高级筛选中点击「添加其他条件」时，store 的 selected 监听会调用 initCondition()
+      // 给新属性写入默认空值（value: '' / []），替换 condition 对象引用；若 deep watch 整个
+      // condition 对象，这次“仅添加空条件行、尚未查询”的变更会立即触发列表重载（loading 转圈）。
+      // 改为监听 getQuery 序列化后的有效查询串（与 loadHostList 实际请求一致，空值被忽略）：
+      // 添加空条件 → 签名不变 → 不重载；填值后查询 / 删 tag / 清空 → 签名变化 → 重载。
       this.unwatchFilter = this.$watch(
-        () => [FilterStore.selected, FilterStore.condition, FilterStore.IP],
+        () => {
+          const q = FilterStore.getQuery(FilterStore.condition)
+          return `${q.filter}|${q.ip}`
+        },
         () => {
           this.searchHandler()
-        },
-        { deep: true }
+        }
       )
     },
     searchHandler() {
@@ -180,17 +197,18 @@ export default {
           })
         }
         
-        const result = await modelAPI.listInstances('host', params)
+        const result = await modelAPI.listInstances('host', params,
+          { requestId: 'host-list', cancelPrevious: true })
         if (result) {
-          this.hosts = result.instances || []
+          // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（与上游一致，避免 500+ 行卡顿）
+          this.hosts = freezeList(result.instances || [])
           this.paginationConfig.count = result.total || 0
         }
       } catch (error) {
+        // 请求被取消（翻页/筛选重载时的 cancelPrevious）属预期行为，静默忽略
+        if (isCancelError(error)) return
         console.error('加载主机列表失败:', error)
-        this.$bkMessage({
-          message: '加载主机列表失败',
-          theme: 'error'
-        })
+        this.$handleApiError(error)
       }
     },
     handleSearch (value) {

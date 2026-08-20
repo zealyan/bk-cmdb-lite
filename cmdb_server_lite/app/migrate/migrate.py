@@ -22,18 +22,63 @@ import logging
 from sqlglot import parse_one, transpile
 from sqlalchemy import text
 from app.db.engine import get_connection
+from app.db.dialect import adapt_sql, get_column_names, list_table_names
 from app.config.settings import get_config
+from app.utils.tools import generate_id
 from app.definitions import (
     get_sql_type,
     VALID_PROPERTY_TYPES,
     ASSOCIATION_PROPERTY_TYPES,
     LEGACY_PROPERTY_TYPE_ALIAS,
+    KNOWN_GROUP_NAMES,
+    model_name_property,
 )
 
 
 # 配置日志
 logger = logging.getLogger('migrate')
 coloredlogs.install(level='INFO', logger=logger)
+
+
+# 种子主机-模块挂载关系（语义化表达）
+# 以 (业务, 集群名, 模块名) 表达挂载目标，运行时解析实际 bk_module_id/bk_set_id，
+# 不再硬编码 ID —— 避免模块被 generate_id 重新生成后 ID 漂移导致悬空绑定。
+# 目标模块/集群缺失时 seed_host_bindings() 会自动补全创建，保证挂载总能落库。
+HOST_BINDING_SPEC = [
+    # 主机1-2 -> 蓝鲸平台(biz2) 广州一区/web
+    {"bk_host_id": 1, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "web"},
+    {"bk_host_id": 2, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "web"},
+    # 主机3 -> 广州一区/api
+    {"bk_host_id": 3, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "api"},
+    # 主机4 -> 广州二区/db
+    {"bk_host_id": 4, "bk_biz_id": 2, "bk_set_name": "广州二区", "bk_module_name": "db"},
+    # 主机5-6 -> 正式环境(biz3) 生产集群/app
+    {"bk_host_id": 5, "bk_biz_id": 3, "bk_set_name": "生产集群", "bk_module_name": "app"},
+    {"bk_host_id": 6, "bk_biz_id": 3, "bk_set_name": "生产集群", "bk_module_name": "app"},
+    # 主机7 -> 测试环境(biz4) 测试集群/test
+    {"bk_host_id": 7, "bk_biz_id": 4, "bk_set_name": "测试集群", "bk_module_name": "test"},
+    # 主机8 -> 资源池(biz1) 空闲机池/空闲机
+    {"bk_host_id": 8, "bk_biz_id": 1, "bk_set_name": "空闲机池", "bk_module_name": "空闲机"},
+    # 主机9-10 -> 广州一区/web
+    {"bk_host_id": 9, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "web"},
+    {"bk_host_id": 10, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "web"},
+    # 主机11-12 -> 广州一区/api
+    {"bk_host_id": 11, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "api"},
+    {"bk_host_id": 12, "bk_biz_id": 2, "bk_set_name": "广州一区", "bk_module_name": "api"},
+    # 主机13-14 -> 广州二区/db
+    {"bk_host_id": 13, "bk_biz_id": 2, "bk_set_name": "广州二区", "bk_module_name": "db"},
+    {"bk_host_id": 14, "bk_biz_id": 2, "bk_set_name": "广州二区", "bk_module_name": "db"},
+    # 主机15-18 -> 生产集群/app
+    {"bk_host_id": 15, "bk_biz_id": 3, "bk_set_name": "生产集群", "bk_module_name": "app"},
+    {"bk_host_id": 16, "bk_biz_id": 3, "bk_set_name": "生产集群", "bk_module_name": "app"},
+    {"bk_host_id": 17, "bk_biz_id": 3, "bk_set_name": "生产集群", "bk_module_name": "app"},
+    {"bk_host_id": 18, "bk_biz_id": 3, "bk_set_name": "生产集群", "bk_module_name": "app"},
+    # 主机19-20 -> 测试集群/test
+    {"bk_host_id": 19, "bk_biz_id": 4, "bk_set_name": "测试集群", "bk_module_name": "test"},
+    {"bk_host_id": 20, "bk_biz_id": 4, "bk_set_name": "测试集群", "bk_module_name": "test"},
+    # 主机21 -> 蓝鲸平台(biz2) 空闲机池/空闲机
+    {"bk_host_id": 21, "bk_biz_id": 2, "bk_set_name": "空闲机池", "bk_module_name": "空闲机"},
+]
 
 
 def convert_enum_option(option_list, default_index=None):
@@ -198,6 +243,66 @@ SYSTEM_PROPERTIES = [
         "option": None
     }
 ]
+
+# 内置时间属性（创建时间 / 最后修改时间）
+# 规则与 biz/set/module（见 BUILTIN_MODEL_ATTRIBUTES）保持一致：
+# - bk_property_type=time，ispre=true（内置，不可删）
+# - isreadonly=true / editable=false：值由系统写入，用户不可改
+# - bk_isapi=false / bk_issystem=false：对页面可见（详情页、列表字段可选）
+# - bk_property_group=default：与 biz 一样落在「基础信息」分组
+# 索引取极大值，保证 UI 属性排序（组内按 bk_property_index 升序）时永远排在最后，
+# 且不与业务属性（现有模型最大 index 为 34）或后续 CLI 新增属性冲突。
+BUILTIN_TIME_PROPERTY_INDEX = {
+    "create_time": 9998,
+    "last_time": 9999,
+}
+
+BUILTIN_TIME_PROPERTIES = [
+    {
+        "bk_property_id": "create_time",
+        "bk_property_name": "创建时间",
+        "bk_property_type": "time",
+        "isrequired": False,
+        "isreadonly": True,
+        "isonly": False,
+        "editable": False,
+        "bk_ispassword": False,
+        "bk_ishidden": False,
+        "bk_isapi": False,
+        "bk_issystem": False,
+        "ispre": True,
+        "bk_property_index": BUILTIN_TIME_PROPERTY_INDEX["create_time"],
+        "bk_property_group": "default",
+        "placeholder": "",
+        "unit": "",
+        "option": None
+    },
+    {
+        "bk_property_id": "last_time",
+        "bk_property_name": "最后修改时间",
+        "bk_property_type": "time",
+        "isrequired": False,
+        "isreadonly": True,
+        "isonly": False,
+        "editable": False,
+        "bk_ispassword": False,
+        "bk_ishidden": False,
+        "bk_isapi": False,
+        "bk_issystem": False,
+        "ispre": True,
+        "bk_property_index": BUILTIN_TIME_PROPERTY_INDEX["last_time"],
+        "bk_property_group": "default",
+        "placeholder": "",
+        "unit": "",
+        "option": None
+    }
+]
+
+# 系统属性 = 4 个标识属性（id / bk_inst_id / bk_inst_name / bk_obj_id）
+#          + 2 个内置时间属性（create_time / last_time）
+# 该列表同时被 migrate_attributes（存量模型）与 CLI create_model_core（新建模型）消费，
+# 保证「通用普通模型 + host」与 biz/set/module 一样自带创建时间 / 最后修改时间。
+SYSTEM_PROPERTIES = SYSTEM_PROPERTIES + BUILTIN_TIME_PROPERTIES
 
 # 内置模型定义（biz/set/module）
 # 这些模型有独立的表（cc_ApplicationBase/cc_SetBase/cc_ModuleBase）
@@ -375,9 +480,9 @@ MODEL_CLASSIFICATION_MAP = {
 
 # 分类定义
 CLASSIFICATIONS = [
-    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True},
-    {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True},
-    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True},
+    {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True, "classification_index": 1},
+    {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True, "classification_index": 2},
+    {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True, "classification_index": 3},
 ]
 
 # 属性分组定义（对齐上游 bk-cmdb）
@@ -385,20 +490,33 @@ CLASSIFICATIONS = [
 # 术语澄清（易错点）：
 #   bk_group_id / bk_property_group  = 分组【ID】，上游 NewGroupID(true) 固定返回小写 "default"
 #                                      （src/scene_server/topo_server/logics/model/group.go:335-341）
-#   bk_group_name                    = 分组【显示名】，中文语境为「基础信息」
-#                                      （admin_server/common/definitions.go:22 BaseInfoName）
-#   首字母大写的 "Default" 只是上游自定义模型的显示名硬编码（logics/model/object.go:150），
-#   属于 bk_group_name 而非 ID，切勿写进 bk_property_group。
+#   bk_group_name                    = 分组【显示名】，按模型类型区分：
+#                                      - 内置模型(biz/set/module/host)：「基础信息」(BaseInfoName)
+#                                        （admin_server/common/definitions.go:22）
+#                                      - 通用/普通模型：首字母大写的 "Default"
+#                                        （logics/model/object.go:150 硬编码），属 bk_group_name 而非 ID
+#   切勿把 "Default" 写进 bk_property_group（那是分组 ID，固定小写 "default"）。
 #
 # 上游内置模型只有 default 一个通用分组（addPresetObjects.go:242-268），
 # 不存在 base 分组；host 的自动发现分组 ID 是 auto 而非 agent。
+# 默认分组显示名：内置模型 =「基础信息」，通用/普通模型 =「Default」（见 DEFAULT_GROUP_BUILTIN_MODELS）。
 PROPERTY_GROUPS = [
     {"id": 1, "bk_group_id": "default", "bk_group_name": "基础信息", "bk_isdefault": True,
      "is_collapse": False, "ispre": True, "bk_group_index": -1},
 ]
 
+# 默认分组显示名：区分内置模型与通用/普通模型（对齐上游）。
+BUILTIN_DEFAULT_GROUP_NAME = "基础信息"   # 内置模型(biz/set/module/host) 默认分组显示名
+GENERIC_DEFAULT_GROUP_NAME = "Default"    # 通用/普通模型 默认分组显示名（上游硬编码）
+# 上游内置模型集合：其默认分组显示名用「基础信息」；其余模型（bk_switch/bk_slb/bk_deployment 等）
+# 均为通用/普通模型，默认分组显示名用「Default」。
+# 注意：区别于上方 BUILTIN_MODELS（内置模型定义列表），本集合仅用于默认分组显示名判定。
+DEFAULT_GROUP_BUILTIN_MODELS = {"biz", "set", "module", "host"}
+
 # 非通用分组定义：仅在特定模型上出现，由属性实际引用反推补全时取此处的名称与序号。
 # 对齐 admin_server/common/definitions.go 与 addPresetObjects.go 的 GroupIndex。
+# 显示名与 app/definitions.py 的 KNOWN_GROUP_NAMES（CLI 共用单一来源）保持一致，
+# migrate_property_groups 补全分组时已优先用 KNOWN_GROUP_NAMES 反查，避免漂移。
 EXTRA_GROUP_DEFS = {
     "auto": {"bk_group_name": "自动发现信息（需要安装agent）", "bk_group_index": 3},
     "role": {"bk_group_name": "角色", "bk_group_index": 2},
@@ -448,13 +566,13 @@ class DatabaseMigrator:
         self.workspace_root = self.project_root.parent
         
     def execute_sql(self, sql, params=None):
-        """执行 SQL 语句"""
+        """执行 SQL 语句（经方言适配，支持 SQLite/MySQL/PostgreSQL）"""
         conn = get_connection()
         try:
             if params:
-                conn.execute(text(sql), params)
+                conn.execute(text(adapt_sql(sql)), params)
             else:
-                conn.execute(text(sql))
+                conn.execute(text(adapt_sql(sql)))
             conn.commit()
         finally:
             conn.close()
@@ -464,9 +582,9 @@ class DatabaseMigrator:
         conn = get_connection()
         try:
             if params:
-                result = conn.execute(text(sql), params)
+                result = conn.execute(text(adapt_sql(sql)), params)
             else:
-                result = conn.execute(text(sql))
+                result = conn.execute(text(adapt_sql(sql)))
             # 转换为字典列表
             columns = result.keys()
             return [dict(zip(columns, row)) for row in result]
@@ -478,14 +596,15 @@ class DatabaseMigrator:
         for cls in CLASSIFICATIONS:
             self.execute_sql("""
                 INSERT OR REPLACE INTO cc_ObjClassification
-                (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, bk_supplier_account)
-                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, '0')
+                (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, classification_index, bk_supplier_account)
+                VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, :classification_index, '0')
             """, {
                 "id": cls["id"],
                 "bk_classification_id": cls["bk_classification_id"],
                 "bk_classification_name": cls["bk_classification_name"],
                 "bk_classification_icon": cls.get("bk_classification_icon") or DEFAULT_CLASSIFICATION_ICON,
-                "ispre": cls["ispre"]
+                "ispre": cls["ispre"],
+                "classification_index": cls.get("classification_index", cls["id"])
             })
         logger.info(f"迁移 {len(CLASSIFICATIONS)} 个分类")
     
@@ -497,6 +616,18 @@ class DatabaseMigrator:
         for model in models:
             model_id = model['bk_obj_id']
             for group in PROPERTY_GROUPS:
+                # 默认分组显示名按模型类型区分（bk_group_id 始终是 "default"，与显示名无关）：
+                #   内置模型(biz/set/module/host) -> 「基础信息」(BaseInfoName)
+                #   通用/普通模型               -> 「Default」(logics/model/object.go:150 硬编码)
+                # 注意：PROPERTY_GROUPS 的 bk_group_name 仅为内置默认名，通用模型须显式取
+                # GENERIC_DEFAULT_GROUP_NAME，切勿回退到 group['bk_group_name']（仍是「基础信息」）。
+                is_default_grp = bool(group.get('bk_isdefault')) or group.get('bk_group_id') == 'default'
+                if is_default_grp:
+                    bk_group_name = (BUILTIN_DEFAULT_GROUP_NAME
+                                     if model_id in DEFAULT_GROUP_BUILTIN_MODELS
+                                     else GENERIC_DEFAULT_GROUP_NAME)
+                else:
+                    bk_group_name = group['bk_group_name']
                 # 去重写入：cc_PropertyGroup 主键为自增 id，_id 非唯一，
                 # 旧版 INSERT OR REPLACE 仅按 id 判重，会在「模型已存在 default 行」
                 # 时插入第二条同名分组（如旧的「默认」与新的「基础信息」并存）。
@@ -519,7 +650,7 @@ class DatabaseMigrator:
                         WHERE id = :id
                     """, {
                         '_id': f"{model_id}.{group['bk_group_id']}",
-                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_name': bk_group_name,
                         'bk_group_index': group['bk_group_index'],
                         'bk_isdefault': group['bk_isdefault'],
                         'is_collapse': group['is_collapse'],
@@ -553,7 +684,7 @@ class DatabaseMigrator:
                         '_id': f"{model_id}.{group['bk_group_id']}",
                         'bk_obj_id': model_id,
                         'bk_group_id': group['bk_group_id'],
-                        'bk_group_name': group['bk_group_name'],
+                        'bk_group_name': bk_group_name,
                         'bk_group_index': group['bk_group_index'],
                         'bk_isdefault': group['bk_isdefault'],
                         'is_collapse': group['is_collapse'],
@@ -620,16 +751,21 @@ class DatabaseMigrator:
             used_groups.setdefault(mid, set()).add(gid)
 
         fixed_defs = {g['bk_group_id']: g for g in PROPERTY_GROUPS}
+        # 显示名单一来源：EXTRA_GROUP_DEFS（含 index）优先，再用 app.definitions.KNOWN_GROUP_NAMES
+        # （CLI 与 migrate 共用，避免「ID->显示名」漂移），最后兜底为首字母大写的 group_id。
+        name_by_id = {gid: d['bk_group_name'] for gid, d in EXTRA_GROUP_DEFS.items()}
+        name_by_id.update(KNOWN_GROUP_NAMES)
         for model_id, groups in used_groups.items():
             for gid in groups:
                 if (model_id, gid) in existing_groups:
                     continue
                 # 先查通用分组定义，再查上游已知的非通用分组（auto/role/proc_port），
-                # 都未命中才回退为「首字母大写的 group_id」
+                # 都未命中再查 KNOWN_GROUP_NAMES，最后回退为「首字母大写的 group_id」
                 spec = fixed_defs.get(gid) or EXTRA_GROUP_DEFS.get(gid)
                 group_name = (
                     spec['bk_group_name'] if spec
-                    else gid[:1].upper() + gid[1:]
+                    else name_by_id.get(gid)
+                    or gid[:1].upper() + gid[1:]
                 )
                 group_index = spec['bk_group_index'] if spec else 99
                 # 此处仅处理 existing_groups 中不存在的分组（上面已 continue 跳过已存在的），
@@ -796,7 +932,7 @@ class DatabaseMigrator:
             # 主线拓扑核心表（对应原项目 MongoDB collections）
             # 参考：/workspace/cmdb_server_lite/docs/原项目/bk-cmdb-主线拓扑与业务拓扑树分析.md
             "cc_ApplicationBase": """
-                CREATE TABLE IF NOT EXISTS cc_ApplicationBase (
+                CREATE TABLE IF NOT EXISTS "cc_ApplicationBase" (
                     _id TEXT,
                     bk_biz_id INTEGER PRIMARY KEY,
                     bk_biz_name VARCHAR NOT NULL,
@@ -809,7 +945,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_SetBase": """
-                CREATE TABLE IF NOT EXISTS cc_SetBase (
+                CREATE TABLE IF NOT EXISTS "cc_SetBase" (
                     _id TEXT,
                     bk_set_id INTEGER PRIMARY KEY,
                     bk_set_name VARCHAR NOT NULL,
@@ -827,7 +963,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_ModuleBase": """
-                CREATE TABLE IF NOT EXISTS cc_ModuleBase (
+                CREATE TABLE IF NOT EXISTS "cc_ModuleBase" (
                     _id TEXT,
                     bk_module_id INTEGER PRIMARY KEY,
                     bk_module_name VARCHAR NOT NULL,
@@ -843,7 +979,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_HostBase": """
-                CREATE TABLE IF NOT EXISTS cc_HostBase (
+                CREATE TABLE IF NOT EXISTS "cc_HostBase" (
                     _id TEXT,
                     bk_host_id INTEGER PRIMARY KEY,
                     bk_host_name VARCHAR,
@@ -877,6 +1013,8 @@ class DatabaseMigrator:
                     bk_mac VARCHAR,
                     bk_outer_mac VARCHAR,
                     import_from VARCHAR,
+                    bk_verify_date DATE,
+                    bk_verify_time TIME,
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     creator VARCHAR DEFAULT 'admin',
@@ -884,7 +1022,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_ModuleHostConfig": """
-                CREATE TABLE IF NOT EXISTS cc_ModuleHostConfig (
+                CREATE TABLE IF NOT EXISTS "cc_ModuleHostConfig" (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_biz_id INTEGER NOT NULL,
                     bk_host_id INTEGER NOT NULL,
@@ -895,17 +1033,18 @@ class DatabaseMigrator:
                 )
             """,
             "cc_ObjClassification": """
-                CREATE TABLE IF NOT EXISTS cc_ObjClassification (
-                    id INTEGER PRIMARY KEY,
+                CREATE TABLE IF NOT EXISTS "cc_ObjClassification" (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_classification_id VARCHAR NOT NULL UNIQUE,
                     bk_classification_name VARCHAR NOT NULL,
                     bk_classification_icon VARCHAR DEFAULT 'icon-cc-default',
                     ispre BOOLEAN DEFAULT false,
+                    classification_index INTEGER DEFAULT 0,
                     bk_supplier_account VARCHAR DEFAULT '0'
                 )
             """,
             "cc_ObjDes": """
-                CREATE TABLE IF NOT EXISTS cc_ObjDes (
+                CREATE TABLE IF NOT EXISTS "cc_ObjDes" (
                     _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL PRIMARY KEY,
@@ -924,9 +1063,9 @@ class DatabaseMigrator:
                 )
             """,
             "cc_PropertyGroup": """
-                CREATE TABLE IF NOT EXISTS cc_PropertyGroup (
+                CREATE TABLE IF NOT EXISTS "cc_PropertyGroup" (
                     _id TEXT,
-                    id INTEGER PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_obj_id VARCHAR,
                     bk_group_id VARCHAR NOT NULL,
                     bk_group_name VARCHAR NOT NULL,
@@ -943,7 +1082,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_ObjAttDes": """
-                CREATE TABLE IF NOT EXISTS cc_ObjAttDes (
+                CREATE TABLE IF NOT EXISTS "cc_ObjAttDes" (
                     _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL,
@@ -974,7 +1113,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_AsstDes": """
-                CREATE TABLE IF NOT EXISTS cc_AsstDes (
+                CREATE TABLE IF NOT EXISTS "cc_AsstDes" (
                     _id TEXT,
                     id INTEGER,
                     bk_asst_id VARCHAR NOT NULL PRIMARY KEY,
@@ -992,7 +1131,7 @@ class DatabaseMigrator:
                 )
             """,
             "cc_ObjAsst": """
-                CREATE TABLE IF NOT EXISTS cc_ObjAsst (
+                CREATE TABLE IF NOT EXISTS "cc_ObjAsst" (
                     _id TEXT,
                     id INTEGER,
                     bk_obj_id VARCHAR NOT NULL,
@@ -1013,9 +1152,9 @@ class DatabaseMigrator:
             # 兼容性单表（已废弃，实际使用按模型分表 cc_InstAsst_0_pub_{obj_id}）
             # 保留此表用于旧版本数据迁移和历史兼容，新业务逻辑请勿使用
             "cc_InstAsst_0_pub": """
-                CREATE TABLE IF NOT EXISTS cc_InstAsst_0_pub (
+                CREATE TABLE IF NOT EXISTS "cc_InstAsst_0_pub" (
                     _id TEXT,
-                    id INTEGER PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_obj_id VARCHAR NOT NULL,
                     bk_inst_id INTEGER NOT NULL,
                     bk_asst_obj_id VARCHAR NOT NULL,
@@ -1028,7 +1167,7 @@ class DatabaseMigrator:
             # 实例关联分表（动态创建，格式: cc_InstAsst_0_pub_{obj_id}，与原项目保持一致）
             # 详见 create_instance_association_table() 方法
             "cc_ObjectUnique": """
-                CREATE TABLE IF NOT EXISTS cc_ObjectUnique (
+                CREATE TABLE IF NOT EXISTS "cc_ObjectUnique" (
                     _id TEXT,
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bk_template_id INTEGER DEFAULT 0,
@@ -1040,13 +1179,14 @@ class DatabaseMigrator:
                 )
             """,
             "user_custom": """
-                CREATE TABLE IF NOT EXISTS user_custom (
+                CREATE TABLE IF NOT EXISTS "user_custom" (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_name VARCHAR NOT NULL,
                     config_key VARCHAR NOT NULL,
                     config_value TEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_name, config_key)
+                    bk_supplier_account VARCHAR DEFAULT '0',
+                    UNIQUE(user_name, config_key, bk_supplier_account)
                 )
             """,
         }
@@ -1159,7 +1299,105 @@ class DatabaseMigrator:
                 total_attrs += 1
         
         logger.info(f"迁移了 {total_attrs} 个内置模型属性")
-    
+
+    def ensure_builtin_time_attributes(self):
+        """为 host 与通用普通模型补齐内置时间属性（创建时间 / 最后修改时间）
+
+        与 biz/set/module 同规则（BUILTIN_MODEL_ATTRIBUTES）：ispre + 只读 + 页面可见。
+        覆盖三类模型来源：
+          1) JSON 资源迁移出来的模型（host / bk_switch / bk_slb...）——已由
+             migrate_attributes 走 SYSTEM_PROPERTIES 写入，这里做兜底校正；
+          2) CLI（cmdb model create / scaffold apply）在本方法上线前建的历史模型；
+          3) 存量数据库直接升级（无需清库重跑）。
+
+        幂等：cc_ObjAttDes 主键为 (bk_obj_id, bk_property_id)，重复执行只刷新定义；
+        同时校验实例表是否具备 create_time / last_time 列，缺失则 ALTER 补列。
+        biz/set/module 由 BUILTIN_MODEL_ATTRIBUTES 单独维护，此处跳过。
+        """
+        topo_model_ids = {m["bk_obj_id"] for m in BUILTIN_MODELS}
+        models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
+
+        max_row = self.execute_query("SELECT MAX(id) AS max_id FROM cc_ObjAttDes")
+        next_id = ((max_row[0].get('max_id') if max_row else None) or 0) + 1
+
+        touched_attrs = 0
+        added_columns = []
+
+        for model in models:
+            model_id = model['bk_obj_id']
+            if model_id in topo_model_ids:
+                continue
+
+            for tp in BUILTIN_TIME_PROPERTIES:
+                prop_id = tp['bk_property_id']
+                existing = self.execute_query(
+                    "SELECT id FROM cc_ObjAttDes "
+                    "WHERE bk_obj_id = :o AND bk_property_id = :p",
+                    {'o': model_id, 'p': prop_id}
+                )
+                if existing and existing[0].get('id'):
+                    attr_id = existing[0]['id']
+                else:
+                    attr_id = next_id
+                    next_id += 1
+
+                self.execute_sql("""
+                    INSERT OR REPLACE INTO cc_ObjAttDes
+                    (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+                     bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+                     bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
+                     bk_property_index, bk_supplier_account)
+                    VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                            :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                            :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
+                            :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
+                """, {
+                    '_id': f"{model_id}.{prop_id}",
+                    'id': attr_id,
+                    'bk_obj_id': model_id,
+                    'bk_property_id': prop_id,
+                    'bk_property_name': tp['bk_property_name'],
+                    'bk_property_type': tp['bk_property_type'],
+                    'bk_property_group': tp['bk_property_group'],
+                    'isrequired': tp['isrequired'],
+                    'bk_ispassword': tp['bk_ispassword'],
+                    'bk_ishidden': tp['bk_ishidden'],
+                    'isreadonly': tp['isreadonly'],
+                    'isonly': tp['isonly'],
+                    'bk_isapi': tp['bk_isapi'],
+                    'bk_issystem': tp['bk_issystem'],
+                    'option': None,
+                    'unit': tp['unit'],
+                    'placeholder': tp['placeholder'],
+                    'editable': tp['editable'],
+                    'ispre': tp['ispre'],
+                    'bk_property_index': tp['bk_property_index'],
+                })
+                touched_attrs += 1
+
+            # 实例表补列（host 用 cc_HostBase，通用模型用分表）
+            table_name = 'cc_HostBase' if model_id == 'host' \
+                else f"cc_ObjectBase_0_pub_{model_id}"
+            try:
+                cols = {c for c in get_column_names(table_name)}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"跳过实例表列校验 {table_name}: {exc}")
+                continue
+            if not cols:
+                continue
+            for prop_id in ('create_time', 'last_time'):
+                if prop_id not in cols:
+                    self.execute_sql(
+                        f'ALTER TABLE "{table_name}" ADD COLUMN {prop_id} '
+                        f'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+                    )
+                    added_columns.append(f"{table_name}.{prop_id}")
+
+        logger.info(
+            f"内置时间属性补齐完成：写入 {touched_attrs} 条属性定义"
+            + (f"，补列 {added_columns}" if added_columns else "")
+        )
+
     def process_option(self, prop_type, option):
         """
         处理属性选项值，根据类型进行转换
@@ -1266,12 +1504,16 @@ class DatabaseMigrator:
                 
                 # 先插入系统属性
                 for sys_prop in SYSTEM_PROPERTIES:
+                    # host 模型在上游仅用 bk_host_name 作名称字段，不注册 bk_inst_name；
+                    # 对齐上游：跳过 host 的 bk_inst_name，避免 host 出现双名称字段。
+                    if model_id == 'host' and sys_prop['bk_property_id'] == 'bk_inst_name':
+                        continue
                     prop_type = sys_prop.get("bk_property_type", "singlechar")
                     option = sys_prop.get("option")
                     option = self.process_option(prop_type, option)
                     
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes
+                        INSERT OR REPLACE INTO cc_ObjAttDes
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
                          bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
@@ -1327,7 +1569,7 @@ class DatabaseMigrator:
                     bk_ishidden = prop.get("bk_ishidden", False)
 
                     self.execute_sql("""
-                        INSERT INTO cc_ObjAttDes
+                        INSERT OR REPLACE INTO cc_ObjAttDes
                         (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
                          bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
                          bk_isapi, bk_issystem, ismultiple, option, unit, placeholder, editable, ispre,
@@ -1383,14 +1625,15 @@ class DatabaseMigrator:
         # 构建表结构
         columns = [
             '_id TEXT',
-            'id INTEGER PRIMARY KEY',
+            'id INTEGER PRIMARY KEY AUTOINCREMENT',
             'bk_inst_id INTEGER NOT NULL',
             'bk_inst_name VARCHAR NOT NULL',
             'bk_supplier_account VARCHAR DEFAULT \'0\'',
             'bk_obj_id VARCHAR NOT NULL',
             'create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
             'last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            'bk_operate_time TIMESTAMP'
+            'bk_operate_time TIMESTAMP',
+            'creator VARCHAR DEFAULT \'\''
         ]
         
         # 添加模型自定义属性
@@ -1431,7 +1674,7 @@ class DatabaseMigrator:
         create_sql = f"""
             CREATE TABLE IF NOT EXISTS "{asst_table_name}" (
                 _id TEXT,
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 bk_obj_id VARCHAR NOT NULL,
                 bk_inst_id INTEGER NOT NULL,
                 bk_asst_obj_id VARCHAR NOT NULL,
@@ -1712,6 +1955,8 @@ class DatabaseMigrator:
             
             associations = inst_assoc_data.get("associations", [])
             
+            from app.service.instance_service import InstanceService
+            skipped = 0
             for assoc in associations:
                 # 确定 bk_obj_asst_id 和 bk_relation_type_id
                 # 格式: {源模型ID}_{AsstKindID}_{目标模型ID}
@@ -1722,7 +1967,18 @@ class DatabaseMigrator:
                 bk_relation_type_id = assoc.get("bk_relation_type_id")
                 # bk_obj_asst_id 格式: {源}_{类型}_{目标}
                 bk_obj_asst_id = f"{bk_obj_id}_{bk_relation_type_id}_{bk_asst_obj_id}"
-                
+
+                # 遵循原项目 bk-cmdb 逻辑：两端实例必须存在才允许创建关联，
+                # 跳过指向不存在实例的孤儿关联（种子数据不一致时的防护）。
+                if not InstanceService.get_instance(bk_obj_id, assoc.get("bk_inst_id")):
+                    logger.warning(f"跳过孤儿关联（源实例不存在）: {bk_obj_id}/{assoc.get('bk_inst_id')} -> {bk_asst_obj_id}/{assoc.get('bk_asst_inst_id')}")
+                    skipped += 1
+                    continue
+                if not InstanceService.get_instance(bk_asst_obj_id, assoc.get("bk_asst_inst_id")):
+                    logger.warning(f"跳过孤儿关联（目标实例不存在）: {bk_obj_id}/{assoc.get('bk_inst_id')} -> {bk_asst_obj_id}/{assoc.get('bk_asst_inst_id')}")
+                    skipped += 1
+                    continue
+
                 assoc_data = {
                     "id": assoc.get("id"),
                     "bk_obj_id": bk_obj_id,
@@ -1733,9 +1989,12 @@ class DatabaseMigrator:
                     "bk_relation_type_id": bk_relation_type_id,
                     "bk_supplier_account": "0"
                 }
-                
+
                 # 按源模型和目标模型分表插入（与原项目一致）
                 self._insert_instance_association_to_sharding_tables(assoc_data)
+
+            if skipped:
+                logger.warning(f"已跳过 {skipped} 条孤儿关联（源/目标实例不存在）")
             
             logger.info(f"迁移了 {len(associations)} 个实例关联")
         else:
@@ -1857,6 +2116,14 @@ class DatabaseMigrator:
             if model['bk_obj_id'] not in builtin_model_ids:
                 self.create_instance_table(model['bk_obj_id'])
 
+        # 步骤7.1: 补齐 host / 通用模型的内置时间属性（创建时间 / 最后修改时间）
+        # 放在实例表创建之后，可同时校正历史模型的实例表缺列问题
+        self.ensure_builtin_time_attributes()
+
+        # 步骤7.2: 补齐自定义主线实例表的 bk_biz_id / bk_parent_id / default 列
+        # （对齐上游每个主线实例表均含 bk_parent_id；历史表补列，新表由 DDL 自带）
+        self.ensure_mainline_columns()
+
         # 步骤8: 迁移实例数据
         self.migrate_instances()
 
@@ -1869,102 +2136,334 @@ class DatabaseMigrator:
         # 步骤11: 迁移主线拓扑数据（5个核心表）
         self.migrate_mainline_topo()
 
+        # 步骤11.1: 种子化主线拓扑模型关联（cc_ObjAsst.bk_asst_id='bk_mainline'）
+        # 使 get_mainline_model_top 完全数据驱动，支持后续 CLI 自定义多模型多层级
+        self.migrate_mainline_associations()
+
         logger.info("数据库初始化迁移完成!")
 
+    def ensure_mainline_columns(self):
+        """补齐自定义主线实例表的 bk_biz_id / bk_parent_id / default 列。
+
+        对齐上游 bk-cmdb：每一个主线实例表（cc_SetBase / cc_ModuleBase /
+        cc_ObjectBase_0_pub_<obj>）都带 bk_biz_id（业务归属）与 bk_parent_id
+        （主线父实例ID）两列。lite 早期自定义实例表 DDL 缺这两列，此处以
+        M5（先探测再 ALTER）方式幂等补列，保证历史数据与新模型一致。
+        """
+        rows = [t for t in list_table_names()
+                if t.startswith('cc_ObjectBase_0_pub_')]
+        for tbl in rows:
+            cols = {c for c in get_column_names(tbl)}
+            for col, ctype in (('bk_biz_id', 'INTEGER DEFAULT 0'),
+                               ('bk_parent_id', 'INTEGER DEFAULT 0'),
+                               ('default', 'INTEGER DEFAULT 0')):
+                if col not in cols:
+                    self.execute_sql(
+                        f'ALTER TABLE "{tbl}" ADD COLUMN "{col}" {ctype}')
+                    logger.info(f"主线补列 {tbl}.{col}")
+        logger.info("自定义主线实例表补列完成")
+
+    def migrate_mainline_associations(self):
+        """种子化主线拓扑模型关联（cc_ObjAsst.bk_asst_id='bk_mainline'）。
+
+        对齐上游 createMainlineObjectAssociation：内置主线链 biz -> set -> module
+        以 cc_ObjAsst 的 bk_mainline 关联行表达（bk_obj_id=子, target_obj_id=父）。
+        幂等：依据 bk_obj_asst_id 去重，避免重复迁移覆盖用户后续自定义主线。
+        """
+        mainline_chain = [
+            {
+                "bk_obj_id": "set",
+                "target_obj_id": "biz",
+                "target_obj_name": "业务",
+                "bk_obj_asst_id": "set_mainline_biz",
+                "bk_obj_asst_name": "属于业务",
+                "mapping": "1:n",
+            },
+            {
+                "bk_obj_id": "module",
+                "target_obj_id": "set",
+                "target_obj_name": "集群",
+                "bk_obj_asst_id": "module_mainline_set",
+                "bk_obj_asst_name": "属于集群",
+                "mapping": "1:n",
+            },
+        ]
+        for idx, m in enumerate(mainline_chain, start=9001):
+            exists = self.execute_query(
+                "SELECT 1 FROM cc_ObjAsst WHERE bk_obj_asst_id=:aid",
+                {"aid": m["bk_obj_asst_id"]})
+            if exists:
+                continue
+            self.execute_sql("""
+                INSERT INTO cc_ObjAsst
+                (id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id,
+                 bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete,
+                 creator, modifier, bk_supplier_account)
+                VALUES (:id, :bk_obj_id, :target_obj_id, :target_obj_name, 'bk_mainline',
+                        :bk_obj_asst_id, :bk_obj_asst_name, :mapping, 'none',
+                        'admin', 'admin', '0')
+            """, {
+                "id": idx,
+                "bk_obj_id": m["bk_obj_id"],
+                "target_obj_id": m["target_obj_id"],
+                "target_obj_name": m["target_obj_name"],
+                "bk_obj_asst_id": m["bk_obj_asst_id"],
+                "bk_obj_asst_name": m["bk_obj_asst_name"],
+                "mapping": m["mapping"],
+            })
+        logger.info("主线拓扑模型关联种子化完成")
+
     def migrate_object_unique(self):
-        """迁移唯一约束数据"""
+        """迁移唯一约束数据。
+
+        对齐上游内置初始化，按模型真实「名称字段」构造唯一约束：
+        - 自定义主线模型（有 bk_inst_name，如 appsys/应用系统）：(bk_parent_id, bk_inst_name) 复合键；
+        - 内置主线模型 set/module：使用专属名称字段 (bk_set_name / bk_module_name)，
+          同样构成 (bk_parent_id, 名称字段) 复合键（同父节点下名称唯一）；
+        - 业务 biz：无父节点，名称字段 bk_biz_name 全局唯一（单键）。
+
+        名称「键」由 model_name_property 按模型解析，避免内置模型因无 bk_inst_name
+        属性而建不出规则（这正是此前 set/module 重名能被提交的根因）。
+        每轮 migrate 重放，采用 INSERT OR REPLACE + 仅保留本次写入的 ispre=1 规则保证幂等。
+        """
         models = self.execute_query("SELECT bk_obj_id FROM cc_ObjDes")
-        
+
         unique_id = 1
         for model in models:
             model_id = model['bk_obj_id']
-            
-            attr_result = self.execute_query("""
-                SELECT id FROM cc_ObjAttDes 
-                WHERE bk_obj_id = :model_id AND bk_property_id = 'bk_inst_name'
-            """, {"model_id": model_id})
-            
-            if attr_result:
-                attr_id = attr_result[0]['id']
-                keys = json.dumps([{
-                    "key_kind": "property",
-                    "key_id": attr_id
-                }])
-                
-                self.execute_sql("""
-                    INSERT OR REPLACE INTO cc_ObjectUnique 
-                    (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
-                    VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
-                """, {
-                    '_id': f"{model_id}_bk_inst_name",
-                    'id': unique_id,
-                    'bk_obj_id': model_id,
-                    'keys': keys,
-                    'ispre': True
-                })
-                unique_id += 1
-        
-        # 为交换机添加组合唯一约束（实例名称 + 管理IP）
-        switch_inst_name_result = self.execute_query("""
-            SELECT id FROM cc_ObjAttDes 
-            WHERE bk_obj_id = 'bk_switch' AND bk_property_id = 'bk_inst_name'
-        """)
-        switch_management_ip_result = self.execute_query("""
-            SELECT id FROM cc_ObjAttDes 
-            WHERE bk_obj_id = 'bk_switch' AND bk_property_id = 'management_ip'
-        """)
-        
-        if switch_inst_name_result and switch_management_ip_result:
-            inst_name_id = switch_inst_name_result[0]['id']
-            management_ip_id = switch_management_ip_result[0]['id']
-            
+
+            # 是否主线模型（用于缺失 bk_parent_id 时的兜底补建）
+            is_mainline = bool(self.execute_query(
+                "SELECT 1 FROM cc_ObjAsst WHERE bk_asst_id='bk_mainline' AND bk_obj_id=:o",
+                {"o": model_id}))
+
+            # 解析名称字段：自定义主线用 bk_inst_name，内置 set/module/biz 用专属名称字段
+            inst_name = self.execute_query(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:m AND bk_property_id='bk_inst_name'",
+                {"m": model_id})
+            name_field = model_name_property(model_id, bool(inst_name))
+            if not name_field:
+                continue
+            name_result = self.execute_query(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:m AND bk_property_id=:p",
+                {"m": model_id, "p": name_field})
+            if not name_result:
+                continue
+            name_id = name_result[0]['id']
+
+            # 是否含 bk_parent_id（set/module/appsys 有，biz 无）→ 复合键或单键
+            pid_result = self.execute_query(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:m AND bk_property_id='bk_parent_id'",
+                {"m": model_id})
+            # 主线模型但缺失 bk_parent_id（理论不应发生，兜底对齐上游 createDefaultAttrs）
+            if is_mainline and not pid_result:
+                self._insert_mainline_parent_attr(model_id)
+                pid_result = self.execute_query(
+                    "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:m AND bk_property_id='bk_parent_id'",
+                    {"m": model_id})
+
+            if pid_result:
+                pid_id = pid_result[0]['id']
+                keys = json.dumps([
+                    {"key_kind": "property", "key_id": pid_id},
+                    {"key_kind": "property", "key_id": name_id},
+                ])
+            else:
+                # biz：无父节点，名称全局唯一（单键）
+                keys = json.dumps([{"key_kind": "property", "key_id": name_id}])
+            _id = f"{model_id}_name_unique"
+
+            self.execute_sql("""
+                INSERT OR REPLACE INTO cc_ObjectUnique
+                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
+                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
+            """, {
+                '_id': _id,
+                'id': unique_id,
+                'bk_obj_id': model_id,
+                'keys': keys,
+                'ispre': True
+            })
+            # 幂等保障：每个模型仅保留一条本次迁移写入的内置唯一约束（ispre=1），
+            # 避免 cc_ObjectUnique 以 id 为主键导致 re-migrate 时重复追加；
+            # 仅清理 ispre=1（预设）规则，保留用户经模型管理增删的 ispre=0 规则。
+            # 旧的残留规则（不同 _id 命名，如 xxx_bk_inst_name）也会被一并清除。
+            # 交换机/主机等额外预设规则由循环后的 _migrate_special_unique 重新写入，不会丢失。
+            # 必须在循环内按当前模型清理，否则仅末位模型能被去重。
+            self.execute_sql(
+                "DELETE FROM cc_ObjectUnique WHERE bk_obj_id=:o AND bk_supplier_account='0' "
+                "AND ispre=1 AND id != :keep",
+                {"o": model_id, "keep": unique_id})
+            unique_id += 1
+
+        # 交换机/主机等额外预设唯一约束（与通用 (父,名) 规则并存，循环内去重后会重建）
+        self._migrate_special_unique()
+
+    def _insert_mainline_parent_attr(self, model_id):
+        """为缺失 bk_parent_id 属性的主线模型补建该属性（isonly=true，系统字段）。
+
+        对齐上游 mainline createDefaultAttrs 写入的 bk_parent_id，作为
+        (bk_parent_id, bk_inst_name) 复合唯一约束的键之一。
+        """
+        row = self.execute_query("SELECT MAX(id) AS m FROM cc_ObjAttDes")
+        next_id = (row[0]['m'] if row and row[0].get('m') is not None else 0) + 1
+        option = self.process_option('int', None)
+        self.execute_sql("""
+            INSERT OR REPLACE INTO cc_ObjAttDes
+            (_id, id, bk_obj_id, bk_property_id, bk_property_name, bk_property_type,
+             bk_property_group, isrequired, bk_ispassword, bk_ishidden, isreadonly, isonly,
+             bk_isapi, bk_issystem, option, unit, placeholder, editable, ispre,
+             bk_property_index, bk_supplier_account)
+            VALUES (:_id, :id, :bk_obj_id, :bk_property_id, :bk_property_name,
+                    :bk_property_type, :bk_property_group, :isrequired, :bk_ispassword,
+                    :bk_ishidden, :isreadonly, :isonly, :bk_isapi, :bk_issystem, :option,
+                    :unit, :placeholder, :editable, :ispre, :bk_property_index, '0')
+        """, {
+            '_id': f"{model_id}.bk_parent_id",
+            'id': next_id,
+            'bk_obj_id': model_id,
+            'bk_property_id': 'bk_parent_id',
+            'bk_property_name': '父节点ID',
+            'bk_property_type': 'int',
+            'bk_property_group': 'default',
+            'isrequired': True,
+            'bk_ispassword': False,
+            'bk_ishidden': False,
+            'isreadonly': True,
+            'isonly': True,
+            'bk_isapi': False,
+            'bk_issystem': True,
+            'option': option,
+            'unit': '',
+            'placeholder': '',
+            'editable': False,
+            'ispre': True,
+            'bk_property_index': -1,
+        })
+
+    def _migrate_special_unique(self):
+        """为特定内置模型追加额外的预设唯一约束（与通用 (父,名) 规则并存）。
+
+        交换机：(bk_inst_name, management_ip) 组合唯一；主机：bk_host_outerip 唯一。
+        使用固定 _id / id，INSERT OR REPLACE 保证 re-migrate 幂等；不参与
+        migrate_object_unique 循环内「按模型同名规则去重」，故不会被清除。
+        """
+        # 交换机：(bk_inst_name, management_ip) 组合唯一
+        inst = self.execute_query(
+            "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id='bk_switch' AND bk_property_id='bk_inst_name'")
+        mip = self.execute_query(
+            "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id='bk_switch' AND bk_property_id='management_ip'")
+        if inst and mip:
             combo_keys = json.dumps([
-                {"key_kind": "property", "key_id": inst_name_id},
-                {"key_kind": "property", "key_id": management_ip_id}
+                {"key_kind": "property", "key_id": inst[0]['id']},
+                {"key_kind": "property", "key_id": mip[0]['id']},
             ])
-            
-            self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ObjectUnique 
-                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
-                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
-            """, {
-                '_id': "bk_switch_bk_inst_name_management_ip",
-                'id': unique_id,
-                'bk_obj_id': 'bk_switch',
-                'keys': combo_keys,
-                'ispre': True
-            })
-            unique_id += 1
-            logger.info("为交换机模型添加了组合唯一约束（实例名称 + 管理IP）")
-        
-        # 为主机添加外网IP唯一约束
-        host_outer_ip_result = self.execute_query("""
-            SELECT id FROM cc_ObjAttDes 
-            WHERE bk_obj_id = 'host' AND bk_property_id = 'bk_host_outerip'
-        """)
-        
-        if host_outer_ip_result:
-            outer_ip_id = host_outer_ip_result[0]['id']
-            
-            outer_ip_keys = json.dumps([
-                {"key_kind": "property", "key_id": outer_ip_id}
-            ])
-            
-            self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ObjectUnique 
-                (_id, id, bk_obj_id, keys, ispre, bk_supplier_account)
-                VALUES (:_id, :id, :bk_obj_id, :keys, :ispre, '0')
-            """, {
-                '_id': "host_bk_host_outerip",
-                'id': unique_id,
-                'bk_obj_id': 'host',
-                'keys': outer_ip_keys,
-                'ispre': True
-            })
-            unique_id += 1
-            logger.info("为主机模型添加了外网IP唯一约束")
-        
-        logger.info(f"迁移了 {unique_id - 1} 个唯一约束")
+            self.execute_sql(
+                "INSERT OR REPLACE INTO cc_ObjectUnique "
+                "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+                "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+                {"_id": "bk_switch_bk_inst_name_management_ip", "id": 900001,
+                 "bk_obj_id": "bk_switch", "keys": combo_keys})
+
+        # 主机：bk_host_outerip 唯一
+        oip = self.execute_query(
+            "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id='host' AND bk_property_id='bk_host_outerip'")
+        if oip:
+            outer_ip_keys = json.dumps(
+                [{"key_kind": "property", "key_id": oip[0]['id']}])
+            self.execute_sql(
+                "INSERT OR REPLACE INTO cc_ObjectUnique "
+                "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+                "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+                {"_id": "host_bk_host_outerip", "id": 900002,
+                 "bk_obj_id": "host", "keys": outer_ip_keys})
+
+    # ------------------------------------------------------------------
+    # 种子主机挂载（重构：按业务拓扑语义解析，不再硬编码模块 ID）
+    # ------------------------------------------------------------------
+    def _resolve_set(self, biz_id, set_name, default=None):
+        """按 (业务, 集群名[, default]) 解析 bk_set_id。"""
+        sql = ("SELECT bk_set_id FROM cc_SetBase "
+               "WHERE bk_biz_id=:b AND bk_set_name=:sn AND bk_supplier_account='0'")
+        params = {'b': biz_id, 'sn': set_name}
+        if default is not None:
+            sql += ' AND "default"=:d'
+            params['d'] = default
+        rows = self.execute_query(sql + " ORDER BY bk_set_id LIMIT 1", params)
+        return rows[0]['bk_set_id'] if rows else None
+
+    def _ensure_set(self, biz_id, set_name, default=0):
+        """按 (业务, 集群名) 解析 bk_set_id；不存在则用 generate_id 创建（bk_parent_id=biz）。"""
+        sid = self._resolve_set(biz_id, set_name, default if default else None)
+        if sid is not None:
+            return sid
+        sid = generate_id()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.execute_sql(
+            'INSERT INTO cc_SetBase '
+            '(bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default", bk_supplier_account, create_time, last_time) '
+            'VALUES (:bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default, :bk_supplier_account, :create_time, :last_time)',
+            {'bk_set_id': sid, 'bk_set_name': set_name, 'bk_parent_id': biz_id,
+             'bk_biz_id': biz_id, 'default': default, 'bk_supplier_account': '0',
+             'create_time': now, 'last_time': now})
+        logger.info(f"为主机挂载补全创建集群 biz{biz_id}/{set_name} (set{sid})")
+        return sid
+
+    def _resolve_module(self, biz_id, set_name, module_name):
+        """按 (业务, 集群名, 模块名) 解析 (bk_module_id, bk_set_id)。"""
+        rows = self.execute_query(
+            "SELECT m.bk_module_id, m.bk_set_id FROM cc_ModuleBase m "
+            "JOIN cc_SetBase s ON s.bk_set_id=m.bk_set_id AND s.bk_supplier_account=m.bk_supplier_account "
+            "WHERE m.bk_biz_id=:b AND m.bk_module_name=:mn AND s.bk_set_name=:sn "
+            "AND m.bk_supplier_account='0' AND s.bk_supplier_account='0' "
+            "ORDER BY m.bk_module_id LIMIT 1",
+            {'b': biz_id, 'mn': module_name, 'sn': set_name})
+        return (rows[0]['bk_module_id'], rows[0]['bk_set_id']) if rows else None
+
+    def _ensure_module(self, biz_id, set_name, module_name, default=0):
+        """按 (业务, 集群名, 模块名) 解析 (bk_module_id, bk_set_id)；不存在则补全集群与模块。"""
+        res = self._resolve_module(biz_id, set_name, module_name)
+        if res:
+            return res
+        sid = self._ensure_set(biz_id, set_name, 1 if set_name == '空闲机池' else 0)
+        mid = generate_id()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.execute_sql(
+            'INSERT INTO cc_ModuleBase '
+            '(bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id, "default", bk_supplier_account, create_time, last_time) '
+            'VALUES (:bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id, :default, :bk_supplier_account, :create_time, :last_time)',
+            {'bk_module_id': mid, 'bk_module_name': module_name, 'bk_parent_id': sid,
+             'bk_set_id': sid, 'bk_biz_id': biz_id, 'default': default,
+             'bk_supplier_account': '0', 'create_time': now, 'last_time': now})
+        logger.info(f"为主机挂载补全创建模块 biz{biz_id}/{set_name}/{module_name} (module{mid})")
+        return (mid, sid)
+
+    def seed_host_bindings(self):
+        """幂等重建 21 台种子主机到业务拓扑目标模块的挂载关系。
+
+        对齐真实 CMDB 主机归属语义：
+        - 挂载目标以 (业务, 集群名, 模块名) 表达，运行时解析实际 bk_module_id/bk_set_id，
+          不再硬编码 ID，避免模块被 generate_id 重新生成后 ID 漂移导致悬空绑定。
+        - 目标模块/集群缺失时自动补全创建（generate_id 发号），保证挂载总能落库。
+        - 每次重放先清除这些种子主机既有绑定再写入，re-migrate 与修复脚本均幂等。
+        """
+        host_ids = [s['bk_host_id'] for s in HOST_BINDING_SPEC]
+        ph = ','.join(str(h) for h in host_ids)
+        self.execute_sql(
+            f"DELETE FROM cc_ModuleHostConfig WHERE bk_host_id IN ({ph}) "
+            f"AND bk_supplier_account='0'")
+        bound = 0
+        for spec in HOST_BINDING_SPEC:
+            mid, sid = self._ensure_module(
+                spec['bk_biz_id'], spec['bk_set_name'], spec['bk_module_name'])
+            self.execute_sql(
+                "INSERT INTO cc_ModuleHostConfig "
+                "(bk_biz_id, bk_host_id, bk_module_id, bk_set_id, bk_supplier_account) "
+                "VALUES (:bk_biz_id, :bk_host_id, :bk_module_id, :bk_set_id, :bk_supplier_account)",
+                {'bk_biz_id': spec['bk_biz_id'], 'bk_host_id': spec['bk_host_id'],
+                 'bk_module_id': mid, 'bk_set_id': sid, 'bk_supplier_account': '0'})
+            bound += 1
+        logger.info(f"种子主机挂载关系已重建：{bound} 条（按业务拓扑语义解析，无悬空）")
 
     def migrate_mainline_topo(self):
         """
@@ -2018,6 +2517,14 @@ class DatabaseMigrator:
         # - 每个业务都有一个空闲机池集群（default=1）
         # - 集群的 bk_parent_id 指向业务的 bk_biz_id
         # - 空闲机池的 default=1（表示内置集群）
+        #
+        # 置顶规则（与查询排序保持一致）：
+        # 因空闲机池的 bk_parent_id 指向 biz，而在含自定义主线层（appsys 等）的业务里
+        # set 的父模型被识别为 appsys，空闲机池会作为孤儿挂到业务节点子列表末尾。
+        # 查询侧 get_mainline_instance_topo() 会将其稳定置顶到业务节点首位
+        # （root.children.sort(key=lambda n: 0 if n.object_id=='set' and n.default==1 else 1)）。
+        # 此处插入顺序将空闲机池集群排在最前，且必须保持 default=1、bk_parent_id=bk_biz_id，
+        # 以保证迁移初始化后的拓扑树中空闲机池始终位于业务首位。
         set_list = [
             # 空闲机池集群（属于资源池业务 bk_biz_id=1）
             {"bk_set_id": 1, "bk_set_name": "空闲机池", "bk_parent_id": 1, "bk_biz_id": 1, "default": 1, "bk_supplier_account": "0"},
@@ -2245,56 +2752,13 @@ class DatabaseMigrator:
         
         logger.info(f"创建了 {len(host_list)} 个主机实例（存储在 cc_HostBase）")
         
-        # 5. 创建主机-模块挂载关系
-        # 主机挂载到模块
-        module_host_config = [
-            # 主机1-2 挂载到 web 模块 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 1, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
-            {"bk_biz_id": 2, "bk_host_id": 2, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
-            # 主机3 挂载到 api 模块 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 3, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
-            # 主机4 挂载到 db 模块 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 4, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
-            # 主机5-6 挂载到生产集群的 app 模块 (bk_biz_id=3)
-            {"bk_biz_id": 3, "bk_host_id": 5, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
-            {"bk_biz_id": 3, "bk_host_id": 6, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
-            # 主机7 挂载到测试集群的 test 模块 (bk_biz_id=4)
-            {"bk_biz_id": 4, "bk_host_id": 7, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
-            # 主机8 挂载到空闲机池 (bk_biz_id=1)
-            {"bk_biz_id": 1, "bk_host_id": 8, "bk_module_id": 1, "bk_set_id": 1, "bk_supplier_account": "0"},
-            # 新增主机挂载关系（主机9-21）
-            # 主机9-10 挂载到 web 模块 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 9, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
-            {"bk_biz_id": 2, "bk_host_id": 10, "bk_module_id": 100, "bk_set_id": 10, "bk_supplier_account": "0"},
-            # 主机11-12 挂载到 api 模块 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 11, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
-            {"bk_biz_id": 2, "bk_host_id": 12, "bk_module_id": 101, "bk_set_id": 10, "bk_supplier_account": "0"},
-            # 主机13-14 挂载到 db 模块 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 13, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
-            {"bk_biz_id": 2, "bk_host_id": 14, "bk_module_id": 110, "bk_set_id": 11, "bk_supplier_account": "0"},
-            # 主机15-16 挂载到生产集群的 app 模块 (bk_biz_id=3)
-            {"bk_biz_id": 3, "bk_host_id": 15, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
-            {"bk_biz_id": 3, "bk_host_id": 16, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
-            # 主机17-18 挂载到生产集群的 app 模块 (bk_biz_id=3)
-            {"bk_biz_id": 3, "bk_host_id": 17, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
-            {"bk_biz_id": 3, "bk_host_id": 18, "bk_module_id": 200, "bk_set_id": 20, "bk_supplier_account": "0"},
-            # 主机19 挂载到测试集群的 test 模块 (bk_biz_id=4)
-            {"bk_biz_id": 4, "bk_host_id": 19, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
-            # 主机20 挂载到测试集群的 test 模块 (bk_biz_id=4)
-            {"bk_biz_id": 4, "bk_host_id": 20, "bk_module_id": 300, "bk_set_id": 30, "bk_supplier_account": "0"},
-            # 主机21 挂载到蓝鲸平台的空闲机池 (bk_biz_id=2)
-            {"bk_biz_id": 2, "bk_host_id": 21, "bk_module_id": 4, "bk_set_id": 2, "bk_supplier_account": "0"},
-        ]
+        # 5. 创建主机-模块挂载关系（重构：按业务拓扑语义解析，不再硬编码模块 ID）
+        # 挂载目标由 HOST_BINDING_SPEC 以 (业务, 集群名, 模块名) 表达，
+        # seed_host_bindings() 运行时解析实际 bk_module_id/bk_set_id，
+        # 目标缺失自动补全，先清旧绑定再落库，保证 re-migrate 幂等且无悬空。
+        self.seed_host_bindings()
         
-        for mhc in module_host_config:
-            self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ModuleHostConfig
-                (bk_biz_id, bk_host_id, bk_module_id, bk_set_id, bk_supplier_account)
-                VALUES (:bk_biz_id, :bk_host_id, :bk_module_id, :bk_set_id, :bk_supplier_account)
-            """, mhc)
-        
-        logger.info(f"创建了 {len(module_host_config)} 个主机-模块挂载关系")
-        
+
         logger.info("主线拓扑数据迁移完成!")
 
 

@@ -87,7 +87,7 @@
 </template>
 
 <script>
-import { modelAPI } from '@/api/client'
+import { modelAPI, freezeList, cancelRequest, isCancelError } from '@/api/client'
 import associationAPI from '@/api/association'
 import associationPropertyFilter from './association-property-filter.vue'
 
@@ -190,6 +190,10 @@ export default {
       },
       immediate: true
     }
+  },
+  beforeDestroy() {
+    // 组件销毁时取消进行中的列表请求，释放大列表数据引用（GC）
+    cancelRequest('assoc-list')
   },
   methods: {
     async initData() {
@@ -752,7 +756,8 @@ export default {
           }
         }
         
-        const response = await modelAPI.searchInstances(this.currentAsstObj, params)
+        const response = await modelAPI.searchInstances(this.currentAsstObj, params,
+          { requestId: 'assoc-list', cancelPrevious: true })
         console.log('[AssociationCreate] getInstance response:', response)
         
         const totalCount = response.total || response.count || 0
@@ -760,7 +765,10 @@ export default {
         if (useServerPagination) {
           // 后端分页
           const instances = response.instances || response.data || response.info || response || []
-          this.allInstances = Array.isArray(instances) ? instances : []
+          // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（与上游/实例列表一致，
+          // 避免关联弹框内 >500 行数据在初始化/重载时产生大量响应式 getter 与内存开销）。
+          // 关联列表为纯展示场景，行对象无需运行时写回，冻结安全。
+          this.allInstances = freezeList(Array.isArray(instances) ? instances : [])
           this.table.pagination.count = totalCount
           console.log('[AssociationCreate] Loaded', this.allInstances.length, 'instances (server pagination), total:', totalCount)
           this.displayInstances = this.allInstances
@@ -777,9 +785,11 @@ export default {
                 rules: conditions
               } : undefined
             }
-            const allResponse = await modelAPI.searchInstances(this.currentAsstObj, allParams)
+            const allResponse = await modelAPI.searchInstances(this.currentAsstObj, allParams,
+              { requestId: 'assoc-list', cancelPrevious: true })
             const allInstances = allResponse.instances || allResponse.data || allResponse.info || allResponse || []
-            this.allInstances = Array.isArray(allInstances) ? allInstances : []
+            // 冻结（同上）
+            this.allInstances = freezeList(Array.isArray(allInstances) ? allInstances : [])
             this.table.pagination.count = this.allInstances.length
             console.log('[AssociationCreate] Loaded all', this.allInstances.length, 'instances for client-side pagination')
             this.updateDisplayInstances()
@@ -793,6 +803,12 @@ export default {
           }
         }
       } catch (e) {
+        // 请求被取消（筛选/翻页/切换关联类型时的 cancelPrevious）属预期行为，静默忽略，
+        // 不弹错误、不清空数据：由取代它的新请求负责重新填充 displayInstances（卸载/替换/GC 更干净）
+        if (isCancelError(e)) {
+          console.log('[AssociationCreate] 请求已取消（被新请求取代）')
+          return
+        }
         console.error('获取实例列表失败', e)
         this.allInstances = []
         this.displayInstances = []
@@ -867,11 +883,7 @@ export default {
         
       } catch (e) {
         console.log(e)
-        let errorMsg = '操作失败'
-        if (e.message) {
-          errorMsg = '操作失败: ' + e.message
-        }
-        this.$bkMessage({ message: errorMsg, theme: 'error' })
+        this.$handleApiError(e)
       } finally {
         this.getExistInstAssociation()
       }
@@ -899,6 +911,9 @@ export default {
       this.resetData()
     },
     resetData() {
+      // 关闭弹框时取消进行中的列表请求，释放大列表数据引用，避免弹框隐藏后
+      // 陈旧 500+ 行响应继续挂载/驻留（避免无谓的响应式重建与 GC 压力）
+      cancelRequest('assoc-list')
       this.selectedRelationType = ''
       this.currentOption = {}
       this.currentAsstObj = ''

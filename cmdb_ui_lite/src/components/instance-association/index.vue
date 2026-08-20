@@ -548,7 +548,7 @@ export default {
             this.groupInstances = {}
             this.$emit('association-change')
           } catch (e) {
-            this.$bkMessage({ message: '取消关联失败: ' + (e.message || e), theme: 'error' })
+            this.$handleApiError(e)
           }
         }
       })

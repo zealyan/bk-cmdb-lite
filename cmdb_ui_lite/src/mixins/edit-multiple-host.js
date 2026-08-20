@@ -10,8 +10,8 @@
  *      与提交更新（hostUpdate/updateHost）；lite 无对应 store 模块，改为直接调用
  *      modelAPI.getModelPropertyGroups / modelAPI.batchUpdateInstancesWithSameData。
  *   2. 原项目 form-multiple 依赖外部传入 propertyGroups 做分组；lite 的
- *      form-multiple.vue 内部已根据 properties 自行分组，故仅需传入
- *      properties + modelId（modelId 用于隐藏唯一约束字段）。
+ *      form-multiple.vue 现也接收 propertyGroups（从接口加载），按 bk_group_index
+ *      排序，与详情页 effectivePropertyGroups 保持一致；未传入时回落到默认分组。
  *   3. 原项目提交时将 bk_host_id 拼成逗号字符串随参数下发；lite 后端批量更新接口
  *      PUT /api/v1/models/<modelId>/instances 接收 { ids, data }，其中 ids 为数组，
  *      与 general-model「批量更新」保持同一调用契约。
@@ -46,7 +46,7 @@ export default {
         component: null,
         props: {}
       },
-      // 属性分组（lite 的 form-multiple 内部自行分组，此处仅保留以便后续扩展）
+      // 属性分组（从接口加载，透传给 form-multiple 做分组排序）
       propertyGroups: []
     }
   },
@@ -84,6 +84,7 @@ export default {
         this.slider.component = 'cmdb-form-multiple'
         this.slider.props = {
           properties: this.properties,
+          propertyGroups: this.propertyGroups,
           modelId: 'host',
           showOptions: true,
           submitting: false
@@ -128,16 +129,13 @@ export default {
           RouterQuery.set({ _t: Date.now() })
         } else {
           this.$bkMessage({
-            message: '更新失败',
+            message: '未获取到更新结果',
             theme: 'error'
           })
         }
       } catch (e) {
         console.error('[edit-multiple-host] 批量更新主机失败:', e)
-        this.$bkMessage({
-          message: '更新失败，请稍后重试',
-          theme: 'error'
-        })
+        this.$handleApiError(e)
       } finally {
         this.slider.props = { ...this.slider.props, submitting: false }
       }

@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy import text
 from app.db.engine import get_engine, get_connection
 from app.db.sql_loader import sql_loader
+from app.db.dialect import adapt_sql
 
 def _resolve_sql(sql_or_path: str) -> str:
     """
@@ -27,60 +28,67 @@ def _resolve_sql(sql_or_path: str) -> str:
     return sql_or_path
 
 class SQLExecutor:
-    """SQL 执行器"""
+    """SQL 执行器
+
+    引擎通过 ``engine`` 属性懒加载，每次调用实时取 ``get_engine()`` 返回的单例。
+    这样在测试/运行时重新初始化引擎（覆盖 DATABASE_NAME 并重置 db_engine._engine）
+    后，执行器能自动跟随新引擎，避免 import 期缓存旧引擎导致的“写入错库/看不到新建表”。
+    """
     
-    def __init__(self):
-        self.engine = get_engine()
+    @property
+    def engine(self):
+        return get_engine()
     
     def execute(self, sql: str, params: Dict[str, Any] = None) -> Any:
         """
         执行 SQL 语句
-        
+
         Args:
-            sql: SQL 语句
+            sql: SQL 语句（SQLite 风格，执行层自动转译为当前目标方言）
             params: 参数化查询参数
-            
+
         Returns:
             执行结果
         """
         conn = self.engine.connect()
         try:
-            result = conn.execute(text(sql), params or {})
+            result = conn.execute(text(adapt_sql(sql)), params or {})
             conn.commit()
             return result
         finally:
             conn.close()
-    
+
     def execute_many(self, sql: str, params_list: List[Dict[str, Any]]) -> None:
         """
         批量执行 SQL
-        
+
         Args:
             sql: SQL 语句
             params_list: 参数列表
         """
         conn = self.engine.connect()
         try:
+            sql = adapt_sql(sql)
             for params in params_list:
                 conn.execute(text(sql), params)
             conn.commit()
         finally:
             conn.close()
-    
+
     def query_all(self, sql: str, params: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         查询所有结果
-        
+
         Args:
             sql: SELECT 语句
             params: 查询参数
-            
+
         Returns:
             结果列表
         """
         conn = self.engine.connect()
         try:
-            result = conn.execute(text(sql), params or {})
+            result = conn.execute(text(adapt_sql(sql)), params or {})
             columns = result.keys()
             return [dict(zip(columns, row)) for row in result.fetchall()]
         finally:

@@ -207,6 +207,7 @@
           <cmdb-form
             ref="cmdbFormRef"
             :properties="allProperties"
+            :property-groups="propertyGroups"
             :values="createForm"
             :type="'create'"
             :model-id="objId"
@@ -244,6 +245,7 @@
           <form-multiple
             ref="formMultipleRef"
             :properties="allProperties"
+            :property-groups="propertyGroups"
             :show-options="true"
             :submitting="batchUpdateFormLoading"
             :model-id="objId"
@@ -288,9 +290,10 @@ import FormMultiple from '@/components/ui/form/form-multiple.vue'
 import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
-import { modelAPI, userCustom } from '@/api/client'
+import { modelAPI, userCustom, cancelRequest, isCancelError, freezeList } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
+import throttle from 'lodash/throttle'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
 import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
@@ -322,6 +325,7 @@ export default {
       objId: 'bk_switch',
       modelData: null,
       allProperties: [],
+      propertyGroups: [],
       defaultColumns: [],
       // 与原项目保持一致: customColumns 是从存储加载的自定义列配置（存储状态）
       // columnsConfig.selected 是 UI 状态（抽屉中已勾选的属性），由 setTableHeader 同步更新
@@ -664,7 +668,7 @@ export default {
           }
         }
       }
-    }, { throttle: 100 })
+    }, { throttle: 300 })
   },
   mounted() {
     console.log('[Index.mounted] 组件挂载')
@@ -728,6 +732,8 @@ export default {
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler)
     }
+    // 取消进行中的列表请求，释放大列表数据引用，避免组件销毁后陈旧 500+ 行响应挂载/驻留（GC）
+    cancelRequest('inst-list')
   },
   watch: {
     filterTags: {
@@ -988,6 +994,15 @@ export default {
         this.defaultColumns = attrResult.default_columns || []
         console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns, 'allProperties count:', this.allProperties.length)
 
+        // 拉取分组定义，供 cmdb-form 使用权威 bk_group_name 渲染分组标题
+        try {
+          const groupsResult = await modelAPI.getModelPropertyGroups(this.objId)
+          this.propertyGroups = (groupsResult && groupsResult.groups) || []
+        } catch (e) {
+          console.log('[Index.loadModelData] 获取分组失败:', e)
+          this.propertyGroups = []
+        }
+
         try {
           const modelResult = await modelAPI.getModel(this.objId)
           if (modelResult && modelResult.model && modelResult.model.bk_obj_name) {
@@ -1046,7 +1061,7 @@ export default {
           
           instResult = await modelAPI.searchInstances(this.objId, {
             ...searchParams
-          })
+          }, { requestId: 'inst-list', cancelPrevious: true })
         } else {
           // 否则使用原有的简单搜索方式
           const isMultiSelectEnum = this.isEnumField || this.isBoolField || this.isEnumMultiField
@@ -1076,7 +1091,8 @@ export default {
             }
           }
 
-          instResult = await modelAPI.searchInstances(this.objId, searchParams)
+          instResult = await modelAPI.searchInstances(this.objId, searchParams,
+            { requestId: 'inst-list', cancelPrevious: true })
         }
 
         console.log('[Index.loadModelData] API返回结果:', {
@@ -1087,14 +1103,39 @@ export default {
         this.setTableHeader()
         this.updateTableSortState()
 
-        this.table.list = instResult.instances || []
+        // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理：
+        // 与上游 relation/create.vue 对 originalList 使用 Object.freeze 的意图一致，
+        // 避免 500+ 行 × 上百列在初始化/重载时产生大量响应式 getter 与内存开销（DOM 替换/GC 更快）。
+        this.table.list = freezeList(instResult.instances || [])
         this.table.pagination.count = instResult.total || 0
+
+        // 复刻原项目 bk-cmdb（general-model/index.vue getTableData）：
+        // 当后端返回 count > 0 但当前页 info 为空时，回退到「当前页 - 1」重新加载，
+        // 而非停留在空页。典型场景：末页（如 page=7）仅剩的 1 条被删除后，该页被删空、
+        // 但总记录仍 > 0，若不做处理表格会显示「暂无数据」且翻页组件因 current 越界而丢失。
+        // 原项目用 RouterQuery.set({ page: current - 1 }) 触发 watch 重新拉取上一页数据。
+        // lite 这里改为「同步内联递归重载」：直接递减 current 并就地重新请求上一页，
+        // 同时同步 URL。这样避免依赖 watch 异步链（watch 读取 current 的时序可能仍读到
+        // 旧值 7，导致用空页参数再请求一次、陷入延迟级联回退）。
+        // 注意：回到的是「上一页」(current-1)，既不是首页(1)也不是末页，这是删除后
+        // 剩余数据最自然的落点（上一页恰好承载被删空页之前的最后若干条）。
+        if (this.table.pagination.count && this.table.list.length === 0 && this.table.pagination.current > 1) {
+          this.table.pagination.current -= 1
+          routerQuery.set({ page: this.table.pagination.current, _t: Date.now() })
+          // 用更新后的页码内联重新加载上一页（递归，但最终页有数据时自然收敛）
+          return this.loadModelData(searchParams)
+        }
 
         console.log('[Index.loadModelData] 加载完成，当前列表行数:', this.table.list.length)
 
       } catch (error) {
+        // 请求被取消（翻页/筛选重载时的 cancelPrevious）属预期行为，静默忽略，不弹错误
+        if (isCancelError(error)) {
+          console.log('[Index.loadModelData] 请求已取消（被新请求取代）')
+          return
+        }
         console.error('[ERROR] 加载数据失败:', error)
-        this.$bkMessage({ message: '加载数据失败', theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.table.loading = false
       }
@@ -1808,11 +1849,11 @@ export default {
           this.selectedIds = []
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: '更新失败', theme: 'error' })
+          this.$bkMessage({ message: '未获取到更新结果', theme: 'error' })
         }
       } catch (error) {
         console.error('Batch update error:', error)
-        this.$bkMessage({ message: '更新失败，请稍后重试', theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.batchUpdateFormLoading = false
       }
@@ -1890,7 +1931,7 @@ export default {
                 await this.loadModelData(this.currentSearchParams)
               } catch (error) {
                 console.error('Delete error:', error)
-                this.$bkMessage({ message: '删除失败，请稍后重试', theme: 'error' })
+                this.$handleApiError(error)
               } finally {
                 this.table.loading = false
               }
@@ -1903,7 +1944,7 @@ export default {
         })
         .catch(error => {
           console.error('Check associations error:', error)
-          this.$bkMessage({ message: '检查关联关系失败，请稍后重试', theme: 'error' })
+          this.$handleApiError(error)
           this.table.loading = false
         })
     },
@@ -2038,12 +2079,11 @@ export default {
           // 刷新列表
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: '创建失败', theme: 'error' })
+          this.$bkMessage({ message: '未获取到创建结果', theme: 'error' })
         }
       } catch (error) {
         console.error('Create instance error:', error)
-        let errorMsg = error.message || '创建失败，请稍后重试'
-        this.$bkMessage({ message: errorMsg, theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.createFormLoading = false
       }

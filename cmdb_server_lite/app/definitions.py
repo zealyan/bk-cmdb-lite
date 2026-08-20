@@ -127,6 +127,22 @@ ASSOCIATION_PROPERTY_TYPES = (
     PROPERTY_TYPE_FOREIGNKEY_LEGACY,
 )
 
+# ---------------------------------------------------------------------------
+# 分组 ID -> 标准显示名（CLI 与 migrate 共用，单一来源，避免漂移）
+# ---------------------------------------------------------------------------
+# 对齐上游 bk-cmdb 的非通用分组定义：
+#   - admin_server/common/definitions.go        (BaseInfoName = "基础信息")
+#   - src/scene_server/topo_server/logics/model/object.go:150  (自定义模型默认分组显示名)
+#   - addPresetObjects.go / HostRow()           (auto/role/proc_port 分组)
+# 仅作「按 ID 反查显示名」的兜底；CLI --group-auto-create 仅有 ID 列、
+# 且未提供 bk_group_name 时才使用。若用户显式给了 bk_group_name，则以其为准。
+KNOWN_GROUP_NAMES = {
+    'default': '基础信息',
+    'auto': '自动发现信息（需要安装agent）',
+    'role': '角色',
+    'proc_port': '监听信息',
+}
+
 
 def get_sql_type(prop_type):
     """根据 bk_property_type 返回对应的 SQL 列类型。
@@ -177,5 +193,36 @@ __all__ = [
     "PROPERTY_TYPE_FOREIGNKEY_LEGACY",
     "LEGACY_PROPERTY_TYPE_ALIAS",
     "ASSOCIATION_PROPERTY_TYPES",
+    "KNOWN_GROUP_NAMES",
     "get_sql_type",
+    # 主线模型「名称字段」解析（详见下方 BUILTIN_NAME_FIELD / model_name_property）
+    "BUILTIN_NAME_FIELD",
+    "model_name_property",
 ]
+
+
+# ---------------------------------------------------------------------------
+# 主线模型「名称字段」解析
+# 对齐上游 createDefaultAttrs：自定义主线模型（如 appsys/应用系统）以通用
+# bk_inst_name 作为实例名称字段；而内置主线模型 set/module/biz 各自使用
+# 专属名称字段（bk_set_name / bk_module_name / bk_biz_name），不共用 bk_inst_name。
+# 唯一约束的「名称键」必须按模型取真实名称字段，否则（如硬编码 bk_inst_name）
+# 会因内置模型无该属性而建不出规则，导致重名无校验。
+# ---------------------------------------------------------------------------
+BUILTIN_NAME_FIELD = {
+    'set': 'bk_set_name',
+    'module': 'bk_module_name',
+    'biz': 'bk_biz_name',
+}
+
+
+def model_name_property(model_id, has_inst_name):
+    """返回模型用于唯一约束的「名称属性 bk_property_id」。
+
+    :param model_id: 模型 ID（如 'set' / 'module' / 'biz' / 'appsys'）
+    :param has_inst_name: 该模型是否拥有 bk_inst_name 属性
+    :return: 名称属性的 bk_property_id；无可用名称字段时返回 None（不建唯一约束）
+    """
+    if has_inst_name:
+        return 'bk_inst_name'
+    return BUILTIN_NAME_FIELD.get(model_id)

@@ -142,7 +142,7 @@ export default {
             const storeBizId = this.$store.getters['objectBiz/bizId']
             const effectiveBizId = (storeBizId && String(storeBizId) !== '0')
               ? String(storeBizId)
-              : getCachedBizId()
+              : getCachedBizId(this.$store.getters['user/userName'])
             return {
               ...menu,
               route: {

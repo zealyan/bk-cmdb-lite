@@ -9,6 +9,9 @@ from .user import user_bp
 from .unique import unique_bp
 from .topo import topo_bp
 from .host_transfer import host_transfer_bp
+from .auth_manage import auth_manage_bp
+from .favourite import favourite_bp
+from app.auth.views import auth_bp
 
 def register_v1_routes(app):
     """注册 v1 版本的所有路由"""
@@ -19,6 +22,9 @@ def register_v1_routes(app):
     app.register_blueprint(relation_bp, url_prefix='/api/v1/relations')
     app.register_blueprint(topo_bp, url_prefix='/api/v1/topo')
     app.register_blueprint(host_transfer_bp, url_prefix='/api/v1/host/transfer')
+    app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
+    app.register_blueprint(auth_manage_bp, url_prefix='/api/v1/auth/manage')
+    app.register_blueprint(favourite_bp, url_prefix='/api/v1/hosts')
 
     # 旧版 API 路径保持向后兼容
     app.register_blueprint(association_bp)

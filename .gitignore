@@ -28,4 +28,29 @@ bk-cmdb/src/web*/cmdb_*
 cmdb_server_lite/id_seq.state
 cmdb_server_lite/id_seq.state.tmp
 
+# 运行时生成的数据与密钥（不入库）
+cmdb_server_lite/*.db
+cmdb_server_lite/instance/
+cmdb_server_lite/*.polluted_bak
+*.log
+
+# 本地运行配置文件（可能含密钥，运行期生成）
+cmdb_server_lite/.env
+
+# 上游参考副本（bk-cmdb 原项目完整源码，非本 lite 工程代码，约 44M）
+bk-cmdb/
+
+# 测试产物与截图
+e2e_screenshots/
+test-results/
+
+# 编辑器 / 工具状态目录
+.trae/
+
+# 临时诊断脚本（与正式 smoke-*.js E2E 区分）
+cmdb_ui_lite/diag*.js
+cmdb_ui_lite/shot-*.js
+cmdb_ui_lite/verify-*.js
+cmdb_ui_lite/playwright-*.js
+
 

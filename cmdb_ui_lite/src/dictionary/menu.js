@@ -1,4 +1,5 @@
 import {
+  MENU_INDEX,
   MENU_BUSINESS,
   MENU_BUSINESS_TOPOLOGY,
   MENU_RESOURCE,
@@ -9,6 +10,14 @@ import {
 import { DEFAULT_BIZ_ID } from '@/utils/biz-cache'
 
 const menus = [{
+  // 首页：顶部导航栏与左侧导航栏固定首位（业务/资源/模型依次其后）
+  id: MENU_INDEX,
+  i18n: '首页',
+  icon: 'icon-cc-home',
+  route: {
+    name: MENU_INDEX
+  }
+}, {
   id: MENU_BUSINESS,
   i18n: '业务',
   menu: [{

@@ -12,16 +12,15 @@
 
 <template>
   <section class="across-confirm">
-    <h1 class="title">{{$t('转移主机到其他业务')}}</h1>
-    <i18n tag="p" path="确认跨业务转移忽略主机数量" class="content">
-      <template #count><span class="count">{{count}}</span></template>
-      <template #invalid><span class="invalid">{{invalidList.length}}</span></template>
-      <template #idleModule><span>{{$store.state.globalConfig.config.idlePool.idle}}</span></template>
-    </i18n>
-    <invalid-list :title="$t('以下主机不能移除')" :list="invalidList"></invalid-list>
+    <h1 class="title">转移主机到其他业务</h1>
+    <p class="content">
+      所选的<span class="count">{{count}}</span>台主机有<span class="invalid">{{invalidList.length}}</span>台不属于<span>空闲机池</span>，不能移除至其他业务，将会自动忽略
+    </p>
+    <invalid-list :title="'以下主机不能移除'" :list="invalidList"></invalid-list>
+    <div class="flex-spacer"></div>
     <div class="footer">
-      <bk-button theme="primary" @click="next">{{$t('下一步')}}</bk-button>
-      <bk-button class="ml10" theme="default" @click="cancel">{{$t('取消')}}</bk-button>
+      <bk-button theme="primary" @click="next">下一步</bk-button>
+      <bk-button class="ml10" theme="default" @click="cancel">取消</bk-button>
     </div>
   </section>
 </template>
@@ -56,7 +55,12 @@
 
 <style lang="scss" scoped>
     .across-confirm {
+        display: flex;
+        flex-direction: column;
+        height: var(--height, 430px);
+        min-height: 300px;
         .title {
+            flex: none;
             text-align: center;
             margin: 45px 0 17px;
             line-height: 32px;
@@ -65,6 +69,7 @@
             color: #313238;
         }
         .content {
+            flex: none;
             padding: 0 20px;
             line-height: 20px;
             font-size:14px;
@@ -80,9 +85,14 @@
                 padding: 0 4px;
             }
         }
+        .flex-spacer {
+            flex: 1;
+            min-height: 0;
+        }
         .footer {
+            flex: none;
             display: flex;
-            margin: 20px 0 0 0;
+            margin-top: auto;
             align-items: center;
             justify-content: flex-end;
             height: 50px;
