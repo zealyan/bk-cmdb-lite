@@ -296,7 +296,7 @@ import QS from 'qs'
 import throttle from 'lodash/throttle'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
-import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
+import { MENU_INDEX, MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
 import AppMixin from '@/mixins/app'
 
 export default {
@@ -322,7 +322,8 @@ export default {
       },
       enumDropdownVisible: false,
       enumSearchQuery: '',
-      objId: 'bk_switch',
+      // 不再硬编码默认模型；缺失 objId 时由 resolveObjId 按数据（模型列表首个）动态定位
+      objId: '',
       modelData: null,
       allProperties: [],
       propertyGroups: [],
@@ -575,7 +576,10 @@ export default {
     }
   },
   created() {
-    this.objId = this.$route.params.objId || 'bk_switch'
+    // 面包屑活跃守卫：本视图的 updateBreadcrumbs 可能在异步加载完成后才执行，
+    // 若期间路由已切换到其它视图（组件销毁），必须拦截写入，避免旧标题串扰新视图。
+    this._breadcrumbGuard = true
+    this.resolveObjId()
     this.updateBreadcrumbs()
 
     this.stopRouteQueryWatch = routerQuery.watch('*', (query, oldQuery) => {
@@ -720,6 +724,8 @@ export default {
     }, 0)
   },
   beforeDestroy() {
+    // 组件销毁：解除面包屑活跃守卫，阻止异步回调继续写入全局面包屑
+    this._breadcrumbGuard = false
     if (this.stopRouteQueryWatch) {
       this.stopRouteQueryWatch()
     }
@@ -760,11 +766,16 @@ export default {
     },
     '$route.params.objId': {
       handler(newObjId) {
-        if (newObjId !== this.objId) {
-          this.objId = newObjId || 'bk_switch'
-          this.updateBreadcrumbs()
-          this.restoreStateFromUrl()
-          this.loadModelData()
+        if (newObjId) {
+          if (newObjId !== this.objId) {
+            this.objId = newObjId
+            this.updateBreadcrumbs()
+            this.restoreStateFromUrl()
+            this.loadModelData()
+          }
+        } else {
+          // 路由未携带 objId：提示错误并返回首页，避免硬编码兜底
+          this.resolveObjId()
         }
       }
     },
@@ -906,8 +917,35 @@ export default {
         _is_inject_: true
       }
     },
+    // 模型 ID 解析：
+    // - 路由已携带 objId：直接使用（无硬编码兜底）
+    // - 路由缺失 objId：提示 UI 错误并返回首页 index（不异步拉取后端数据、不跳首个模型）
+    resolveObjId() {
+      // 优先取路由参数 objId；内置模型专属资源路由（如 /resource/host）在 meta 中显式声明 objId，
+      // 作为其路由语义（非缺省兜底），保证收藏项在该路由下精确命中。
+      const paramObjId = this.$route.params.objId || this.$route.meta?.objId
+      if (paramObjId) {
+        this.objId = paramObjId
+        return
+      }
+      this.$bkMessage({
+        message: '未指定模型（objId），无法打开实例列表，已返回首页',
+        theme: 'error'
+      })
+      this.$router.replace({ name: MENU_INDEX })
+    },
     updateBreadcrumbs() {
       this.$nextTick(() => {
+        // 竞态守卫：本视图可能已在异步加载期间被路由替换（组件销毁），
+        // 或当前路由已切换到其它模型实例。此时若仍写入自定义面包屑，
+        // 会把旧视图标题串扰到新视图（如业务拓扑页显示"负载均衡"）。
+        if (!this._breadcrumbGuard) {
+          return
+        }
+        const routeObjId = this.$route.params.objId || this.$route.meta.objId
+        if (routeObjId && routeObjId !== this.objId) {
+          return
+        }
         this.$store.commit('setCustomBreadcrumbs', {
           enable: true,
           title: this.modelName,

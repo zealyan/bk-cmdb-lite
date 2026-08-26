@@ -10,10 +10,12 @@ import {
   MENU_RESOURCE_MANAGEMENT,
   MENU_RESOURCE_INSTANCE,
   MENU_RESOURCE_INSTANCE_DETAILS,
+  MENU_RESOURCE_HOST,
   MENU_RESOURCE_HOST_DETAILS,
   MENU_MODEL,
   MENU_MODEL_MANAGEMENT
 } from '@/dictionary/menu-symbol'
+import { BUILTIN_MODELS } from '@/dictionary/model-constants'
 import store from '@/store'
 import { getCachedBizId, setCachedBizId, DEFAULT_BIZ_ID } from '@/utils/biz-cache'
 import { ensureAuth } from '@/auth'
@@ -120,6 +122,15 @@ const routes = [
         name: MENU_RESOURCE_INSTANCE,
         path: 'instance/:objId',
         component: () => import('@/views/general-model/index.vue'),
+        // 归一化 host 入口：host 是内置模型，统一使用专属路由 /resource/host
+        // （与「主机」收藏项一致，确保实例列表/详情/收藏三入口选中态同步）。
+        // 直接访问 #/resource/instance/host 等历史/外部 URL 时自动收敛到专属路由。
+        beforeEnter: (to, from, next) => {
+          if (to.params.objId === BUILTIN_MODELS.HOST) {
+            return next({ name: MENU_RESOURCE_HOST })
+          }
+          next()
+        },
         meta: {
           menu: {
             i18n: '实例列表',
@@ -136,11 +147,32 @@ const routes = [
         component: () => import('@/views/general-model/details.vue'),
         meta: {
           menu: {
-            i18n: '实例详情'
+            i18n: '实例详情',
+            relative: MENU_RESOURCE_MANAGEMENT
           },
           layout: {
             breadcrumbs: true
           }
+        }
+      },
+      {
+        name: MENU_RESOURCE_HOST,
+        path: 'host',
+        component: () => import('@/views/general-model/index.vue'),
+        meta: {
+          menu: {
+            i18n: '主机',
+            // host 为内置模型，其列表/详情页共享 /resource/host 前缀；
+            // 详情页路由名 MENU_RESOURCE_HOST_DETAILS 的 path 为 host/:id，
+            // 该路由的 router-link 会在详情页被包含式命中，从而保持「主机」收藏项高亮。
+            relative: MENU_RESOURCE_MANAGEMENT
+          },
+          layout: {
+            breadcrumbs: true
+          },
+          // 路由级显式模型标识：本路由即「主机」资源列表，供 general-model 取得 objId，
+          // 非通用实例路由的兜底默认值（通用实例路由缺 objId 仍按 resolveObjId 报错回首页）。
+          objId: 'host'
         }
       },
       {

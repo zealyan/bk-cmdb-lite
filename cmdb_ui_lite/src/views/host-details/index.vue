@@ -290,9 +290,16 @@ export default {
     }
   },
   created () {
+    // 面包屑活跃守卫：本视图的 updateBreadcrumbs 在异步加载完成后执行，
+    // 若期间路由已切换到其它视图（组件销毁），必须拦截写入，避免旧标题串扰新视图。
+    this._breadcrumbGuard = true
     this.instId = parseInt(this.$route.params.id, 10)
     this.bizId = parseInt(this.$route.params.bizId, 10) || null
     this.loadHostData()
+  },
+  beforeDestroy () {
+    // 组件销毁：解除守卫，阻止异步回调继续写入全局面包屑
+    this._breadcrumbGuard = false
   },
   methods: {
     // 初始化各分组折叠状态：默认展开/折叠由后端分组的 is_collapse 决定。
@@ -486,6 +493,11 @@ export default {
     updateBreadcrumbs () {
       const title = `主机详情【${this.hostIp}】`
       this.$nextTick(() => {
+        // 竞态守卫：本视图可能已在异步加载期间被路由替换（组件销毁），
+        // 此时若仍写入自定义面包屑，会把旧标题串扰到新视图。
+        if (!this._breadcrumbGuard) {
+          return
+        }
         this.$store.commit('setCustomBreadcrumbs', {
           enable: true,
           title: title,

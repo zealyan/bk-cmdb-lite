@@ -185,9 +185,16 @@ export default {
     }
   },
   created () {
+    // 面包屑活跃守卫：本视图的 updateBreadcrumbs 在异步加载完成后执行，
+    // 若期间路由已切换到其它视图（组件销毁），必须拦截写入，避免旧标题串扰新视图。
+    this._breadcrumbGuard = true
     this.objId = this.$route.params.objId
     this.instId = parseInt(this.$route.params.instId, 10)
     this.loadInstanceData()
+  },
+  beforeDestroy () {
+    // 组件销毁：解除守卫，阻止异步回调继续写入全局面包屑
+    this._breadcrumbGuard = false
   },
   methods: {
     initGroupState () {
@@ -343,6 +350,16 @@ export default {
       const objId = this.objId
       const title = `${this.modelName} ${this.instanceName ? '【' + this.instanceName + '】' : ''}`
       this.$nextTick(() => {
+        // 竞态守卫：本视图可能已在异步加载期间被路由替换（组件销毁），
+        // 或当前路由已切换到其它模型实例。此时若仍写入自定义面包屑，
+        // 会把旧视图标题串扰到新视图。
+        if (!this._breadcrumbGuard) {
+          return
+        }
+        const routeObjId = this.$route.params.objId || this.$route.meta.objId
+        if (routeObjId && routeObjId !== this.objId) {
+          return
+        }
         this.$store.commit('setCustomBreadcrumbs', {
           enable: true,
           title: title,
