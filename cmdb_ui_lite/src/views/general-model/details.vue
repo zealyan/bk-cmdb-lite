@@ -73,6 +73,11 @@ import { modelAPI } from '@/api/client'
 import bkSlbRelations from '@/assets/api/models/relations/instance.json'
 import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
 
+// 模型结构缓存：属性分组 / 属性列表 / 模型描述按 objId 相对静态（模型编辑才变化），
+// 跨实例详情复用，避免每次进入详情页重复拉取；TTL 兜底防止模型编辑后长期陈旧。
+const _modelStructCache = new Map()
+const MODEL_STRUCT_TTL = 60 * 1000
+
 export default {
   name: 'ModelDetails',
   components: {
@@ -180,9 +185,16 @@ export default {
     }
   },
   created () {
+    // 面包屑活跃守卫：本视图的 updateBreadcrumbs 在异步加载完成后执行，
+    // 若期间路由已切换到其它视图（组件销毁），必须拦截写入，避免旧标题串扰新视图。
+    this._breadcrumbGuard = true
     this.objId = this.$route.params.objId
     this.instId = parseInt(this.$route.params.instId, 10)
     this.loadInstanceData()
+  },
+  beforeDestroy () {
+    // 组件销毁：解除守卫，阻止异步回调继续写入全局面包屑
+    this._breadcrumbGuard = false
   },
   methods: {
     initGroupState () {
@@ -208,18 +220,43 @@ export default {
       return property.bk_property_type === 'INNER_TABLE'
     },
 
+    // 模型结构按 objId 缓存读取/填充（groups / attributes / model 三组接口共用）。
+    getCachedModelStruct (key) {
+      const cacheKey = `${this.objId}:${key}`
+      const hit = _modelStructCache.get(cacheKey)
+      if (hit && Date.now() - hit.time < MODEL_STRUCT_TTL) {
+        return Promise.resolve(hit.data)
+      }
+      const fetchMap = {
+        groups: () => modelAPI.getModelPropertyGroups(this.objId),
+        attributes: () => modelAPI.getModelAttributes(this.objId),
+        model: () => modelAPI.getModel(this.objId)
+      }
+      return fetchMap[key]().then((data) => {
+        _modelStructCache.set(cacheKey, { time: Date.now(), data })
+        return data
+      })
+    },
+
     async loadInstanceData () {
       this.associationLoading = true
       try {
         if (!this.objId || !this.instId) {
           return
         }
-        
-        const response = await modelAPI.getInstance(this.objId, this.instId)
-        
-        if (response && response.instance) {
-          this.instanceData = response.instance
-          
+
+        // 并行拉取：实例数据 + 模型结构（属性分组 / 属性 / 模型描述）。
+        // 原实现串行 await 4 个接口，内容填充耗时 = 各 RTT 之和；
+        // 并行后 = max(RTT)，模型结构命中缓存时进一步归零（仅剩实例数据一次 RTT）。
+        const [response, groupsResponse, attrResponse, modelResponse] = await Promise.allSettled([
+          modelAPI.getInstance(this.objId, this.instId),
+          this.getCachedModelStruct('groups'),
+          this.getCachedModelStruct('attributes'),
+          this.getCachedModelStruct('model')
+        ])
+
+        if (response.status === 'fulfilled' && response.value && response.value.instance) {
+          this.instanceData = response.value.instance
           const instName = this.instanceName
           this.$store.dispatch('setCurrentInstance', {
             name: instName,
@@ -227,13 +264,10 @@ export default {
             instId: this.instId
           })
         }
-        
-        try {
-          const groupsResponse = await modelAPI.getModelPropertyGroups(this.objId)
-          if (groupsResponse && groupsResponse.groups) {
-            this.propertyGroups = groupsResponse.groups
-          }
-        } catch (err) {
+
+        if (groupsResponse.status === 'fulfilled' && groupsResponse.value && groupsResponse.value.groups) {
+          this.propertyGroups = groupsResponse.value.groups
+        } else {
           this.propertyGroups = [{
             id: 1,
             bk_group_id: 'default',
@@ -242,30 +276,24 @@ export default {
             bk_isdefault: true
           }]
         }
-        
-        const attrResponse = await modelAPI.getModelAttributes(this.objId)
-        if (attrResponse && attrResponse.attributes) {
-          const sortedAttrs = attrResponse.attributes
+
+        if (attrResponse.status === 'fulfilled' && attrResponse.value && attrResponse.value.attributes) {
+          const sortedAttrs = attrResponse.value.attributes
             .filter(p => p.bk_property_index !== -1)
             .sort((a, b) => a.bk_property_index - b.bk_property_index)
           this.$set(this.apiAttributes, this.objId, { info: sortedAttrs })
         }
-        
-        try {
-          const modelResponse = await modelAPI.getModel(this.objId)
-          if (modelResponse && modelResponse.model) {
-            this.modelData = modelResponse.model
-          }
-        } catch (err) {
-          console.error('加载模型详情失败:', err)
+
+        if (modelResponse.status === 'fulfilled' && modelResponse.value && modelResponse.value.model) {
+          this.modelData = modelResponse.value.model
         }
-        
+
         this.isDataReady = true
-        
+
         this.$nextTick(() => {
           this.updateBreadcrumbs()
         })
-        
+
       } catch (error) {
         console.error('加载实例数据失败:', error)
       } finally {
@@ -284,12 +312,14 @@ export default {
         this.apiAssociations = []
         this.apiRelations = []
         
-        const assocResponse = await modelAPI.getInstanceAssociations(this.instId)
+        // 并行拉取实例关联与关系定义（原实现串行 2 接口）
+        const [assocResponse, relationsResponse] = await Promise.all([
+          modelAPI.getInstanceAssociations(this.instId),
+          modelAPI.listRelations()
+        ])
         if (assocResponse && assocResponse.associations) {
           this.apiAssociations = assocResponse.associations
         }
-        
-        const relationsResponse = await modelAPI.listRelations()
         if (relationsResponse && relationsResponse.relations) {
           this.apiRelations = relationsResponse.relations
         }
@@ -320,6 +350,16 @@ export default {
       const objId = this.objId
       const title = `${this.modelName} ${this.instanceName ? '【' + this.instanceName + '】' : ''}`
       this.$nextTick(() => {
+        // 竞态守卫：本视图可能已在异步加载期间被路由替换（组件销毁），
+        // 或当前路由已切换到其它模型实例。此时若仍写入自定义面包屑，
+        // 会把旧视图标题串扰到新视图。
+        if (!this._breadcrumbGuard) {
+          return
+        }
+        const routeObjId = this.$route.params.objId || this.$route.meta.objId
+        if (routeObjId && routeObjId !== this.objId) {
+          return
+        }
         this.$store.commit('setCustomBreadcrumbs', {
           enable: true,
           title: title,
@@ -358,11 +398,7 @@ export default {
         this.editingPropertyId = null
       } catch (error) {
         console.error('更新属性失败:', error)
-        let errorMsg = error.message || '未知错误'
-        this.$bkMessage({
-          message: errorMsg,
-          theme: 'error'
-        })
+        this.$handleApiError(error)
         // 保存失败，保持编辑态打开，让用户可以继续编辑
       }
     }

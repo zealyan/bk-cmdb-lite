@@ -46,7 +46,7 @@
               v-if="data.default !== 0"
               :class="getInternalNodeClass(node, data)">
             </i>
-            <i v-else :class="['node-icon fl', { 'is-template': isTemplate(data) }]">{{data.bk_obj_name[0]}}</i>
+            <i v-else :class="['node-icon fl', { 'is-template': isTemplate(data) }]">{{(data.bk_obj_name || '')[0]}}</i>
             <span class="node-name" :title="node.name">{{node.name}}</span>
           </template>
           <bk-exception slot="empty" type="empty" scene="part" />
@@ -76,9 +76,23 @@
   import ModuleCheckedList from './module-checked-list.vue'
   import { topoAPI } from '@/api/topo'
 
-  // 主线模型中文名映射（替代原项目 getModelById 的 bk_obj_name）
+  // 业务模块树缓存：同一业务多次打开转移弹框时复用整棵 topo，
+  // 避免重复全量拉取（getInstanceTopo）与递归过滤（filterBusinessChildren）。
+  // 转移只改变主机-模块绑定、不改变业务模块结构，弹框树复用安全；
+  // TTL 兜底防止"新增/删除集群"等场景长时间展示陈旧结构。
+  const _businessTopoCache = new Map()
+  const BUSINESS_TOPO_TTL = 30 * 1000
+
+  // 主线模型中文名映射（替代原项目 getModelById 的 bk_obj_name）。
+  // 覆盖自定义主线层（sys/subsys/appsys/zone…），否则这些节点 bk_obj_name 缺失时
+  // 图标会取到英文 obj_id 首字符（如 sys → 's' 而非"应"），对齐主拓扑树 MODEL_INFO。
   const OBJ_NAME_MAP = {
     biz: '业务',
+    sys: '应用系统',
+    subsys: '应用子系统',
+    appsys: '应用系统',
+    appsubsys: '应用子系统',
+    zone: '片区',
     set: '集群',
     module: '模块'
   }
@@ -172,31 +186,83 @@
         this.handlerFilter()
       }
     },
-    async created() {
+    created() {
       this.handlerFilter = debounce(() => {
         this.$refs.tree.filter(this.filter)
       }, 300)
+    },
+    // 初始加载必须放到 mounted：created 时 $refs.tree 尚未填充，
+    // getModules 会同步调用 setData，在 created 里会抛
+    // "Cannot read properties of undefined (reading 'setData')"。
+    async mounted() {
       this.getModules()
     },
     methods: {
       async getModules() {
         this.loading = true
         try {
-          let data
           if (this.moduleType === 'idle') {
-            data = await this.getInternalModules()
+            // 空闲机池树：一次性加载（仅 1 个 set + 内部模块，数据量恒定极小）
+            const data = await this.getInternalModules()
+            this.$refs.tree.setData(data)
+            this.$refs.tree.setExpanded(this.getNodeId(data[0]))
+            this.setDefaultChecked()
           } else {
-            data = await this.getBusinessModules()
+            // 业务模块树：一次性全量加载（对齐原项目 getBusinessModules + setData）。
+            // 数据规模由 seed 脚本控制在 ≤1 万节点，全量加载安全，
+            // 且支持关键词过滤命中任意层级、默认选中直接命中深层模块。
+            const data = await this.getBusinessModules()
+            this.$refs.tree.setData(data)
+            this.$refs.tree.setExpanded(this.getNodeId(data[0]))
+            this.setDefaultChecked()
           }
-          this.$refs.tree.setData(data)
-          this.$refs.tree.setExpanded(this.getNodeId(data[0]))
-          this.setDefaultChecked()
         } catch (e) {
           this.$refs.tree.setData([])
           console.error(e)
         } finally {
           this.loading = false
         }
+      },
+
+      // 业务模块树：一次性拉取整棵主线拓扑（with_statistics=false，无需节点统计），
+      // 过滤空闲机池（set default=1）与内部模块（module default!=0），
+      // 避免把内部模块当作业务模块提交触发后端类型校验失败（语义与原懒加载树一致）。
+      // 数据按业务缓存（模块级，跨弹框实例复用）：命中缓存时跳过接口与递归过滤，
+      // 显著缩短"弹框内容填充"时间（首次打开仍拉取，但弹框外壳已先出现）。
+      async getBusinessModules() {
+        const hit = _businessTopoCache.get(this.bizId)
+        if (hit && Date.now() - hit.time < BUSINESS_TOPO_TTL) {
+          return hit.data
+        }
+        const data = await topoAPI.getInstanceTopo(this.bizId, { with_statistics: false })
+        const topo = data || {}
+        if (!topo.bk_inst_id) return []
+        const tree = [{
+          bk_inst_id: topo.bk_inst_id,
+          bk_inst_name: topo.bk_inst_name || this.bizName,
+          bk_obj_id: topo.bk_obj_id || 'biz',
+          bk_obj_name: OBJ_NAME_MAP.biz,
+          default: 0,
+          child: this.filterBusinessChildren(topo.child)
+        }]
+        _businessTopoCache.set(this.bizId, { time: Date.now(), data: tree })
+        return tree
+      },
+
+      // 递归过滤业务模块树：排除空闲机池(set default=1)与内部模块(module default!=0)
+      filterBusinessChildren(children) {
+        if (!Array.isArray(children)) return []
+        return children
+          .filter(c => {
+            if (c.bk_obj_id === 'set') return c.default === 0
+            if (c.bk_obj_id === 'module') return c.default === 0
+            return true
+          })
+          .map(c => ({
+            ...c,
+            bk_obj_name: c.bk_obj_name || OBJ_NAME_MAP[c.bk_obj_id] || c.bk_obj_id,
+            child: this.filterBusinessChildren(c.child)
+          }))
       },
       setDefaultChecked() {
         this.$nextTick(() => {
@@ -238,27 +304,6 @@
               }))
             }]
           }]
-        })
-      },
-      getBusinessModules() {
-        // 业务拓扑树：POST /host/transfer/topology/biz/{bizId}
-        return topoAPI.getInstTopo(this.bizId).then((response) => {
-          const data = response.data || response
-          // 业务模块转移：仅保留普通业务模块（default=0），
-          // 过滤掉空闲机池(set default=1)及其内部模块(空闲机/故障机/待回收)，
-          // 避免把内部模块当作业务模块提交，触发后端类型校验失败。
-          if (this.moduleType !== 'business') {
-            return data
-          }
-          return (data || []).map(biz => ({
-            ...biz,
-            child: (biz.child || [])
-              .filter(set => set.default === 0)
-              .map(set => ({
-                ...set,
-                child: (set.child || []).filter(mod => mod.default === 0)
-              }))
-          }))
         })
       },
       getNodeId(data) {

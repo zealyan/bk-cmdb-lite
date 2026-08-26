@@ -1,3 +1,5 @@
+import { MENU_RESOURCE_HOST } from '@/dictionary/menu-symbol'
+
 export const BUILTIN_MODELS = {
   BUSINESS: 'biz',
   SET: 'set',
@@ -6,6 +8,13 @@ export const BUILTIN_MODELS = {
   BUSINESS_SET: 'bk_biz_set_obj',
   PROJECT: 'bk_project'
 }
+
+// 内置模型对应的「资源」专属菜单路由名（对齐原项目 BUILTIN_MODEL_RESOURCE_MENUS）。
+// 用于左侧「自定义收藏」菜单：host 等内置模型收藏项指向其专属资源路由（如 /resource/host），
+// 从而在主机列表 / 详情页精确命中并高亮收藏项，而非落到通用的 /resource/instance/:objId。
+export const BUILTIN_MODEL_RESOURCE_MENUS = Object.freeze({
+  [BUILTIN_MODELS.HOST]: MENU_RESOURCE_HOST
+})
 
 export const HOST_MODEL_ID = 'host'
 

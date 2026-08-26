@@ -2,6 +2,7 @@ import Vue from 'vue'
 import Utils from './utils'
 import RouterQuery from '@/utils/router-query'
 import QS from 'qs'
+import userCustom from '@/api/user-custom'
 
 const FilterStore = new Vue({
   data() {
@@ -18,7 +19,12 @@ const FilterStore = new Vue({
       components: {},
       userBehavior: [],
       page: 1,
-      pageSize: 20
+      pageSize: 20,
+      // 用户级「条件筛选收藏」：数据落在服务端 user_custom 表（config_key='filter_collection'，
+      // 按登录用户隔离），每条收藏 = { id, name, conditions }，conditions 即 bk_property_id -> {operator, value}，
+      // 与 FilterStore.condition 完全一致。收藏与条件状态以 FilterStore 为单一数据源，自然同步。
+      collections: [],
+      activeCollection: null
     }
   },
   watch: {
@@ -50,22 +56,18 @@ const FilterStore = new Vue({
       this.modelPropertyMap = map
     },
     updateSelected(selected) {
-      console.log('[FilterStore] updateSelected:', selected.map(p => p.bk_property_id))
       this.selected = selected
     },
     updateCondition(condition) {
       this.condition = { ...this.condition, ...condition }
     },
     setCondition(data) {
-      console.log('[FilterStore] setCondition → data:', JSON.stringify(data))
       if (data.condition) {
         this.condition = data.condition
       }
       if (data.IP) {
         this.IP = data.IP
       }
-      console.log('[FilterStore] setCondition → this.condition:', JSON.stringify(this.condition))
-      console.log('[FilterStore] setCondition → this.selected:', this.selected.map(p => p.bk_property_id))
       this.dispatchSearch()
     },
     updateIP(IP) {
@@ -93,6 +95,125 @@ const FilterStore = new Vue({
       this.IP = Utils.getDefaultIP()
       this.page = 1
       this.dispatchSearch()
+    },
+    // ===== 条件筛选收藏（用户级，与条件状态以本 store 为单一数据源） =====
+    /**
+     * 从服务端 user_custom（config_key='filter_collection'）加载收藏列表
+     */
+    async loadCollections() {
+      try {
+        const cfg = await userCustom.searchUserCustom()
+        this.collections = (cfg && Array.isArray(cfg.filter_collection)) ? cfg.filter_collection : []
+      } catch (e) {
+        console.error('[FilterStore] loadCollections failed', e)
+        this.collections = []
+      }
+      return this.collections
+    },
+    /**
+     * 在 modelPropertyMap 中按 bk_property_id 反查 property 对象（bk_property_id 全局唯一）
+     */
+    findPropertyInModelMap(bkPropertyId) {
+      const map = this.modelPropertyMap || {}
+      for (const modelId of Object.keys(map)) {
+        const found = (map[modelId] || []).find(p => p.bk_property_id === bkPropertyId)
+        if (found) return found
+      }
+      return null
+    },
+    /**
+     * 应用收藏：把 collection.conditions 同步回 selected/condition（与条件状态同步），并触发搜索。
+     * collection=null 时清空收藏激活态并重置筛选。
+     */
+    setActiveCollection(collection) {
+      if (!collection) {
+        // 幂等保护：集合已处于未激活态时直接返回，避免 resetAll() 重新赋值 selected=[]（新引用）
+        // 触发 filter-tag 的 watch(selected) 再次调用本方法，形成响应式无限循环（主线程卡死、浏览器无响应）。
+        if (this.activeCollection === null) return
+        this.activeCollection = null
+        this.resetAll()
+        return
+      }
+      try {
+        const conditions = collection.conditions || {}
+        const selected = []
+        const condition = {}
+        Object.keys(conditions).forEach(id => {
+          const prop = this.findPropertyInModelMap(id)
+          if (prop) {
+            selected.push(prop)
+            condition[id] = { operator: conditions[id].operator, value: conditions[id].value }
+          }
+        })
+        // 先更新 selected（触发 watch -> initCondition 会保留已有 key），
+        // 再于 nextTick 写入 condition 并触发搜索（与 FilterForm.handleSearch 一致）
+        this.updateSelected(selected)
+        this.condition = condition
+        this.$nextTick(() => {
+          this.condition = condition
+          this.activeCollection = collection
+          this.dispatchSearch()
+        })
+      } catch (e) {
+        console.error('[FilterStore] setActiveCollection failed', e)
+      }
+    },
+    /**
+     * 从当前 selected/condition 序列化并保存为新收藏（收藏 = 当前条件）
+     * @param {Object} payload
+     * @param {string} payload.name 收藏名称
+     * @param {Object} [payload.conditions] 可选，直接传入的 live 条件（bk_property_id -> {operator,value}）；
+     *                                      不传时从 FilterStore.selected/condition 派生（兜底）。
+     */
+    async createCollection({ name, conditions: incomingConditions }) {
+      let conditions = incomingConditions
+      if (!conditions) {
+        conditions = {}
+        this.selected.forEach(property => {
+          const id = property.bk_property_id
+          const cond = this.condition[id]
+          if (cond) {
+            conditions[id] = { operator: cond.operator, value: cond.value }
+          }
+        })
+      }
+      const collection = { id: Date.now(), name: name || '未命名收藏', conditions }
+      const collections = [collection, ...this.collections]
+      await this.saveCollections(collections)
+      this.collections = collections
+      // 收藏即应用：把刚保存的条件同步回 selected/condition 并触发搜索，
+      // 保证「收藏数据与条件状态同步」（与上游 createCollection 语义一致）
+      this.setActiveCollection(collection)
+      return collection
+    },
+    async removeCollection(collection) {
+      const collections = this.collections.filter(c => c.id !== collection.id)
+      await this.saveCollections(collections)
+      this.collections = collections
+      if (this.activeCollection && this.activeCollection.id === collection.id) {
+        this.activeCollection = null
+      }
+    },
+    async updateCollection({ id, name, conditions }) {
+      const collections = this.collections.map((c) => {
+        if (c.id !== id) return c
+        const next = { ...c, name }
+        if (conditions !== undefined) next.conditions = conditions
+        return next
+      })
+      await this.saveCollections(collections)
+      this.collections = collections
+      if (this.activeCollection && this.activeCollection.id === id) {
+        this.activeCollection = { ...this.activeCollection, name, ...(conditions !== undefined ? { conditions } : {}) }
+      }
+    },
+    async saveCollections(collections) {
+      try {
+        await userCustom.saveUsercustom({ filter_collection: collections })
+      } catch (e) {
+        console.error('[FilterStore] saveCollections failed', e)
+        throw e
+      }
     },
     removeSelected(property) {
       const index = this.selected.findIndex(target => target.bk_property_id === property.bk_property_id)
@@ -270,8 +391,6 @@ const FilterStore = new Vue({
       }
     },
     initCondition() {
-      console.log('[FilterStore] initCondition → current condition:', JSON.stringify(this.condition))
-      console.log('[FilterStore] initCondition → selected keys:', this.selected.map(p => p.bk_property_id))
       const newCondition = {}
       this.selected.forEach((property) => {
         const id = property.bk_property_id
@@ -286,12 +405,8 @@ const FilterStore = new Vue({
       // 只在 key 集合变化时才替换，避免覆盖已有值
       const oldKeys = Object.keys(this.condition).sort().join(',')
       const newKeys = Object.keys(newCondition).sort().join(',')
-      console.log('[FilterStore] initCondition → oldKeys:', oldKeys, 'newKeys:', newKeys)
       if (oldKeys !== newKeys) {
         this.condition = newCondition
-        console.log('[FilterStore] initCondition → REPLACED condition:', JSON.stringify(this.condition))
-      } else {
-        console.log('[FilterStore] initCondition → NO CHANGE (keys match)')
       }
     }
   }

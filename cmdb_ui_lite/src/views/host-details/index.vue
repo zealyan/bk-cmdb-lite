@@ -18,16 +18,10 @@
             <li :class="['topology-item']"
               v-for="(item, index) in topologyList"
               :key="index">
-              <span class="topology-path">
-                <template v-for="(seg, segIndex) in item.nodes" :key="seg.id">
-                  <span
-                    class="topology-node"
-                    @click="handleNodeClick(seg, item)">{{ seg.name }}</span>
-                  <span
-                    class="topology-separator"
-                    v-if="segIndex < item.nodes.length - 1"> / </span>
-                </template>
-              </span>
+              <span class="topology-path">{{ item.path }}</span>
+              <i class="topology-module-link bk-icon icon-cc-share"
+                title="跳转到所属模块"
+                @click="handleModuleLink(item)"></i>
             </li>
           </ul>
           <a class="action-btn view-all"
@@ -252,22 +246,24 @@ export default {
     topologyList() {
       const paths = []
       this.topologyData.forEach(biz => {
-          biz.sets.forEach(set => {
+        biz.sets.forEach(set => {
           set.modules.forEach(module => {
+            // 优先使用后端返回的通用主线路径 module.topo_path（含自定义层
+            // appsys/appsubsys 等），保持 biz→...→set→module 完整层级链。
+            // 向后兼容：旧数据/旧后端无 topo_path 时回退到 biz/set/module 三层。
+            const chain = (module.topo_path && module.topo_path.length)
+              ? module.topo_path
+              : [
+                { bk_obj_id: 'biz', bk_inst_id: biz.bk_biz_id, bk_inst_name: biz.bk_biz_name },
+                { bk_obj_id: 'set', bk_inst_id: set.bk_set_id, bk_inst_name: set.bk_set_name },
+                { bk_obj_id: 'module', bk_inst_id: module.bk_module_id, bk_inst_name: module.bk_module_name }
+              ]
             paths.push({
               id: module.bk_module_id,
-              path: `${biz.bk_biz_name} / ${set.bk_set_name} / ${module.bk_module_name}`,
+              path: chain.map(n => n.bk_inst_name).join(' / '),
               bizId: biz.bk_biz_id,
               setId: set.bk_set_id,
-              moduleId: module.bk_module_id,
-              // 复刻原项目 bk-cmdb：所属拓扑路径按 biz / set / module 拆成可单独点击的分段，
-              // 每段映射到一个 topo tree node（biz-<id> / set-<id> / module-<id>），
-              // 点击后在【新窗口】打开业务拓扑并定位展开到该 node。
-              nodes: [
-                { id: biz.bk_biz_id, name: biz.bk_biz_name, node: `biz-${biz.bk_biz_id}` },
-                { id: set.bk_set_id, name: set.bk_set_name, node: `set-${set.bk_set_id}` },
-                { id: module.bk_module_id, name: module.bk_module_name, node: `module-${module.bk_module_id}` }
-              ]
+              moduleId: module.bk_module_id
             })
           })
         })
@@ -294,9 +290,16 @@ export default {
     }
   },
   created () {
+    // 面包屑活跃守卫：本视图的 updateBreadcrumbs 在异步加载完成后执行，
+    // 若期间路由已切换到其它视图（组件销毁），必须拦截写入，避免旧标题串扰新视图。
+    this._breadcrumbGuard = true
     this.instId = parseInt(this.$route.params.id, 10)
     this.bizId = parseInt(this.$route.params.bizId, 10) || null
     this.loadHostData()
+  },
+  beforeDestroy () {
+    // 组件销毁：解除守卫，阻止异步回调继续写入全局面包屑
+    this._breadcrumbGuard = false
   },
   methods: {
     // 初始化各分组折叠状态：默认展开/折叠由后端分组的 is_collapse 决定。
@@ -483,17 +486,18 @@ export default {
         this.editingPropertyId = null
       } catch (error) {
         console.error('更新属性失败:', error)
-        let errorMsg = error.message || '未知错误'
-        this.$bkMessage({
-          message: errorMsg,
-          theme: 'error'
-        })
+        this.$handleApiError(error)
       }
     },
 
     updateBreadcrumbs () {
       const title = `主机详情【${this.hostIp}】`
       this.$nextTick(() => {
+        // 竞态守卫：本视图可能已在异步加载期间被路由替换（组件销毁），
+        // 此时若仍写入自定义面包屑，会把旧标题串扰到新视图。
+        if (!this._breadcrumbGuard) {
+          return
+        }
         this.$store.commit('setCustomBreadcrumbs', {
           enable: true,
           title: title,
@@ -552,21 +556,21 @@ export default {
       }
     },
 
-    handleNodeClick(seg, item) {
-      // 复刻原项目 bk-cmdb：所属拓扑路径分段可点击，点击在【新窗口】打开业务拓扑，
-      // 并定位展开到对应 node（biz / set / module）。原项目通过 this.$routerActions.open()
-      // 实现，其内部即 router.resolve(to).href + window.open(href)。
-      // 本组件同时承载「业务拓扑主机详情」与「资源主机详情」两种入口：业务入口的 bizId
-      // 来自路由参数；资源入口无该参数（isBusinessHost === false）。但两种入口下
-      // topologyList 均已按 biz/set/module 构建好 item.bizId 与 node 标识，点击定位逻辑
-      // 实际只依赖 item.bizId（而非 this.bizId），因此去掉原 isBusinessHost 守卫——
-      // 只要该路径确实归属某个业务（item.bizId 存在），点击即在新窗口打开业务拓扑并定位。
-      // 原守卫会拦截资源入口，导致「所属拓扑」点击无任何效果，本次修复即解决该问题。
+    handleModuleLink(item) {
+      // 对齐原项目 bk-cmdb（components/host-topo-path/host-topo-path.vue）：
+      // 「所属拓扑」路径为整行文本（biz / set / module 用「 / 」连接），
+      // 仅 module 一个「分享」图标可点击，点击在【新窗口】打开业务拓扑并
+      // 定位展开到该 module（node=module-{id}）。多级 node（biz/set/自定义层）
+      // 不作为独立链接 —— 原项目即为单链接行为，本组件此前将每段都做成独立
+      // 可点链接，不符合原项目规范，本次恢复为「仅 module 链接」。
+      // 业务入口 bizId 来自路由参数；资源入口无该参数，但 topologyList 已按
+      // biz/set/module 构建好 item.bizId，点击定位只依赖 item.bizId，故不依赖
+      // 当前路由是否有 bizId 守卫，只要 item.bizId 存在即可跳转。
       if (!item || !item.bizId) return
       const to = {
         name: MENU_BUSINESS_TOPOLOGY,
         params: { bizId: String(item.bizId) },
-        query: { node: seg.node }
+        query: { node: `module-${item.moduleId}` }
       }
       const { href } = this.$router.resolve(to)
       window.open(href, '_blank')
@@ -708,27 +712,27 @@ export default {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          color: #63656e;
         }
 
-        .topology-node {
-          display: inline;
+        // 仅 module 一个「分享」图标可点击，对齐原项目 host-topo-path.vue：
+        // 路径整行文本不可点，多级 node（biz/set/自定义层）均不作为链接。
+        .topology-module-link {
+          display: none;
           vertical-align: middle;
-          font-size: 14px;
+          margin-left: 5px;
+          font-size: 12px;
+          color: #3a84ff;
           cursor: pointer;
-          color: #63656e;
 
           &:hover {
-            color: #3a84ff;
+            opacity: .75;
           }
         }
 
-        .topology-separator {
-          display: inline;
-          vertical-align: middle;
-          padding: 0 2px;
-          font-size: 14px;
-          color: #c4c6cc;
-          cursor: default;
+        // 悬停整行时显示 module 链接图标（与原项目 .cmdb-host-topo-path:hover 行为一致）
+        &:hover .topology-module-link {
+          display: inline-block;
         }
       }
   }

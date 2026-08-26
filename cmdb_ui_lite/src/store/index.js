@@ -4,6 +4,7 @@ import objectModelClassify from './modules/objectModelClassify.js'
 import globalState from './modules/global.js'
 import userCustom from './modules/userCustom.js'
 import objectBiz from './modules/object-biz.js'
+import user from './modules/user.js'
 
 Vue.use(Vuex)
 
@@ -12,7 +13,8 @@ export default new Vuex.Store({
     objectModelClassify,
     global: globalState,
     userCustom,
-    objectBiz
+    objectBiz,
+    user
   },
   state: {
     userCustom: {

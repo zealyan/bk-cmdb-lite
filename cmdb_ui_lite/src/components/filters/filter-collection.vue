@@ -2,10 +2,8 @@
   <bk-select class="filter-collection"
     ref="selector"
     searchable
-    multiple
     :popover-width="220"
     font-size="normal"
-    v-model="selected"
     v-bk-tooltips="'已收藏的条件'"
     @click.native="loadCollections">
     <icon-button slot="trigger"
@@ -17,9 +15,10 @@
     <bk-option v-for="collection in collections"
       :key="collection.id"
       :id="collection.id"
-      :name="collection.name">
+      :name="collection.name"
+      @click.native="handleApply(collection)">
       <div class="collection-item">
-        <i class="collection-state bk-icon icon-check-1" v-if="selected.includes(collection.id)"></i>
+        <i class="collection-state bk-icon icon-check-1" v-if="storageCollection && storageCollection.id === collection.id"></i>
         <span class="collection-name">{{collection.name}}</span>
         <span class="collection-options">
           <i class="option-icon option-edit icon-cc-edit" @click.stop="handleEdit(collection)"></i>
@@ -38,7 +37,14 @@
 
 <script>
 import IconButton from '@/components/ui/button/icon-button.vue'
+import FilterStore from './store'
 
+// 用户级「条件筛选收藏」：
+//  - 数据落在服务端 user_custom（config_key='filter_collection'，按登录用户隔离）。
+//  - 以 FilterStore 为单一数据源（collections / activeCollection，及 load/setActive/create/remove/update），
+//    与高级筛选的条件状态（selected / condition）天然同步：
+//      · 应用收藏 → setActiveCollection 把条件同步回 selected/condition；
+//      · 添加收藏 → createCollection 从 selected/condition 序列化当前条件。
 export default {
   name: 'FilterCollection',
   components: {
@@ -46,57 +52,47 @@ export default {
   },
   data() {
     return {
-      collections: [],
-      selected: [],
-      storageCollection: null,
-      loadingCollections: false
+    }
+  },
+  computed: {
+    collections() {
+      return FilterStore.collections || []
+    },
+    storageCollection() {
+      return FilterStore.activeCollection
     }
   },
   methods: {
     async loadCollections() {
-      if (this.loadingCollections) return
-      this.loadingCollections = true
-      try {
-        // 简化版：从本地存储加载收藏条件
-        const stored = localStorage.getItem('cmdb_filter_collections')
-        this.collections = stored ? JSON.parse(stored) : []
-        this.$nextTick(() => {
-          this.$refs.selector && this.$refs.selector.show && this.$refs.selector.show()
-        })
-      } catch (e) {
-        console.error(e)
-      } finally {
-        this.loadingCollections = false
-      }
+      await FilterStore.loadCollections()
+      this.$nextTick(() => {
+        this.$refs.selector && this.$refs.selector.show && this.$refs.selector.show()
+      })
     },
-    handleApply(value) {
-      const selectedId = Array.isArray(value) && value.length > 0 ? value[value.length - 1] : null
-      this.storageCollection = this.collections.find(c => c.id === selectedId) || null
-      this.$emit('apply', this.storageCollection)
+    /**
+     * 点击某条收藏 → 直接应用该收藏（不依赖 bk-select 的 change/value 数组）。
+     * 直接传入 collection 对象，规避了本端口 bk-magic-vue 2.5.9 在 multiple 模式下
+     * 切换选项时 value 数组计算异常（点了 B 却仍把 A 当作最新项）导致「二次点击不同步」的问题。
+     * 当前激活态由 storageCollection 驱动（星标高亮 + 选项勾选）。
+     */
+    handleApply(collection) {
+      FilterStore.setActiveCollection(collection)
+      this.$emit('apply', collection)
     },
     handleEdit(collection) {
       const newName = prompt('编辑收藏条件名称', collection.name)
       if (newName && newName.trim()) {
-        collection.name = newName.trim()
-        this.saveCollections()
+        FilterStore.updateCollection({ id: collection.id, name: newName.trim() })
       }
     },
     handleRemove(collection) {
-      this.collections = this.collections.filter(c => c.id !== collection.id)
-      this.saveCollections()
+      FilterStore.removeCollection(collection)
     },
     handleCreate() {
-      const name = prompt('请输入收藏条件名称')
-      if (name && name.trim()) {
-        this.collections.push({
-          id: Date.now(),
-          name: name.trim()
-        })
-        this.saveCollections()
-      }
-    },
-    saveCollections() {
-      localStorage.setItem('cmdb_filter_collections', JSON.stringify(this.collections))
+      // 打开高级筛选抽屉，在其中通过「收藏此条件」保存当前条件（与上游一致）
+      import('./filter-form.js').then(({ default: FilterFormApi }) => {
+        FilterFormApi.show()
+      }).catch(e => console.error('[FilterCollection] 打开高级筛选失败', e))
     }
   }
 }

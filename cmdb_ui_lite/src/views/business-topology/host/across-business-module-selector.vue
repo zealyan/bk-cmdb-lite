@@ -25,14 +25,13 @@
             v-model="targetBizId"
             :clearable="false"
             :searchable="true"
-            :placeholder="$t('请选择xx', { name: $t('业务') })"
+            :placeholder="'请选择业务'"
             @change="getModules">
-            <cmdb-auth-option v-for="item in businessList"
+            <bk-option v-for="item in businessList"
               :key="item.bk_biz_id"
               :id="item.bk_biz_id"
-              :name="`[${item.bk_biz_id}] ${item.bk_biz_name}`"
-              :auth="{ type: authType, relation: item.relation }">
-            </cmdb-auth-option>
+              :name="`[${item.bk_biz_id}] ${item.bk_biz_name}`">
+            </bk-option>
           </bk-select>
           <template v-if="targetBizId">
             <bk-big-tree ref="tree" class="topology-tree"
@@ -62,7 +61,7 @@
           </template>
           <template v-else>
             <bk-exception class="business-tips" type="empty" scene="part">
-              <span>{{$t('请先选择业务')}}</span>
+              <span>请先选择业务</span>
             </bk-exception>
           </template>
         </div>
@@ -72,25 +71,30 @@
       </div>
     </div>
     <div class="layout-footer">
-      <span v-bk-tooltips="{ content: $t('请先选择业务模块'), disabled: checked.length > 0 }">
+      <span v-bk-tooltips="{ content: '请先选择业务模块', disabled: checked.length > 0 }">
         <bk-button class="mr10" theme="primary"
           :disabled="!checked.length"
           :loading="confirmLoading"
           @click="handleNextStep">
-          {{$t('确定')}}
+          {{'确定'}}
         </bk-button>
       </span>
-      <bk-button theme="default" @click="handleCancel">{{$t('取消')}}</bk-button>
+      <bk-button theme="default" @click="handleCancel">取消</bk-button>
     </div>
   </div>
 </template>
 
 <script>
-  import { mapGetters } from 'vuex'
-import { AuthRequestId, afterVerify } from '@/components/ui/auth/auth-queue.js'
-import ModuleCheckedList from './module-checked-list.vue'
+  import ModuleCheckedList from './module-checked-list.vue'
 import { ONE_TO_ONE, MULTI_TO_ONE } from '@/dictionary/host-transfer-type.js'
 import { topoAPI } from '@/api/topo'
+
+// 主线模型中文名映射（替代原项目 getModelById 的 bk_obj_name，与 module-selector.vue 一致）
+const OBJ_NAME_MAP = {
+  biz: '业务',
+  set: '集群',
+  module: '模块'
+}
 
   export default {
     name: 'cmdb-across-business-module-selector',
@@ -128,11 +132,6 @@ import { topoAPI } from '@/api/topo'
         businessList: [],
         targetBizId: '',
         checked: [],
-        request: {
-          auth: AuthRequestId,
-          internal: Symbol('internal'),
-          list: Symbol('list')
-        },
         nodeIconMap: {
           1: 'icon-cc-host-free-pool',
           2: 'icon-cc-host-breakdown',
@@ -141,7 +140,6 @@ import { topoAPI } from '@/api/topo'
       }
     },
     computed: {
-      ...mapGetters('objectModelClassify', ['getModelById']),
       bizIds() {
         if (this.business?.bk_biz_id) {
           return [this.business.bk_biz_id]
@@ -155,13 +153,8 @@ import { topoAPI } from '@/api/topo'
         return this.title && this.title.length
       },
       authType() {
-        const { HOST_TRANSFER_ACROSS_BIZ, IDLE_HOST_TRANSFER_ACROSS_BIZ } = this.$OPERATION
-        if (this.type === ONE_TO_ONE) {
-          return HOST_TRANSFER_ACROSS_BIZ
-        }
-        if (this.type === MULTI_TO_ONE) {
-          return IDLE_HOST_TRANSFER_ACROSS_BIZ
-        }
+        // lite 前端不做 IAM 权限按钮禁用（与 module-selector-with-tab.vue 保持一致），
+        // 跨业务转移的鉴权由后端 auth/parser 完成（TRANSFER 动作 + 源/目标双业务维度）。
         return ''
       },
     },
@@ -194,7 +187,7 @@ import { topoAPI } from '@/api/topo'
       async getFullAmountBusiness() {
         try {
           const data = await topoAPI.getBizList()
-          const availableBusiness = (data || []).filter(business => business.bk_biz_id !== this.bizId)
+          const availableBusiness = (data || []).filter(business => business.bk_biz_id !== this.bizIds[0])
           this.generateRelation(availableBusiness)
           this.businessList = Object.freeze(availableBusiness)
         } catch (e) {
@@ -202,10 +195,7 @@ import { topoAPI } from '@/api/topo'
           this.businessList = []
         } finally {
           setTimeout(() => {
-            afterVerify((authData) => {
-              this.loading = false
-              this.sortBusinessByAuth(authData)
-            })
+            this.loading = false
           }, 0)
         }
       },
@@ -218,6 +208,10 @@ import { topoAPI } from '@/api/topo'
         this.businessList = list
       },
       async getModules() {
+        // 选择业务后触发目标业务拓扑数据加载：整框显示 loading 遮罩
+        // （对齐 module-selector.vue getModules 的 loading 模式：进入即 loading=true，
+        //   finally 复位；根节点 v-bkloading 覆盖整个弹框盒子范围）。
+        this.loading = true
         try {
           this.checked = []
           const internalTop = await this.getInternalModules()
@@ -225,35 +219,37 @@ import { topoAPI } from '@/api/topo'
         } catch (e) {
           this.$refs.tree.setData([])
           console.error(e)
+        } finally {
+          this.loading = false
         }
       },
       getInternalModules() {
-        return this.$store.dispatch('objectMainLineModule/getInternalTopo', {
-          bizId: this.targetBizId,
-          config: {
-            requestId: this.request.internal
-          }
-        }).then(data => [{
-          bk_inst_id: this.targetBizId,
-          bk_inst_name: this.targetBiz.bk_biz_name,
-          bk_obj_id: 'biz',
-          bk_obj_name: this.getModelById('biz').bk_obj_name,
-          default: 0,
-          child: [{
-            bk_inst_id: data.bk_set_id,
-            bk_inst_name: data.bk_set_name,
-            bk_obj_id: 'set',
-            bk_obj_name: this.getModelById('set').bk_obj_name,
+        // lite 适配：原项目走 Vuex objectMainLineModule/getInternalTopo，
+        // lite 改为直接调 topoAPI.getInternalTopo（与 module-selector.vue 一致）。
+        return topoAPI.getInternalTopo('0', this.targetBizId).then((response) => {
+          const data = response.data || response
+          return [{
+            bk_inst_id: this.targetBizId,
+            bk_inst_name: this.targetBiz.bk_biz_name,
+            bk_obj_id: 'biz',
+            bk_obj_name: OBJ_NAME_MAP.biz,
             default: 0,
-            child: data.module.map(module => ({
-              bk_inst_id: module.bk_module_id,
-              bk_inst_name: module.bk_module_name,
-              bk_obj_id: 'module',
-              bk_obj_name: this.getModelById('module').bk_obj_name,
-              default: module.default
-            }))
+            child: [{
+              bk_inst_id: data.bk_set_id,
+              bk_inst_name: data.bk_set_name,
+              bk_obj_id: 'set',
+              bk_obj_name: OBJ_NAME_MAP.set,
+              default: 0,
+              child: (data.module || []).map(module => ({
+                bk_inst_id: module.bk_module_id,
+                bk_inst_name: module.bk_module_name,
+                bk_obj_id: 'module',
+                bk_obj_name: OBJ_NAME_MAP.module,
+                default: module.default
+              }))
+            }]
           }]
-        }])
+        })
       },
       getNodeId(data) {
         return `${data.bk_obj_id}-${data.bk_inst_id}`
@@ -307,12 +303,13 @@ import { topoAPI } from '@/api/topo'
     .module-selector-layout {
         height: var(--height, 600px);
         min-height: 300px;
-        padding: 0 0 50px;
+        display: flex;
+        flex-direction: column;
+        padding: 0;
         position: relative;
         .layout-footer {
-            position: sticky;
-            bottom: 0;
-            left: 0;
+            flex: none;
+            position: static;
             width: 100%;
             height: 50px;
             padding: 8px 20px;
@@ -329,7 +326,10 @@ import { topoAPI } from '@/api/topo'
     }
     .wrapper {
         display: flex;
-        height: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+        overflow-y: auto;
         .topo-resize-layout {
             width: 508px;
             height: 100%;

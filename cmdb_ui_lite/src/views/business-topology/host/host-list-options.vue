@@ -20,14 +20,16 @@
           <i :class="['dropdown-icon bk-icon icon-angle-down',{ 'open': isTransferMenuOpen }]"></i>
         </bk-button>
         <ul class="bk-dropdown-list" slot="dropdown-content">
-          <li class="bk-dropdown-item" @click="handleTransfer('idle')">空闲模块</li>
-          <li class="bk-dropdown-item" @click="handleTransfer('business')">业务模块</li>
+          <li class="bk-dropdown-item" @click="handleTransfer($event, 'idle', false)">空闲模块</li>
+          <li class="bk-dropdown-item" @click="handleTransfer($event, 'business', false)">业务模块</li>
           <li :class="['bk-dropdown-item', { disabled: !isIdleSetModules }]"
-            @click="handleTransfer('resource')">
+            v-bk-tooltips.top-start="'主机需在“空闲机池”下才允许转移至主机池'"
+            @click="handleTransfer($event, 'resource', !isIdleSetModules)">
             主机池
           </li>
           <li :class="['bk-dropdown-item', { disabled: !isIdleSetModules }]"
-            @click="handleTransfer('acrossBusiness')">
+            v-bk-tooltips.top-start="'主机需在“空闲机池”下才允许转移至其他业务'"
+            @click="handleTransfer($event, 'acrossBusiness', !isIdleSetModules)">
             其他业务
           </li>
         </ul>
@@ -115,8 +117,12 @@ export default {
     handleMultipleEdit() {
       this.$emit('edit')
     },
-    handleTransfer(type) {
+    handleTransfer(event, type, disabled) {
       if (!this.hasSelection) return
+      if (disabled) {
+        event.stopPropagation()
+        return false
+      }
       this.$emit('transfer', type)
     },
     handleExport() {

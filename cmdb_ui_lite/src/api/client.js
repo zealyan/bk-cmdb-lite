@@ -1,10 +1,14 @@
 import axios from 'axios';
+import { showNoPermission, NO_PERMISSION_CODE, AUTH_ERR_UNAUTHORIZED } from '@/utils/error-handler';
+import { redirectToLogin } from '@/auth';
 
 const baseURL = '/';
 
 const http = axios.create({
   baseURL,
-  timeout: 10000,
+  // 拓扑分层懒加载后单次请求已降至 KB 级；此处放宽到 60s 以兼容首屏
+  // 建树缓存（冷启动 ~1.8s）及弱网环境下的传输余量，避免误超时。
+  timeout: 60000,
   withCredentials: false,
   headers: {
     'Content-Type': 'application/json'
@@ -24,6 +28,24 @@ const http = axios.create({
 // 基本 API 请求拦截器
 http.interceptors.request.use(
   (config) => {
+    // 最小内置鉴权：携带 lite_bk_token（localStorage 键名，本 lite 自定义）
+    // 承载方式由后端配置决定（auth.js loadAuthConfig 写入 localStorage 开关）：
+    //   AUTH_BEARER=1   → Authorization: Bearer <token>
+    //   AUTH_BEARER=0/缺 → X-Lite-Token: <token>（自定义头，agentos 网关对 X- 前缀头透传，
+    //      用于 Bearer 被网关注入/覆盖污染的部署形态；【默认走此路】）
+    // URL query 兜底受 AUTH_TOKEN_QUERY 开关控制（默认关闭：避免 token 进 URL 日志/
+    // 浏览器历史造成泄露），仅当开关为 '1' 时追加 ?lite_bk_token=<token>。
+    const token = localStorage.getItem('lite_bk_token')
+    if (token) {
+      if (localStorage.getItem('cmdb_auth_bearer') === '1') {
+        config.headers['Authorization'] = `Bearer ${token}`
+      } else {
+        config.headers['X-Lite-Token'] = token
+      }
+      if (localStorage.getItem('cmdb_auth_token_query') === '1') {
+        config.params = { ...(config.params || {}), lite_bk_token: token }
+      }
+    }
     return config
   },
   (error) => {
@@ -39,9 +61,24 @@ http.interceptors.response.use(
     // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
     if (data !== null && typeof data === 'object' && 'result' in data) {
       if (data.result === false) {
+        const code = data.bk_error_code
         // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
-        const error = new Error(data.bk_error_msg || '业务处理失败')
+        const error = new Error(data.bk_error_msg || '请求处理未完成')
         error.response = { data }
+        error.bk_error_code = code
+        error.isBusinessError = true
+        // 无权限（1302102）：全局兜底弹出统一对话框，并标记 handled 避免组件层重复提示
+        if (code === NO_PERMISSION_CODE) {
+          showNoPermission(error)
+          error.handled = true
+        } else if (code === AUTH_ERR_UNAUTHORIZED) {
+          // 登录态失效（超时 / 被踢 / 签名不符，bk_error_code=1302100）：
+          // 这是「会话已不可恢复」的明确信号，不再交由路由守卫兜底，而是就地统一处理——
+          // 提示「登录已失效」并跳转登录页（携带当前路由作回跳参数），
+          // 用户重新登录即可回到原页面。标记 handled 避免组件层重复弹窗。
+          redirectToLogin(data.bk_error_msg)
+          error.handled = true
+        }
         return Promise.reject(error)
       }
       // 成功：返回 data 字段内容
@@ -54,13 +91,18 @@ http.interceptors.response.use(
     // HTTP 层错误（网络超时、状态码非 2xx 等）
     // 统一处理：若响应体符合 BaseResp 格式（含 result:false），提取 bk_error_msg
     // 作为错误信息，避免上层只拿到 "Request failed with status code 400" 这类传输层文案。
+    // 无权限（1302102）在此全局兜底弹出统一对话框，并标记 handled，避免组件层重复提示。
     const resp = error.response
     if (resp && resp.data && typeof resp.data === 'object'
         && 'result' in resp.data && resp.data.result === false) {
-      const bizError = new Error(resp.data.bk_error_msg || '业务处理失败')
+      const bizError = new Error(resp.data.bk_error_msg || '请求处理未完成')
       bizError.response = resp
       bizError.bk_error_code = resp.data.bk_error_code
       bizError.isBusinessError = true
+      if (bizError.bk_error_code === NO_PERMISSION_CODE) {
+        showNoPermission(bizError)
+        bizError.handled = true
+      }
       return Promise.reject(bizError)
     }
     return Promise.reject(error)

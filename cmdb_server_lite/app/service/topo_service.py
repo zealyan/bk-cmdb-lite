@@ -11,8 +11,11 @@
 - src/common/metadata/core_service.go
 """
 import json
+import time
 from typing import Dict, List, Optional, Any
 from app.db.executor import query_all, query_one
+from app.db.dialect import get_column_names
+from app.utils.exceptions import APIException, CCErrorCode
 
 # 主线拓扑内置模型ID
 MAINLINE_MODEL_BIZ = 'biz'
@@ -50,6 +53,64 @@ MODEL_PARENT_FIELD = {
 }
 
 DEFAULT_SUPPLIER = '0'
+
+
+# 主线关联类型（cc_ObjAsst 标识主线拓扑的边；lite 复用 bk_asst_id 表达 kind）
+MAINLINE_ASST_ID = 'bk_mainline'
+
+
+def model_id_field(model_id: str) -> str:
+    """模型主键字段（内置模型用业务主键，自定义模型统一 bk_inst_id）。"""
+    return MODEL_ID_FIELD.get(model_id, 'bk_inst_id')
+
+
+def model_name_field(model_id: str) -> str:
+    """模型名称字段（自定义模型统一 bk_inst_name）。"""
+    return MODEL_NAME_FIELD.get(model_id, 'bk_inst_name')
+
+
+def mainline_parent_of(model_id: str,
+                        supplier_account: str = DEFAULT_SUPPLIER) -> Optional[str]:
+    """
+    返回某模型在主线中的父模型ID（cc_ObjAsst.bk_asst_id='bk_mainline' 的 target_obj_id）。
+
+    对齐上游 SearchMainlineAssociationTopo 的 parentMap 解析。
+    """
+    row = query_one(
+        "SELECT target_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id = :aid AND bk_obj_id = :oid "
+        "AND bk_supplier_account = :supplier",
+        {'aid': MAINLINE_ASST_ID, 'oid': model_id, 'supplier': supplier_account})
+    return row['target_obj_id'] if row else None
+
+
+def _load_mainline_level(model_id: str, bk_biz_id: int,
+                          supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """
+    加载主线某层级模型的全部业务实例（按 default 降序、主键升序）。
+
+    通用实现：内置(set/module)与自定义模型统一通过 InstanceService 表名解析 +
+    bk_biz_id 过滤，不再写死 set/module。各实例的 bk_parent_id 指向上一级父实例，
+    由 get_mainline_instance_topo 负责逐层拼接。
+
+    Args:
+        model_id: 模型ID（set/module/自定义）
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        实例列表
+    """
+    from app.service.instance_service import InstanceService
+
+    table = InstanceService._get_table_name(model_id)
+    id_field = model_id_field(model_id)
+    sql = f"""
+        SELECT * FROM "{table}"
+        WHERE bk_supplier_account = :sup AND bk_biz_id = :biz
+        ORDER BY "default" DESC, {id_field}
+    """
+    return query_all(sql, {'sup': supplier_account, 'biz': bk_biz_id})
 
 
 class TopoModelNode:
@@ -201,7 +262,7 @@ def _load_instances(model_id: str, bk_biz_id: int,
     if model_id == MAINLINE_MODEL_BIZ:
         # 业务表：排除资源池（default=1）
         sql = f"""
-            SELECT {id_field}, {name_field}, "default", *
+            SELECT *
             FROM {table}
             WHERE bk_supplier_account = :supplier
               AND "default" = 0
@@ -210,7 +271,7 @@ def _load_instances(model_id: str, bk_biz_id: int,
     elif model_id == MAINLINE_MODEL_SET:
         # 集群表：按 default 降序排序（空闲机池 default=1 排最前面）
         sql = f"""
-            SELECT {id_field}, {name_field}, "default", bk_parent_id, bk_biz_id, *
+            SELECT *
             FROM {table}
             WHERE bk_supplier_account = :supplier
               AND bk_biz_id = :bk_biz_id
@@ -220,7 +281,7 @@ def _load_instances(model_id: str, bk_biz_id: int,
         # 模块表：按 default 降序排序（空闲机 default=1 排最前面）
         parent_field = MODEL_PARENT_FIELD.get(model_id, 'bk_parent_id')
         sql = f"""
-            SELECT {id_field}, {name_field}, "default", {parent_field}, bk_set_id, bk_biz_id, *
+            SELECT *
             FROM {table}
             WHERE bk_supplier_account = :supplier
               AND bk_biz_id = :bk_biz_id
@@ -243,7 +304,7 @@ def _get_business_instance(bk_biz_id: int,
         业务实例数据或None
     """
     sql = """
-        SELECT bk_biz_id, bk_biz_name, *
+        SELECT *
         FROM cc_ApplicationBase
         WHERE bk_biz_id = :bk_biz_id
           AND bk_supplier_account = :supplier
@@ -309,54 +370,226 @@ def get_mainline_instance_topo(bk_biz_id: int, with_detail: bool = False,
         default=biz_default
     )
 
-    set_instances = _load_instances(MAINLINE_MODEL_SET, bk_biz_id, supplier_account)
-    module_instances = _load_instances(MAINLINE_MODEL_MODULE, bk_biz_id, supplier_account)
+    # 沿主线模型链（biz -> ... -> module）逐层按 bk_parent_id 拼装实例树，
+    # 支持任意多模型多层级（自定义主线模型自动纳入，无需改此处）。
+    level_nodes: Dict[str, Dict[int, TopoInstanceNode]] = {
+        MAINLINE_MODEL_BIZ: {bk_biz_id: root}
+    }
 
-    module_host_count = {}
+    for lvl in model_levels[1:]:
+        insts = _load_mainline_level(lvl, bk_biz_id, supplier_account)
+        node_map: Dict[int, TopoInstanceNode] = {}
+        parent_lvl = model_levels[model_levels.index(lvl) - 1]
+        parent_map = level_nodes.get(parent_lvl, {})
+        for inst in insts:
+            iid = inst[model_id_field(lvl)]
+            pid = inst.get('bk_parent_id') or 0
+            node = TopoInstanceNode(
+                object_id=lvl,
+                instance_id=iid,
+                instance_name=inst.get(model_name_field(lvl), f'{lvl}_{iid}'),
+                detail=inst if with_detail else {},
+                default=inst.get('default', 0))
+            node_map[iid] = node
+            if pid in parent_map:
+                parent_map[pid].children.append(node)
+            else:
+                # 孤儿实例（父不存在）：挂到 root 以保证可见，不参与统计聚合
+                root.children.append(node)
+        level_nodes[lvl] = node_map
+
     if with_statistics:
         module_host_count = _count_hosts_by_module(bk_biz_id, supplier_account)
+        for mid, node in level_nodes.get(MAINLINE_MODEL_MODULE, {}).items():
+            node.count = module_host_count.get(mid, 0)
 
-    set_node_map: Dict[int, TopoInstanceNode] = {}
-    for inst in set_instances:
-        set_id = inst[MODEL_ID_FIELD[MAINLINE_MODEL_SET]]
-        set_name = inst.get(MODEL_NAME_FIELD[MAINLINE_MODEL_SET], f'set_{set_id}')
-        set_default = inst.get('default', 0)
-        set_node = TopoInstanceNode(
-            object_id=MAINLINE_MODEL_SET,
-            instance_id=set_id,
-            instance_name=set_name,
-            detail=inst if with_detail else {},
-            default=set_default
-        )
-        set_node_map[set_id] = set_node
-        root.children.append(set_node)
+        # 自底向上聚合：沿已拼装好的实例树后序遍历，
+        # 每节点 count = 自身主机数 + 所有子节点 count 之和。
+        # 用树结构而非 level_nodes 的 ID 匹配，避免「子ID 误查父层级表」导致漏累加。
+        def _aggregate(node: 'TopoInstanceNode') -> int:
+            total = node.count
+            for child in node.children:
+                total += _aggregate(child)
+            node.count = total
+            return total
 
-    for inst in module_instances:
-        module_id = inst[MODEL_ID_FIELD[MAINLINE_MODEL_MODULE]]
-        module_name = inst.get(MODEL_NAME_FIELD[MAINLINE_MODEL_MODULE], f'module_{module_id}')
-        module_default = inst.get('default', 0)
-        parent_id = inst.get('bk_set_id') or inst.get(MODEL_PARENT_FIELD.get(MAINLINE_MODEL_MODULE, 'bk_parent_id'))
+        _aggregate(root)
 
-        module_node = TopoInstanceNode(
-            object_id=MAINLINE_MODEL_MODULE,
-            instance_id=module_id,
-            instance_name=module_name,
-            detail=inst if with_detail else {},
-            default=module_default
-        )
-
-        if with_statistics:
-            module_node.count = module_host_count.get(module_id, 0)
-
-        if parent_id and parent_id in set_node_map:
-            set_node_map[parent_id].children.append(module_node)
-
-    if with_statistics:
-        for set_node in root.children:
-            set_node.count = sum(child.count for child in set_node.children)
-        root.count = sum(child.count for child in root.children)
+    # 空闲机池（default=1 的 set）永久排在业务节点（biz）下的首位，
+    # 不受自定义主线层（appsys 等）排序影响。
+    # 对齐原项目 business-set-topology/children/topology-tree.vue：
+    #   data.sort(a => (a.bk_obj_id === BUILTIN_MODELS.SET && a.default === 1 ? -1 : 0))
+    # 因「空闲机池」的 bk_parent_id 指向 biz，而在含自定义层的主线里 set 的父模型为
+    # appsys，它会作为孤儿被挂到 root.children 末尾；此处显式置顶，保证始终位于 biz 首位。
+    root.children.sort(
+        key=lambda n: 0 if (n.object_id == MAINLINE_MODEL_SET and n.default == 1) else 1
+    )
 
     return root
+
+
+# ---------------------------------------------------------------------------
+# 模型中文名解析（供前端节点图标取"模型中文首个字"，对齐原项目节点自带 bk_obj_name）
+# 原项目前端 topology-tree-node.vue: <span>{{ data.bk_obj_name[0] }}</span>
+# lite 前端懒加载路径需后端在 children 中携带 bk_obj_name，才能正确显示图标首字
+# （如 集群→"集"、模块→"模"、应用系统→"应"、应用子系统→"子"），避免回落到 'N'。
+# ---------------------------------------------------------------------------
+_MODEL_NAME_CACHE: Dict[tuple, Dict[str, str]] = {}
+
+
+def get_model_name_map(supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, str]:
+    """返回 {bk_obj_id: bk_obj_name} 模型中文名映射（进程内缓存）。"""
+    key = (supplier_account,)
+    cached = _MODEL_NAME_CACHE.get(key)
+    if cached is not None:
+        return cached
+    rows = query_all(
+        "SELECT bk_obj_id, bk_obj_name FROM cc_ObjDes WHERE bk_supplier_account = :sup",
+        {'sup': supplier_account})
+    mapping = {r['bk_obj_id']: r['bk_obj_name'] for r in rows}
+    _MODEL_NAME_CACHE[key] = mapping
+    return mapping
+
+
+# ---------------------------------------------------------------------------
+# biz-topo 缓存（对齐原项目 source_controller/cacheservice/cache/biz-topo）
+# 缓存业务全量拓扑树 + (obj_id,inst_id)->node 索引，避免每次请求重算 + 重序列化
+# 13 万节点（如 biz3）。拓扑变更（创建/删除实例）时通过 clear_topo_cache 失效。
+# ---------------------------------------------------------------------------
+_TOPO_CACHE: Dict[tuple, Dict[str, Any]] = {}
+_TOPO_CACHE_TTL = 60  # 秒
+
+
+def _topo_cache_key(bk_biz_id: int, supplier_account: str) -> tuple:
+    return (bk_biz_id, supplier_account)
+
+
+def _get_cached_topo(bk_biz_id: int, supplier_account: str = DEFAULT_SUPPLIER):
+    """获取（或构建并缓存）业务全量拓扑树及节点索引。
+
+    对齐原项目 cacheservice/biz-topo：用进程内缓存避免每次请求重算 + 重序列化
+    13 万节点。树始终以 with_statistics=True 构建（算好聚合 count），调用方按需取用。
+    """
+    key = _topo_cache_key(bk_biz_id, supplier_account)
+    item = _TOPO_CACHE.get(key)
+    if item and (time.time() - item['ts']) < _TOPO_CACHE_TTL:
+        return item
+    tree = get_mainline_instance_topo(bk_biz_id, with_detail=False,
+                                      with_statistics=True, supplier_account=supplier_account)
+    if tree is None:
+        return None
+    index: Dict[tuple, 'TopoInstanceNode'] = {}
+
+    def _walk(n):
+        index[(n.object_id, n.instance_id)] = n
+        for c in n.children:
+            _walk(c)
+
+    _walk(tree)
+    item = {'tree': tree, 'index': index, 'ts': time.time()}
+    _TOPO_CACHE[key] = item
+    return item
+
+
+def clear_topo_cache(bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER):
+    """失效 biz-topo 缓存。拓扑变更（创建/删除实例）时调用。"""
+    if bk_biz_id is None:
+        _TOPO_CACHE.clear()
+    else:
+        _TOPO_CACHE.pop(_topo_cache_key(bk_biz_id, supplier_account), None)
+
+
+def get_mainline_children(bk_biz_id: int, parent_obj_id: str, parent_inst_id: int,
+                          with_statistics: bool = True,
+                          supplier_account: str = DEFAULT_SUPPLIER) -> Optional[List[Dict[str, Any]]]:
+    """获取主线实例某父节点的【直接子层】，用于前端分层懒加载。
+
+    对齐原项目前端 business-topology 的 lazy-method 分层加载思想：不再一次性
+    返回整棵 13 万节点树（34MB 响应），而是按父节点逐层懒加载，每层仅几百 KB。
+
+    复用 biz-topo 缓存的全量树 O(1) 定位父节点，返回其 children 一层（精简字段）。
+
+    Args:
+        bk_biz_id: 业务ID
+        parent_obj_id: 父节点模型ID（biz/set/module/sys/subsys...）
+        parent_inst_id: 父节点实例ID
+        with_statistics: 是否返回聚合主机数 count
+        supplier_account: 供应商账号
+    Returns:
+        [ {bk_obj_id, bk_inst_id, bk_inst_name, default, count, is_leaf}, ... ]
+        None 表示业务不存在；空列表表示父节点无子层或不存在。
+    """
+    item = _get_cached_topo(bk_biz_id, supplier_account)
+    if item is None:
+        return None
+    parent = item['index'].get((parent_obj_id, parent_inst_id))
+    if parent is None:
+        return []
+
+    # 主线链末端（module 总是主线最后一层），其下是 host 而非主线实例 -> 叶子
+    model_levels = get_mainline_model_top(supplier_account).leftest_object_id_list()
+    last_obj = model_levels[-1] if model_levels else MAINLINE_MODEL_MODULE
+
+    # 模型中文名映射：供前端节点图标取"模型中文首个字"（集群→"集"、模块→"模"…）
+    model_name_map = get_model_name_map(supplier_account)
+
+    children = []
+    for ch in parent.children:
+        obj_id = ch.object_id
+        children.append({
+            'bk_obj_id': obj_id,
+            'bk_inst_id': ch.instance_id,
+            'bk_inst_name': ch.instance_name,
+            'bk_obj_name': model_name_map.get(obj_id, obj_id),
+            # 节点必须携带 bk_biz_id：前端 host-list 依据它查询主机列表
+            # （biz 节点用 bk_inst_id，其余节点用 bk_biz_id），缺省会返回空列表。
+            'bk_biz_id': bk_biz_id,
+            'default': ch.default,
+            'count': ch.count if with_statistics else 0,
+            'is_leaf': obj_id == last_obj,
+            # 空闲机池：default=1 的集群（set），始终置业务(biz)下首位、隐藏"新建"按钮
+            'is_idle_set': obj_id == MAINLINE_MODEL_SET and ch.default == 1,
+        })
+    return children
+
+
+def get_topo_node_statistics(bk_biz_id: int, condition: List[Dict[str, Any]],
+                             supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """批量获取拓扑节点主机数统计（对齐原项目 GetTopoNodeHostAndSerInstCount）。
+
+    复用 biz-topo 缓存树（_get_cached_topo）：构建时已按 with_statistics=True 为每个节点
+    聚合 count（module 主机数 + 自底向上后序累加），此处按 (obj_id, inst_id) O(1) 定位直接
+    返回，避免对 condition 逐节点递归查库（原实现对 1000 节点需 ~20s，缓存命中为毫秒级）。
+    语义与前端树节点展示的 count 完全一致（同一缓存源）。
+
+    Args:
+        bk_biz_id: 业务ID
+        condition: [{bk_obj_id, bk_inst_id}, ...]
+        supplier_account: 供应商账号
+
+    Returns:
+        [{bk_obj_id, bk_inst_id, host_count, service_instance_count}, ...]
+    """
+    item = _get_cached_topo(bk_biz_id, supplier_account)
+    index = item['index'] if item else {}
+    results: List[Dict[str, Any]] = []
+    for cond in condition:
+        obj_id = cond.get('bk_obj_id')
+        inst_id = cond.get('bk_inst_id')
+        if not obj_id or inst_id is None:
+            continue
+        try:
+            inst_id = int(inst_id)
+        except (TypeError, ValueError):
+            continue
+        node = index.get((obj_id, inst_id))
+        results.append({
+            'bk_obj_id': obj_id,
+            'bk_inst_id': inst_id,
+            'host_count': node.count if node else 0,
+            'service_instance_count': 0,
+        })
+    return results
 
 
 def get_biz_list(supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
@@ -562,6 +795,51 @@ def get_module_host_count(bk_module_id: int,
     return row['cnt'] if row else 0
 
 
+def get_mainline_node_host_count(bk_obj_id: str, bk_inst_id: int,
+                                 bk_biz_id: int = None,
+                                 supplier_account: str = DEFAULT_SUPPLIER) -> int:
+    """
+    通用主线节点主机数统计：支持 biz/set/module 与任意自定义主线层（如 appsys）。
+
+    自定义主线层（appsys、zone 等）与 host 无直接字段关联，需沿 bk_parent_id 递归
+    收集其下所有 module 实例，再聚合 cc_ModuleHostConfig 计数。依赖主线模型顺序
+    （cc_ObjAsst.bk_mainline），天然支持任意多层级 biz→appsys→zone→set→module。
+
+    Args:
+        bk_obj_id: 节点模型ID（biz/set/module/自定义主线层）
+        bk_inst_id: 节点实例ID
+        bk_biz_id: 业务ID（自定义层与 set 必须）
+        supplier_account: 供应商账号
+
+    Returns:
+        该节点范围下的主机总数
+    """
+    if bk_obj_id == 'biz':
+        return get_biz_host_count(bk_inst_id, supplier_account)
+    if bk_obj_id == 'set':
+        if not bk_biz_id:
+            return 0
+        return get_set_host_count(bk_inst_id, bk_biz_id, supplier_account)
+    if bk_obj_id == 'module':
+        return get_module_host_count(bk_inst_id, supplier_account)
+
+    # 自定义主线层：需 bk_biz_id 以沿主线递归统计其下主机
+    if bk_biz_id is None:
+        return 0
+    mod_ids = _collect_descendant_module_ids(bk_obj_id, [bk_inst_id],
+                                             bk_biz_id, supplier_account)
+    if not mod_ids:
+        return 0
+    placeholders = ', '.join([f':mid_{i}' for i in range(len(mod_ids))])
+    params = {'sup': supplier_account}
+    for i, m in enumerate(mod_ids):
+        params[f'mid_{i}'] = m
+    sql = (f'SELECT COUNT(DISTINCT bk_host_id) AS cnt FROM cc_ModuleHostConfig '
+           f'WHERE bk_supplier_account = :sup AND bk_module_id IN ({placeholders})')
+    row = query_one(sql, params)
+    return row['cnt'] if row else 0
+
+
 def get_biz_host_list(bk_biz_id: int, page: int = 1, page_size: int = 20,
                       sort: str = 'bk_host_id',
                       supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
@@ -743,15 +1021,14 @@ def get_module_host_list(bk_module_id: int, page: int = 1, page_size: int = 20,
     return {'info': rows, 'count': total}
 
 
-# 缓存 cc_HostBase 表真实列名（动态 PRAGMA 获取，支持自定义属性）
+# 缓存 cc_HostBase 表真实列名（get_column_names 跨库内省获取，支持自定义属性）
 _HOST_BASE_COLUMNS = None
 
 def _get_host_base_columns():
     global _HOST_BASE_COLUMNS
     if _HOST_BASE_COLUMNS is None:
         try:
-            rows = query_all('PRAGMA table_info("cc_HostBase")')
-            _HOST_BASE_COLUMNS = {row['name'] for row in rows}
+            _HOST_BASE_COLUMNS = set(get_column_names('cc_HostBase'))
         except Exception:
             _HOST_BASE_COLUMNS = {'bk_host_id'}
     return _HOST_BASE_COLUMNS
@@ -851,6 +1128,7 @@ def search_hosts(params: Dict[str, Any],
     host_cond_items = []    # host 对象的条件项
     set_cond_items = []     # set 对象的条件项
     module_cond_items = []  # module 对象的条件项
+    custom_module_ids = []  # 自定义主线层（appsys 等）递归收集到的 module 实例 id
 
     for cond in conditions:
         obj_id = cond.get('bk_obj_id', '')
@@ -862,6 +1140,14 @@ def search_hosts(params: Dict[str, Any],
             set_cond_items.extend(cond_items)
         elif obj_id == 'module':
             module_cond_items.extend(cond_items)
+        else:
+            # 自定义主线层（appsys 等）：解析实例 id，递归收集其下所有 module 实例 id，
+            # 后续与 module 条件合并为 bk_module_id IN (...)，实现「选中任意主线节点查主机」。
+            inst_ids = _parse_instance_ids_from_cond(cond, obj_id)
+            if inst_ids:
+                mids = _collect_descendant_module_ids(
+                    obj_id, inst_ids, bk_biz_id, supplier_account)
+                custom_module_ids.extend(mids)
 
     # ========== 步骤2: 拓扑条件层层递进，获取 hostIDs ==========
     topo_host_ids = None
@@ -883,16 +1169,28 @@ def search_hosts(params: Dict[str, Any],
             for i, sid in enumerate(set_ids):
                 topo_params[f'sid_{i}'] = sid
 
-    # module 条件过滤：先查 cc_ModuleBase 获取符合的 bk_module_id
+    # module 条件过滤：先查 cc_ModuleBase 获取符合的 bk_module_id，
+    # 并与自定义主线层递归收集到的 module id 取并集。
     if module_cond_items:
         module_ids = _filter_topo_ids('module', module_cond_items, bk_biz_id, supplier_account)
-        if module_ids is not None:
-            if not module_ids:
-                return {'info': [], 'count': 0}
-            placeholders = ', '.join([f":mid_{i}" for i in range(len(module_ids))])
-            topo_where.append(f'bk_module_id IN ({placeholders})')
-            for i, mid in enumerate(module_ids):
-                topo_params[f'mid_{i}'] = mid
+        if module_ids is None:
+            module_ids = []
+        if custom_module_ids:
+            module_ids = list(set(module_ids) | set(custom_module_ids))
+        if not module_ids:
+            return {'info': [], 'count': 0}
+        placeholders = ', '.join([f":mid_{i}" for i in range(len(module_ids))])
+        topo_where.append(f'bk_module_id IN ({placeholders})')
+        for i, mid in enumerate(module_ids):
+            topo_params[f'mid_{i}'] = mid
+    elif custom_module_ids:
+        module_ids = list(set(custom_module_ids))
+        if not module_ids:
+            return {'info': [], 'count': 0}
+        placeholders = ', '.join([f":mid_{i}" for i in range(len(module_ids))])
+        topo_where.append(f'bk_module_id IN ({placeholders})')
+        for i, mid in enumerate(module_ids):
+            topo_params[f'mid_{i}'] = mid
 
     # 查询 cc_ModuleHostConfig 获取符合拓扑条件的 hostIDs
     if topo_where:
@@ -965,7 +1263,7 @@ def search_hosts(params: Dict[str, Any],
     # 排序字段安全处理（动态校验，替代硬编码白名单）
     # 校验规则：
     #   1. 字段名必须是合法小写标识符（^[a-z][a-z0-9_]*$，防注入）
-    #   2. 字段必须是 cc_HostBase 真实存在的列（从 PRAGMA table_info 动态获取，支持自定义属性）
+    #   2. 字段必须是 cc_HostBase 真实存在的列（get_column_names 跨库内省获取，支持自定义属性）
     # 不满足任一条件即回退到 bk_host_id ASC
     if not isinstance(sort_field, str) or not __import__('re').fullmatch(r'[a-z][a-z0-9_]*', sort_field):
         sort_field = 'bk_host_id'
@@ -1195,6 +1493,91 @@ def _filter_topo_ids(model_id: str, cond_items: list, bk_biz_id: int,
     return [row[id_field] for row in rows]
 
 
+def _parse_instance_ids_from_cond(cond: Dict[str, Any], obj_id: str) -> List[int]:
+    """
+    从自定义主线层条件中解析目标实例ID列表。
+    支持 {field: '<model_id_field>'|'bk_inst_id', operator: '$eq'|'$in', value: ...}。
+    例: appsys 节点 → field='bk_inst_id', operator='$eq', value=11472
+    """
+    id_field = model_id_field(obj_id)
+    cond_items = cond.get('condition', [])
+    ids: List[int] = []
+    for item in cond_items:
+        field = item.get('field')
+        if field not in (id_field, 'bk_inst_id'):
+            continue
+        operator = item.get('operator', '$eq')
+        value = item.get('value')
+        if operator == '$eq':
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                pass
+        elif operator == '$in' and isinstance(value, list):
+            for v in value:
+                try:
+                    ids.append(int(v))
+                except (TypeError, ValueError):
+                    pass
+    return ids
+
+
+def _collect_descendant_module_ids(root_obj_id: str, root_inst_ids: List[int],
+                                    bk_biz_id: int,
+                                    supplier_account: str = DEFAULT_SUPPLIER) -> List[int]:
+    """
+    从某主线实例出发，沿 bk_parent_id 逐层向下递归收集其下所有 module 实例ID。
+
+    用于支持「选中 appsys 等自定义主线节点查其下所有主机」：
+    业务拓扑选中任意节点时，其下所有主机 = 该节点子树内所有 module 的主机。
+    通用处理任意多层级（appsys→set→module / biz→appsys→zone→set→module 等），
+    依赖主线模型顺序（cc_ObjAsst.bk_mainline 解析的 leftest_object_id_list）。
+
+    Args:
+        root_obj_id: 根模型ID（如 'appsys'）
+        root_inst_ids: 根实例ID列表
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+
+    Returns:
+        module 实例ID列表（root 已是 module 层时返回自身）
+    """
+    from app.service.instance_service import InstanceService
+
+    if not root_inst_ids:
+        return []
+
+    levels = get_mainline_model_top(supplier_account).leftest_object_id_list()
+    if root_obj_id not in levels:
+        return []
+    start_idx = levels.index(root_obj_id)
+
+    # root 已是 module 层：直接返回自身
+    if levels[start_idx] == MAINLINE_MODEL_MODULE:
+        return list(root_inst_ids)
+
+    current_ids = list(root_inst_ids)
+    module_ids: List[int] = []
+    for lvl in levels[start_idx + 1:]:
+        if not current_ids:
+            break
+        table = InstanceService._get_table_name(lvl)
+        id_field = model_id_field(lvl)
+        placeholders = ', '.join([f":pid_{i}" for i in range(len(current_ids))])
+        params = {'sup': supplier_account, 'biz': bk_biz_id}
+        for i, pid in enumerate(current_ids):
+            params[f'pid_{i}'] = pid
+        sql = (f'SELECT "{id_field}" AS iid FROM "{table}" '
+               f'WHERE bk_supplier_account = :sup AND bk_biz_id = :biz '
+               f'AND bk_parent_id IN ({placeholders})')
+        rows = query_all(sql, params)
+        current_ids = [r['iid'] for r in rows]
+        if lvl == MAINLINE_MODEL_MODULE:
+            module_ids = current_ids
+            break
+    return module_ids
+
+
 def _build_condition_sql(field: str, operator: str, value: Any,
                          param_idx: int) -> tuple:
     """
@@ -1357,6 +1740,96 @@ def _build_ip_condition(ip_data: list, ip_exact: int, ip_flag: str,
     return (conditions[0], params)
 
 
+def _mainline_instance_exists(model_id: str, inst_id: int,
+                              supplier_account: str = DEFAULT_SUPPLIER) -> bool:
+    """主线某模型下是否真实存在该实例（用于路径上溯的父模型归属判定）。"""
+    from app.service.instance_service import InstanceService
+    tbl = InstanceService._get_table_name(model_id)
+    idf = InstanceService._get_id_field(model_id)
+    row = query_one(
+        f'SELECT 1 FROM "{tbl}" '
+        f'WHERE "{idf}" = :i AND bk_supplier_account = :sup',
+        {'i': int(inst_id), 'sup': supplier_account})
+    return bool(row)
+
+
+def _resolve_mainline_parent_model(cur_obj: str, pid: int,
+                                   supplier_account: str = DEFAULT_SUPPLIER) -> Optional[str]:
+    """返回 bk_parent_id=pid 实际归属的主线模型。
+
+    主线数据允许「跳级挂载」（如空闲机池 set 直接 bk_parent_id=biz、
+    或历史数据 set 跳过 subsys），不能只按模型链取一级父模型，否则路径
+    上溯会在中间层断掉。此处沿模型链（父→祖父→…→biz）逐级尝试，
+    返回第一个真正持有该实例 ID 的祖先模型。
+    """
+    m = mainline_parent_of(cur_obj, supplier_account)
+    while m:
+        if _mainline_instance_exists(m, pid, supplier_account):
+            return m
+        m = mainline_parent_of(m, supplier_account)
+    return None
+
+
+def get_instance_mainline_path(obj_id: str, inst_id: int,
+                                bk_biz_id: int = None,
+                                supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
+    """
+    从某主线实例沿 bk_parent_id 逐级上溯到业务(biz)，返回完整主线路径（含自定义层）。
+
+    用于：主机所属拓扑、节点面包屑、转移对话框懒加载树恢复默认选中等
+    需要"按主线顺序还原完整层级链"的场景。
+    例如 biz->appsys->set->module 下，module 实例返回
+    [{biz}, {appsys}, {set}, {module}]，自动纳入任意自定义主线层，不写死层级。
+
+    支持跳级挂载：若某节点 bk_parent_id 直接指向更高层祖先（如 set 直接挂 biz），
+    父模型归属由 _resolve_mainline_parent_model 沿模型链向上解析，路径不中断。
+
+    Args:
+        obj_id: 起始模型ID（通常为 module，也可为 set / 任意主线层）
+        inst_id: 起始实例ID
+        bk_biz_id: 业务ID（仅用于调试断言，上溯完全由 bk_parent_id 驱动，可不传）
+        supplier_account: 供应商账号
+
+    Returns:
+        从 biz 到当前实例的主线节点链（顺序 biz ... leaf），每节点
+        { bk_obj_id, bk_inst_id, bk_inst_name }
+    """
+    from app.service.instance_service import InstanceService
+    chain = []
+    cur_obj, cur_inst = obj_id, int(inst_id)
+    guard = 0
+    while cur_obj and guard < 32:
+        tbl = InstanceService._get_table_name(cur_obj)
+        idf = InstanceService._get_id_field(cur_obj)
+        namef = model_name_field(cur_obj)
+        # biz 是主线根，实例表（cc_ApplicationBase）无 bk_parent_id 列，单独处理
+        parent_col = '' if cur_obj == MAINLINE_MODEL_BIZ else ', bk_parent_id'
+        row = query_one(
+            f'SELECT "{idf}", "{namef}"{parent_col}, bk_biz_id '
+            f'FROM "{tbl}" '
+            f'WHERE "{idf}" = :i AND bk_supplier_account = :sup',
+            {'i': cur_inst, 'sup': supplier_account})
+        if not row:
+            break
+        chain.append({
+            'bk_obj_id': cur_obj,
+            'bk_inst_id': int(row[idf]),
+            'bk_inst_name': row[namef] if row[namef] is not None else f'{cur_obj}_{cur_inst}'
+        })
+        if cur_obj == MAINLINE_MODEL_BIZ:
+            break
+        nxt = row.get('bk_parent_id')
+        if nxt is None:
+            break
+        pmodel = _resolve_mainline_parent_model(cur_obj, int(nxt), supplier_account)
+        if not pmodel:
+            break
+        cur_obj, cur_inst = pmodel, int(nxt)
+        guard += 1
+    chain.reverse()
+    return chain
+
+
 def get_host_topology(bk_host_id: int, bk_biz_id: int = None,
                       supplier_account: str = DEFAULT_SUPPLIER) -> List[Dict[str, Any]]:
     """
@@ -1450,7 +1923,11 @@ def get_host_topology(bk_host_id: int, bk_biz_id: int = None,
 
         biz_map[biz_id]['sets'][set_id]['modules'].append({
             'bk_module_id': module_id,
-            'bk_module_name': row['bk_module_name']
+            'bk_module_name': row['bk_module_name'],
+            # 通用主线路径：沿 bk_parent_id 上溯到 biz，含 appsys 等自定义层。
+            # 前端"所属拓扑"据此拼完整层级链（biz / appsys / set / module ...）。
+            'topo_path': get_instance_mainline_path(
+                MAINLINE_MODEL_MODULE, module_id, biz_id, supplier_account)
         })
 
     result = []
@@ -1467,6 +1944,9 @@ def create_set(bk_biz_id: int, names: List[str],
     """
     创建集群（批量）
 
+    委托 create_mainline_instance：集群是业务(biz)主线下的子模型，
+    bk_parent_id = 业务ID，bk_biz_id 继承业务。
+
     Args:
         bk_biz_id: 业务ID
         names: 集群名称列表
@@ -1475,72 +1955,21 @@ def create_set(bk_biz_id: int, names: List[str],
     Returns:
         { 'created': [...], 'error_names': [...] }
     """
-    from app.db.executor import SQLExecutor
-    from app.utils.tools import generate_id
-    import time
-
-    executor = SQLExecutor()
-    created = []
-    error_names = []
-
     # 验证业务是否存在
     biz = query_one("""
         SELECT bk_biz_id FROM cc_ApplicationBase
         WHERE bk_biz_id = :biz_id AND bk_supplier_account = :supplier
     """, {'biz_id': bk_biz_id, 'supplier': supplier_account})
-
     if not biz:
         raise ValueError(f'业务 {bk_biz_id} 不存在')
 
-    # 过滤空名称和去重
-    unique_names = []
-    for name in names:
-        name = name.strip()
-        if name and name not in unique_names:
-            unique_names.append(name)
-
-    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
-
-    for name in unique_names:
-        try:
-            # 全局唯一 ID（每个名称独立取号，保证持久化与跨请求不重复）
-            next_id = generate_id()
-            # 插入集群数据
-            executor.execute("""
-                INSERT INTO cc_SetBase
-                (bk_set_id, bk_set_name, bk_parent_id, bk_biz_id, "default",
-                 bk_supplier_account, create_time, last_time, creator, modifier)
-                VALUES
-                (:bk_set_id, :bk_set_name, :bk_parent_id, :bk_biz_id, :default,
-                 :bk_supplier_account, :create_time, :last_time, :creator, :modifier)
-            """, {
-                'bk_set_id': next_id,
-                'bk_set_name': name,
-                'bk_parent_id': bk_biz_id,
-                'bk_biz_id': bk_biz_id,
-                'default': 0,
-                'bk_supplier_account': supplier_account,
-                'create_time': current_time,
-                'last_time': current_time,
-                'creator': 'admin',
-                'modifier': 'admin'
-            })
-
-            created.append({
-                'bk_set_id': next_id,
-                'bk_set_name': name,
-                'bk_biz_id': bk_biz_id
-            })
-        except Exception as e:
-            error_names.append({
-                'name': name,
-                'error': str(e)
-            })
-
-    return {
-        'created': created,
-        'error_names': error_names
-    }
+    return create_mainline_instance(
+        parent_obj_id=MAINLINE_MODEL_BIZ,
+        parent_inst_id=bk_biz_id,
+        model_id=MAINLINE_MODEL_SET,
+        names=names,
+        bk_biz_id=bk_biz_id,
+        supplier_account=supplier_account)
 
 
 def create_module(bk_set_id: int, names: List[str],
@@ -1548,87 +1977,296 @@ def create_module(bk_set_id: int, names: List[str],
     """
     创建模块（批量）
 
+    委托 create_mainline_instance：模块的父模型来自主线（标准链为 set；
+    若 CLI 在 set 与 module 间插入了自定义模型，则父为那个自定义模型）。
+    parent_inst_id 即父实例ID（标准链即 bk_set_id；自定义链为自定义实例ID）。
+
     Args:
-        bk_set_id: 集群ID
+        bk_set_id: 父实例ID（标准链为集群ID，自定义链为自定义层级实例ID）
         names: 模块名称列表
-        bk_biz_id: 业务ID（可选，会从集群表查询）
+        bk_biz_id: 业务ID（可选，不传则从父实例继承）
         supplier_account: 供应商账号
 
     Returns:
         { 'created': [...], 'error_names': [...] }
     """
+    parent_obj_id = mainline_parent_of(MAINLINE_MODEL_MODULE, supplier_account) \
+        or MAINLINE_MODEL_SET
+    return create_mainline_instance(
+        parent_obj_id=parent_obj_id,
+        parent_inst_id=bk_set_id,
+        model_id=MAINLINE_MODEL_MODULE,
+        names=names,
+        bk_biz_id=bk_biz_id,
+        supplier_account=supplier_account)
+
+
+def ensure_idle_pool(bk_biz_id: int,
+                     supplier_account: str = DEFAULT_SUPPLIER) -> Optional[int]:
+    """
+    确保业务下存在「空闲机池」（default=1 的 set）+ 内部模块（空闲机/故障机/待回收）。
+
+    对齐原项目 CreateBusiness：业务创建时自动生成空闲机池，保证业务拓扑树
+    首位恒为空闲机池（读取层按 `ORDER BY "default" DESC` 排序，default=1 排第一）。
+    该函数幂等：若业务下已存在 default=1 的 set 则直接返回，不重复创建。
+
+    结构（与 migrate 初始化一致）：
+        - 空闲机池 set：default=1，bk_parent_id=biz
+        - 空闲机 module：default=1
+        - 故障机 module：default=2
+        - 待回收 module：default=3
+
+    Args:
+        bk_biz_id: 业务ID
+        supplier_account: 供应商账号
+    Returns:
+        空闲机池 set_id；若创建失败返回 None
+    """
     from app.db.executor import SQLExecutor
-    from app.utils.tools import generate_id
-    import time
+
+    existing = query_one(
+        'SELECT bk_set_id FROM cc_SetBase '
+        'WHERE bk_biz_id=:b AND bk_supplier_account=:s AND "default"=1',
+        {'b': bk_biz_id, 's': supplier_account})
+    if existing:
+        return existing['bk_set_id']
+
+    # 1) 空闲机池集群（default=1），直接挂在业务(biz)下
+    sres = create_mainline_instance('biz', bk_biz_id, 'set', ['空闲机池'],
+                                    supplier_account=supplier_account)
+    if not sres.get('created'):
+        return None
+    set_id = sres['created'][0]['bk_set_id']
 
     executor = SQLExecutor()
-    created = []
-    error_names = []
+    executor.execute(
+        'UPDATE cc_SetBase SET "default" = :d '
+        'WHERE bk_set_id = :sid AND bk_supplier_account = :s',
+        {'d': 1, 'sid': set_id, 's': supplier_account})
 
-    # 查询集群信息
-    set_info = query_one("""
-        SELECT bk_set_id, bk_biz_id, bk_set_name FROM cc_SetBase
-        WHERE bk_set_id = :set_id AND bk_supplier_account = :supplier
-    """, {'set_id': bk_set_id, 'supplier': supplier_account})
+    # 2) 内部模块：空闲机 / 故障机 / 待回收（default=1/2/3）
+    mres = create_mainline_instance('set', set_id, 'module',
+                                   ['空闲机', '故障机', '待回收'],
+                                   bk_biz_id=bk_biz_id,
+                                   supplier_account=supplier_account)
+    mids = [m['bk_module_id'] for m in mres.get('created', [])]
+    module_defaults = {0: 1, 1: 2, 2: 3}  # 按创建顺序映射默认标识
+    for idx, mid in enumerate(mids):
+        dv = module_defaults.get(idx)
+        if dv is None:
+            break
+        executor.execute(
+            'UPDATE cc_ModuleBase SET "default" = :d '
+            'WHERE bk_module_id = :mid AND bk_supplier_account = :s',
+            {'d': dv, 'mid': mid, 's': supplier_account})
+    return set_id
 
-    if not set_info:
-        raise ValueError(f'集群 {bk_set_id} 不存在')
 
-    # 使用集群的业务ID
-    if not bk_biz_id:
-        bk_biz_id = set_info['bk_biz_id']
+def create_biz(bk_biz_name: str,
+               supplier_account: str = DEFAULT_SUPPLIER,
+               **extra) -> Dict[str, Any]:
+    """
+    创建业务（CreateBusiness）
 
-    # 过滤空名称和去重
+    业务是主线拓扑的根节点，无父节点（bk_parent_id），写入内置表 cc_ApplicationBase。
+    主键 bk_biz_id 由全局序列 generate_id 自动发号；bk_biz_name 全局唯一（单键约束，
+    重名时由 InstanceService.create_instance 的 check_unique 兜底（并发插入场景），
+    主路径已在 create_biz 内做前置唯一性校验并返回语义正确的 1199014。
+
+    对齐上游 CreateBusiness：业务名称必填、供应商隔离（bk_supplier_account 维度）。
+
+    Args:
+        bk_biz_name: 业务名称（必填，全局唯一）
+        supplier_account: 供应商账号，默认 '0'
+        extra: 其它可选业务属性（bk_biz_maintainer / bk_biz_developer / bk_biz_productor 等），
+                透传给 create_instance，由其 valid_fields 收敛到真实表列
+
+    Returns:
+        创建后的业务实例字典 { bk_biz_id, bk_biz_name, default, bk_supplier_account, ... }
+    """
+    from app.service.instance_service import InstanceService
+
+    name = (bk_biz_name or '').strip()
+    if not name:
+        raise APIException('业务名称不能为空',
+                           error_code=CCErrorCode.CCErrCommParamsInvalid)
+
+    # 业务根节点（无父），系统字段占位；可选业务属性经 valid_fields 过滤后落库
+    data = {
+        'bk_biz_name': name,
+        'default': 0,
+        'bk_supplier_account': supplier_account,
+        'creator': 'admin',
+        'modifier': 'admin',
+    }
+    reserved = ('bk_biz_id', 'bk_biz_name', 'default', 'bk_parent_id',
+                'bk_inst_id', 'bk_obj_id', 'id', '_id', 'create_time',
+                'last_time', 'creator', 'modifier', 'bk_supplier_account')
+    for k, v in (extra or {}).items():
+        if k in reserved or v is None:
+            continue
+        data[k] = v
+
+    try:
+        inst = InstanceService.create_instance('biz', data)
+    except APIException as e:
+        # create_instance 内部 check_unique 在重名时抛异常（文案含「已存在」）。
+        # 将其归一为语义正确的重复错误码 1199014，与 create_mainline_instance 的
+        # 批量创建一致；其余内部异常原样上抛（由全局处理器统一呈现）。
+        if '已存在' in str(e):
+            raise APIException(str(e),
+                               error_code=CCErrorCode.CCErrCommDuplicateItem)
+        raise
+    except Exception as e:
+        raise APIException(f'创建业务失败: {str(e)}',
+                           error_code=CCErrorCode.CCErrTopoInstCreateFailed)
+
+    # 对齐原项目 CreateBusiness：业务创建时自动初始化空闲机池（default=1 集群 + 内部模块），
+    # 保证业务拓扑树首位恒为空闲机池（读取层按 `ORDER BY "default" DESC` 排序）。
+    # 与业务根节点创建解耦：空闲机池初始化失败不影响业务创建主流程，仅告警，可后续补建。
+    try:
+        ensure_idle_pool(inst['bk_biz_id'], supplier_account)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            f'业务 {inst.get("bk_biz_id")} 已创建，但空闲机池初始化失败: {e}')
+
+    return dict(inst)
+
+
+def _resolve_set_ancestor(parent_obj_id: str, parent_inst_id: int,
+                          supplier_account: str = DEFAULT_SUPPLIER) -> int:
+    """
+    解析 module 所属 set 实例 ID（module 的 bk_set_id 为 NOT NULL 必填列）。
+
+    对齐上游：module 在主线拓扑中始终位于 set 之下，无论中间是否插入了自定义层级
+    （如 biz->rack->set->zone->module），其 bk_set_id 都指向主线上的 set 祖先实例。
+    做法：从直接父实例沿 bk_parent_id 逐级上溯，同时沿主线父链确认模型，直到命中 set。
+    """
+    from app.service.instance_service import InstanceService
+    cur_model = parent_obj_id
+    cur_inst = int(parent_inst_id)
+    guard = 0
+    while cur_model != MAINLINE_MODEL_SET and guard < 32:
+        pmodel = mainline_parent_of(cur_model, supplier_account)
+        if not pmodel:
+            return 0
+        tbl = InstanceService._get_table_name(cur_model)
+        idf = InstanceService._get_id_field(cur_model)
+        row = query_one(
+            f'SELECT bk_parent_id FROM "{tbl}" '
+            f'WHERE "{idf}" = :i AND bk_supplier_account = :sup',
+            {'i': cur_inst, 'sup': supplier_account})
+        if not row or row.get('bk_parent_id') is None:
+            return 0
+        cur_model = pmodel
+        cur_inst = int(row['bk_parent_id'])
+        guard += 1
+    return cur_inst if cur_model == MAINLINE_MODEL_SET else 0
+
+
+def create_mainline_instance(parent_obj_id: str, parent_inst_id: int,
+                             model_id: str, names: List[str],
+                             bk_biz_id: int = None,
+                             supplier_account: str = DEFAULT_SUPPLIER,
+                             attrs: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    在主线某父实例下创建子模型实例（支持任意层级，对齐上游 SetMainlineInstAssociation）。
+
+    语义：
+    - 子实例 bk_parent_id = 父实例ID（主线父实例指针，每个主线实例表均含该列）
+    - 子实例 bk_biz_id 继承自父实例（主线实例按业务归属）
+    - 内置模型 set：父为 biz，bk_parent_id=业务ID
+    - 内置模型 module：父为 set（或自定义层级），额外回填 bk_set_id 以兼容 set/module 专用接口
+    - 自定义模型：bk_parent_id + bk_biz_id 通用两列承载
+
+    复用 InstanceService.create_instance（统一校验 / 唯一约束 / 类型转换），
+    仅通过 data 透传 bk_parent_id / bk_biz_id（已加入 SYSTEM_FIELDS）。
+
+    Args:
+        parent_obj_id: 父模型ID（biz/set/module/自定义）
+        parent_inst_id: 父实例ID
+        model_id: 待创建的子模型ID
+        names: 实例名称列表
+        bk_biz_id: 业务ID（parent=biz 时即 parent_inst_id；其余从父实例继承，可缺省）
+        supplier_account: 供应商账号
+
+    Returns:
+        { 'created': [...], 'error_names': [...] }
+    """
+    from app.service.instance_service import InstanceService
+
+    # 解析业务归属：父为 biz 时直接等于父实例ID；否则取父实例的 bk_biz_id
+    if parent_obj_id == MAINLINE_MODEL_BIZ:
+        resolved_biz = int(parent_inst_id)
+    elif bk_biz_id is not None:
+        resolved_biz = int(bk_biz_id)
+    else:
+        parent_table = InstanceService._get_table_name(parent_obj_id)
+        parent_id_field = InstanceService._get_id_field(parent_obj_id)
+        prow = query_one(
+            f'SELECT bk_biz_id FROM "{parent_table}" '
+            f'WHERE "{parent_id_field}" = :pid AND bk_supplier_account = :sup',
+            {'pid': parent_inst_id, 'sup': supplier_account})
+        resolved_biz = int(prow['bk_biz_id']) if prow and prow.get('bk_biz_id') else 0
+
+    # 过滤空名称与去重
     unique_names = []
     for name in names:
-        name = name.strip()
+        name = (name or '').strip()
         if name and name not in unique_names:
             unique_names.append(name)
 
-    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+    created = []
+    error_names = []
+
+    # 名称列：自定义模型用 bk_inst_name，内置模型用专属列
+    # （bk_set_name/bk_module_name/bk_biz_name）。create_instance 按真实表列收敛数据，
+    # 若恒用 bk_inst_name 写内置模型会被过滤掉，导致名称空值触发 NOT NULL。
+    name_field = model_name_field(model_id)
 
     for name in unique_names:
+        data = {
+            name_field: name,
+            'bk_parent_id': int(parent_inst_id),
+            'bk_biz_id': resolved_biz,
+            'default': 0,
+            'creator': 'admin',
+            'modifier': 'admin',
+        }
+        # 自定义层额外属性（如 appsys/zone 的业务字段）：合并到实例 data，
+        # 但保留系统/拓扑列（bk_parent_id/bk_biz_id/name/default/creator/modifier）
+        # 不被覆盖，由 InstanceService.create_instance 的 valid_fields 进一步收敛。
+        if attrs:
+            for k, v in attrs.items():
+                if k in ('bk_parent_id', 'bk_biz_id', name_field,
+                         'default', 'creator', 'modifier', 'id',
+                         'bk_inst_id', 'bk_obj_id', 'create_time', 'last_time',
+                         'bk_supplier_account'):
+                    continue
+                data[k] = v
+        # 模块额外回填 bk_set_id（NOT NULL）：沿主线父链上溯定位 set 祖先实例，
+        # 兼容「set 与 module 间插入自定义层级」的情况（如 biz->rack->set->zone->module）。
+        if model_id == MAINLINE_MODEL_MODULE:
+            data['bk_set_id'] = _resolve_set_ancestor(
+                parent_obj_id, parent_inst_id, supplier_account)
         try:
-            # 全局唯一 ID（每个名称独立取号，保证持久化与跨请求不重复）
-            next_id = generate_id()
-            # 插入模块数据
-            executor.execute("""
-                INSERT INTO cc_ModuleBase
-                (bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id,
-                 "default", bk_supplier_account, create_time, last_time, creator, modifier)
-                VALUES
-                (:bk_module_id, :bk_module_name, :bk_parent_id, :bk_set_id, :bk_biz_id,
-                 :default, :bk_supplier_account, :create_time, :last_time, :creator, :modifier)
-            """, {
-                'bk_module_id': next_id,
-                'bk_module_name': name,
-                'bk_parent_id': bk_set_id,
-                'bk_set_id': bk_set_id,
-                'bk_biz_id': bk_biz_id,
-                'default': 0,
-                'bk_supplier_account': supplier_account,
-                'create_time': current_time,
-                'last_time': current_time,
-                'creator': 'admin',
-                'modifier': 'admin'
-            })
-
+            inst = InstanceService.create_instance(model_id, data)
+            inst_id = inst.get(model_id_field(model_id)) or inst.get('bk_inst_id')
             created.append({
-                'bk_module_id': next_id,
-                'bk_module_name': name,
-                'bk_set_id': bk_set_id,
-                'bk_biz_id': bk_biz_id
+                # 同时返回模型专属主键字段名（bk_set_id/bk_module_id/...）与通用
+                # bk_inst_id，兼容前端按具体模型字段取值（对齐上游返回结构）。
+                model_id_field(model_id): inst_id,
+                'bk_inst_id': inst_id,
+                'bk_inst_name': inst.get(name_field) or inst.get('bk_inst_name'),
+                'bk_obj_id': model_id,
+                'bk_parent_id': int(parent_inst_id),
+                'bk_biz_id': resolved_biz,
             })
         except Exception as e:
-            error_names.append({
-                'name': name,
-                'error': str(e)
-            })
+            error_names.append({'name': name, 'error': str(e)})
 
-    return {
-        'created': created,
-        'error_names': error_names
-    }
+    return {'created': created, 'error_names': error_names}
 
 
 def get_node_detail(bk_obj_id: str, bk_inst_id: int,
@@ -1672,7 +2310,17 @@ def get_node_detail(bk_obj_id: str, bk_inst_id: int,
             WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id AND bk_supplier_account = :supplier
         """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id, 'supplier': supplier_account})
     else:
-        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+        # 自定义业务拓扑模型（自定义主线层，如 appsys）：经通用实例表读取。
+        # 对齐上游通用 FindInst：任意主线模型实例统一按 ObjectBase 分表读取，
+        # 与 delete_node 的自定义层分支保持一致。
+        from app.service.instance_service import InstanceService
+        model_tree = get_mainline_model_top(supplier_account)
+        levels = model_tree.leftest_object_id_list()
+        if bk_obj_id not in levels:
+            raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+        result = InstanceService.get_instance(bk_obj_id, bk_inst_id)
+        if not result:
+            raise ValueError(f'{bk_obj_id} 节点 {bk_inst_id} 不存在')
 
     if not result:
         raise ValueError(f'{bk_obj_id} 节点 {bk_inst_id} 不存在')
@@ -1682,7 +2330,7 @@ def get_node_detail(bk_obj_id: str, bk_inst_id: int,
 
 def update_node(bk_obj_id: str, bk_inst_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    更新节点信息（biz/set/module）
+    更新节点信息（biz/set/module 及自定义主线层）
 
     Args:
         bk_obj_id: 节点类型
@@ -1751,83 +2399,295 @@ def update_node(bk_obj_id: str, bk_inst_id: int, params: Dict[str, Any]) -> Dict
             'bk_inst_id': bk_inst_id
         })
     else:
-        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+        # 自定义业务拓扑模型（自定义主线层，如 appsys）：经通用实例表更新。
+        # 对齐上游通用 UpdateInst：任意主线模型实例统一按 ObjectBase 分表更新，
+        # 由 InstanceService.update_instance 复用字段校验 / 唯一性校验 / last_time 刷新。
+        from app.service.instance_service import InstanceService
+        # 主线模型为全局定义（supplier='0'），校验 obj_id 是否为主线链成员即可
+        model_tree = get_mainline_model_top()
+        levels = model_tree.leftest_object_id_list()
+        if bk_obj_id not in levels:
+            raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+        InstanceService.update_instance(bk_obj_id, bk_inst_id, params)
 
     return {'bk_inst_id': bk_inst_id}
+
+
+def _check_inst_associated(obj_id: str, inst_id: int) -> bool:
+    """检查实例是否被其它实例关联引用（作为目标）。
+
+    对齐上游 deleteInsts 内 asst.CheckAssociations：被其它实例关联引用的实例不允许删除。
+    """
+    from app.service.association_service import get_inst_asst_table_name
+    table = get_inst_asst_table_name(obj_id)
+    row = query_one(
+        f'SELECT COUNT(*) as count FROM "{table}" '
+        f'WHERE bk_asst_inst_id = :inst_id AND bk_asst_obj_id = :obj_id',
+        {'inst_id': inst_id, 'obj_id': obj_id})
+    return bool(row and row['count'] > 0)
+
+
+def _mainline_descendant_module_ids(obj_id: str, inst_id: int,
+                                    bk_biz_id: int, supplier_account: str) -> List[int]:
+    """沿主线从当前节点向下，收集其下所有 module 实例 id（用于 hasHost 校验）。
+
+    对齐上游 inst.hasHost 的 mainlineHasHost：沿主线子级递归定位所有下游模块。
+    """
+    from app.service.instance_service import InstanceService
+    model_tree = get_mainline_model_top(supplier_account)
+    levels = model_tree.leftest_object_id_list()
+    if obj_id not in levels:
+        return []
+    idx = levels.index(obj_id)
+    child_levels = levels[idx + 1:]
+    if not child_levels:
+        return []
+
+    frontier = [inst_id]
+    module_ids: List[int] = []
+    for lvl in child_levels:
+        if lvl == MAINLINE_MODEL_MODULE:
+            module_ids = frontier
+            break
+        table = InstanceService._get_table_name(lvl)
+        id_field = InstanceService._get_id_field(lvl)
+        placeholders = ','.join(str(i) for i in frontier)
+        rows = query_all(
+            f'SELECT "{id_field}" FROM "{table}" '
+            f'WHERE bk_supplier_account = :supplier AND bk_biz_id = :biz_id '
+            f'AND "bk_parent_id" IN ({placeholders})',
+            {'supplier': supplier_account, 'biz_id': bk_biz_id})
+        frontier = [r[id_field] for r in rows]
+        if not frontier:
+            break
+    return module_ids
+
+
+def _collect_mainline_descendants(obj_id: str, inst_id: int,
+                                  bk_biz_id: int, supplier_account: str) -> Dict[str, List[int]]:
+    """沿主线从当前节点向下，递归收集其下所有子实例 id（不含自身），按模型层归类。
+
+    用于自定义业务拓扑模型节点删除前的「下游非空」拦截校验：
+    任一子层存在实例（set/module/其它自定义层）即视为非空，需先清空才能删除。
+    对齐上游删除非叶子拓扑节点「非空即禁删」的一致性要求。
+    """
+    from app.service.instance_service import InstanceService
+
+    model_tree = get_mainline_model_top(supplier_account)
+    levels = model_tree.leftest_object_id_list()
+    if obj_id not in levels:
+        return {}
+    idx = levels.index(obj_id)
+    child_levels = levels[idx + 1:]
+    if not child_levels:
+        return {}
+
+    result: Dict[str, List[int]] = {}
+    frontier = [inst_id]
+    for lvl in child_levels:
+        if not frontier:
+            break
+        table = InstanceService._get_table_name(lvl)
+        id_field = InstanceService._get_id_field(lvl)
+        placeholders = ','.join(str(i) for i in frontier)
+        rows = query_all(
+            f'SELECT "{id_field}" FROM "{table}" '
+            f'WHERE bk_supplier_account = :supplier AND bk_biz_id = :biz_id '
+            f'AND "bk_parent_id" IN ({placeholders})',
+            {'supplier': supplier_account, 'biz_id': bk_biz_id})
+        ids = [r[id_field] for r in rows]
+        if ids:
+            result[lvl] = ids
+        frontier = ids
+    return result
+
+
+def _delete_custom_mainline_node(bk_obj_id: str, bk_inst_id: int, bk_biz_id: int,
+                                 supplier_account: str, executor) -> None:
+    """自定义业务拓扑模型（自定义层级）节点删除：非空即拦截。
+
+    对齐上游删除非叶子拓扑节点的一致性要求，删除前做四道校验，任一命中即拦截：
+    1) 关联引用校验（被其它实例关联引用禁删）
+    2) 下游模块挂主机校验（hasHost，有主机禁删）
+    3) 下游存在集群(set)/模块(module)对象校验（非空即禁删）
+    4) 下游存在其它自定义层子节点校验（非空即禁删）
+    全部通过（下游子树为空）才删除自身并清理关联分表。对任意自定义层通用。
+    """
+    from app.service.instance_service import InstanceService
+    from app.service.association_service import get_inst_asst_table_name
+    from app.utils.exceptions import APIException, CCErrorCode
+
+    model_tree = get_mainline_model_top(supplier_account)
+    levels = model_tree.leftest_object_id_list()
+    if bk_obj_id not in levels:
+        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+
+    # 1. 关联引用校验（被其它实例引用禁止删除）
+    if _check_inst_associated(bk_obj_id, bk_inst_id):
+        raise APIException('节点被其它实例关联引用, 不允许删除',
+                           error_code=CCErrorCode.CCErrorTopoInstHasAssociation)
+
+    # 2. 收集下游所有子实例（沿主线递归），用于主机/对象非空拦截校验
+    descendants = _collect_mainline_descendants(bk_obj_id, bk_inst_id, bk_biz_id, supplier_account)
+    set_ids = descendants.get(MAINLINE_MODEL_SET, [])
+    module_ids = descendants.get(MAINLINE_MODEL_MODULE, [])
+    other_ids = [i for lvl, ids in descendants.items()
+                 if lvl not in (MAINLINE_MODEL_SET, MAINLINE_MODEL_MODULE) for i in ids]
+
+    # 2a. 下挂主机校验：沿主线递归下游模块查主机，有则拦截（对齐上游 hasHost）
+    if module_ids:
+        placeholders = ','.join(str(m) for m in module_ids)
+        host_count = query_one(
+            f'SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig '
+            f'WHERE bk_module_id IN ({placeholders})')
+        if host_count and host_count['count'] > 0:
+            raise APIException('节点下存在主机, 不允许删除',
+                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+
+    # 2b. 下挂集群(set)对象校验：非空即拦截（需先清空下游才能删除）
+    if set_ids:
+        raise APIException(f'节点下存在集群(set)共 {len(set_ids)} 个, 不允许删除',
+                           error_code=CCErrorCode.CCErrTopoHasChildNode)
+
+    # 2c. 下挂模块(module)对象校验：非空即拦截
+    if module_ids:
+        raise APIException(f'节点下存在模块(module)共 {len(module_ids)} 个, 不允许删除',
+                           error_code=CCErrorCode.CCErrTopoHasChildNode)
+
+    # 2d. 下挂其它自定义层子节点校验：非空即拦截
+    if other_ids:
+        raise APIException(f'节点下存在子节点共 {len(other_ids)} 个, 不允许删除',
+                           error_code=CCErrorCode.CCErrTopoHasChildNode)
+
+    # 3. 下游为空（无任何 set/module/自定义层/主机）→ 删除自身 + 清理关联分表
+    self_table = InstanceService._get_table_name(bk_obj_id)
+    self_id_field = InstanceService._get_id_field(bk_obj_id)
+    executor.execute(
+        f'DELETE FROM "{self_table}" WHERE "{self_id_field}" = :inst_id AND bk_biz_id = :biz_id',
+        {'inst_id': bk_inst_id, 'biz_id': bk_biz_id})
+    asst_table = get_inst_asst_table_name(bk_obj_id)
+    executor.execute(
+        f'DELETE FROM "{asst_table}" WHERE bk_inst_id = :inst_id OR bk_asst_inst_id = :inst_id',
+        {'inst_id': bk_inst_id})
 
 
 def delete_node(bk_obj_id: str, bk_inst_id: int,
                 bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER) -> None:
     """
-    删除节点（biz/set/module）
+    删除业务拓扑节点（biz/set/module 及自定义层级），与原项目删除冲突校验一致：
+
+    - 业务(biz)：内置业务(default=1)禁删；业务下存在集群禁删；业务下存在主机禁删
+    - 集群(set)：集群下模块存在主机禁删；校验通过后级联删除集群下所有模块再删集群
+    - 模块(module)：模块下存在主机禁删；模块被其它实例关联引用禁删
+    - 自定义层级：沿主线递归下游模块查主机(有主机禁删)；被关联引用禁删；级联删下游再删自身
 
     Args:
-        bk_obj_id: 节点类型
+        bk_obj_id: 节点类型（主线模型ID）
         bk_inst_id: 节点实例ID
-        bk_biz_id: 业务ID（set/module时必填）
+        bk_biz_id: 业务ID（set/module/自定义层级时必填）
         supplier_account: 供应商账号
     """
+    from app.utils.exceptions import APIException, CCErrorCode, NotFoundException
     from app.db.executor import SQLExecutor
 
     executor = SQLExecutor()
 
-    if bk_obj_id == 'biz':
-        # 检查业务下是否有集群
-        set_count = query_one("""
-            SELECT COUNT(*) as count FROM cc_SetBase WHERE bk_biz_id = :biz_id
-        """, {'biz_id': bk_inst_id})
+    if bk_obj_id == MAINLINE_MODEL_BIZ:
+        # 1. 内置业务（资源池，default=1）禁止删除 —— 对齐上游 checkHasBuiltInBiz
+        builtin = query_one(
+            'SELECT COUNT(*) as count FROM cc_ApplicationBase '
+            'WHERE bk_biz_id = :biz_id AND "default" = 1',
+            {'biz_id': bk_inst_id})
+        if builtin and builtin['count'] > 0:
+            raise APIException('内置业务(资源池)不允许删除',
+                               error_code=CCErrorCode.CCErrorTopoForbiddenDeleteBuiltInBiz)
+
+        # 2. 业务下存在集群禁止删除
+        set_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_SetBase WHERE bk_biz_id = :biz_id',
+            {'biz_id': bk_inst_id})
         if set_count and set_count['count'] > 0:
             raise ValueError('业务下存在集群，无法删除')
 
-        executor.execute("""
-            DELETE FROM cc_ApplicationBase WHERE bk_biz_id = :biz_id
-        """, {'biz_id': bk_inst_id})
-    elif bk_obj_id == 'set':
+        # 3. 业务下存在主机禁止删除 —— 对齐上游 checkHasHost
+        host_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_biz_id = :biz_id',
+            {'biz_id': bk_inst_id})
+        if host_count and host_count['count'] > 0:
+            raise APIException('业务下存在主机, 不允许删除',
+                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+
+        executor.execute(
+            'DELETE FROM cc_ApplicationBase WHERE bk_biz_id = :biz_id',
+            {'biz_id': bk_inst_id})
+
+    elif bk_obj_id == MAINLINE_MODEL_SET:
         if not bk_biz_id:
             raise ValueError('删除集群需要 bk_biz_id')
 
-        # 复刻原项目：检查集群下的模块是否有关联主机
-        # 先获取集群下所有模块ID
-        module_ids = query_all("""
-            SELECT bk_module_id FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
-        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        # 归属校验：集群必须确实属于该业务，避免 bk_biz_id 不匹配导致静默空删
+        # （对齐上游：实例不存在于指定业务时返回 not found）
+        owned = query_one(
+            'SELECT COUNT(*) as count FROM cc_SetBase '
+            'WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        if not owned or owned['count'] == 0:
+            raise NotFoundException(f'集群 {bk_inst_id} 不存在于业务 {bk_biz_id}')
 
+        # 复刻原项目 DeleteSet：先查集群下模块是否有关联主机
+        module_ids = query_all(
+            'SELECT bk_module_id FROM cc_ModuleBase '
+            'WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
         if module_ids:
             module_id_list = [str(m['bk_module_id']) for m in module_ids]
             placeholders = ','.join(module_id_list)
-            # 检查这些模块是否有主机关联（cc_ModuleHostConfig）
-            host_count_sql = f"""
-                SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig
-                WHERE bk_module_id IN ({placeholders})
-            """
-            host_count = query_one(host_count_sql)
+            host_count = query_one(
+                f'SELECT COUNT(DISTINCT bk_host_id) as count FROM cc_ModuleHostConfig '
+                f'WHERE bk_module_id IN ({placeholders})')
             if host_count and host_count['count'] > 0:
-                from app.utils.exceptions import APIException, CCErrorCode
-                raise APIException(
-                    '目标包含主机, 不允许删除',
-                    error_code=CCErrorCode.CCErrTopoHasHostCheckFailed
-                )
+                raise APIException('目标包含主机, 不允许删除',
+                                   error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
 
-        executor.execute("""
-            DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id
-        """, {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
-    elif bk_obj_id == 'module':
+        # 对齐上游 DeleteSet：先级联删除集群下的所有模块，再删除集群本身，避免孤儿模块
+        executor.execute(
+            'DELETE FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        executor.execute(
+            'DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+
+    elif bk_obj_id == MAINLINE_MODEL_MODULE:
         if not bk_biz_id:
             raise ValueError('删除模块需要 bk_biz_id')
 
-        # 复刻原项目：检查模块是否有关联主机
-        host_count = query_one("""
-            SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_module_id = :module_id
-        """, {'module_id': bk_inst_id})
-        if host_count and host_count['count'] > 0:
-            from app.utils.exceptions import APIException, CCErrorCode
-            raise APIException(
-                '目标包含主机, 不允许删除',
-                error_code=CCErrorCode.CCErrTopoHasHostCheckFailed
-            )
+        # 归属校验：模块必须确实属于该业务，避免 bk_biz_id 不匹配导致静默空删
+        owned = query_one(
+            'SELECT COUNT(*) as count FROM cc_ModuleBase '
+            'WHERE bk_module_id = :module_id AND bk_biz_id = :bk_biz_id',
+            {'module_id': bk_inst_id, 'bk_biz_id': bk_biz_id})
+        if not owned or owned['count'] == 0:
+            raise NotFoundException(f'模块 {bk_inst_id} 不存在于业务 {bk_biz_id}')
 
-        executor.execute("""
-            DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id
-        """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id})
+        # 复刻原项目 DeleteModule：模块下存在主机禁止删除
+        host_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_module_id = :module_id',
+            {'module_id': bk_inst_id})
+        if host_count and host_count['count'] > 0:
+            raise APIException('目标包含主机, 不允许删除',
+                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+
+        # 对齐上游 deleteInsts 的 CheckAssociations：模块被其它实例关联引用禁止删除
+        if _check_inst_associated(MAINLINE_MODEL_MODULE, bk_inst_id):
+            raise APIException('模块被其它实例关联引用, 不允许删除',
+                               error_code=CCErrorCode.CCErrorTopoInstHasAssociation)
+
+        executor.execute(
+            'DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :bk_biz_id',
+            {'module_id': bk_inst_id, 'bk_biz_id': bk_biz_id})
+
     else:
-        raise ValueError(f'不支持的节点类型: {bk_obj_id}')
+        # 自定义业务拓扑模型（自定义层级）节点删除
+        # 对齐上游通用 DeleteInst：hasHost(沿主线递归下游模块查主机) + 关联引用校验
+        # + 级联删下游 + 删自身
+        _delete_custom_mainline_node(bk_obj_id, bk_inst_id, bk_biz_id, supplier_account, executor)

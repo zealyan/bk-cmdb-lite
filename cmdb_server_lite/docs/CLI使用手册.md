@@ -370,6 +370,112 @@ cmdb scaffold apply --dir <csv目录> --group-auto-create
 
 ---
 
+### 2.7 mainline（自定义业务拓扑主线）
+
+在主线（mainline）拓扑中把自定义模型注册为某个父模型的直接子级，形成 `biz → … → set → … → module` 的任意多层级业务拓扑。
+实现**一致性复刻上游 bk-cmdb**：主线边以 `cc_ObjAsst.bk_asst_id='bk_mainline'` 表达（`bk_obj_id`=子模型，`target_obj_id`=父模型）；插入新模型时把旧子重挂到新模型之下（`CreateMainlineAssociation` 模型层），并为**每个已有业务**批量建一层新实例、把旧子实例 `bk_parent_id` 重挂到新实例之下（`SetMainlineInstAssociation` 实例层）。
+
+> ⚠️ **作用域：新增主线模型是「全局操作」，作用于每一个已有业务，而非「只在某个指定 biz id 内」新增层级。**
+> 这是结合原项目源码（`scene_server/topo_server/logics/model/mainline_association.go`）确认的结论：
+> 1. **模型层**：`cc_ObjAsst.bk_asst_id='bk_mainline'` 是**全局单一定义**，描述主线「长什么样」（如 `biz→set→module`），与具体业务无关。
+> 2. **实例层**：`SetMainlineInstAssociation` 会遍历**所有已有 app 实例**（即每个业务），为每个业务建一层新模型实例（`bk_parent_id`=业务实例 ID），并把该业务下**所有旧子实例**的 `bk_parent_id` 从「业务实例 ID」改写为「新模型实例 ID」。
+> 3. 因此一旦执行 `mainline add`，**全部业务**的拓扑树都会多出这一层；无法只让某几个 biz 有该层级。若只想影响部分业务，需手动删去其余业务的该层级实例（或用 `mainline remove --delete-instances` 摘除后再针对特定业务 `--spawn`）。
+
+> 设计约束（与上游对齐）：
+> - **每个主线实例表都含 `bk_parent_id` / `bk_biz_id` 两列**，用于承载「父实例指针」与「业务归属」；自定义实例表另含 `default` 列（空闲机/故障机等标记）。
+> - `bk_parent_id` 指向**主线父模型下的某实例**；`bk_biz_id` 自顶继承。模块（module）额外回填 `bk_set_id` 以兼容 set/module 专用接口——即使 module 与 set 之间插入了自定义层级，`bk_set_id` 仍沿主线父链上溯定位到 set 祖先实例。
+> - 实例层重挂（步骤 8）现由 `mainline add` **自动完成**（见下方「实例层处理」小节）。此前版本只改了 `cc_ObjAsst` 模型关联、漏做实例重挂，会导致新模型在拓扑树中与旧子实例变成兄弟（孤儿）节点、层级错位；该问题已修复。
+> - 摘除（`remove`）时先**实例级重挂**（把子实例的 `bk_parent_id` 指回本层级的父实例），再删本层级实例、再更新模型级关联，保证拓扑连续。
+
+#### 实例层处理（步骤 8：`SetMainlineInstAssociation`）
+
+在「已有父子之间插入新模型」（`--parent` 下已存在子模型）时，`mainline add` 执行以下实例层操作，确保已有数据原样保留、仅向上多挂一层：
+
+| 步骤 | 操作 | 说明 |
+| --- | --- | --- |
+| 8.1 | 为**每个已有父实例**建一层新模型实例 | `bk_parent_id`=父实例 ID、`bk_biz_id`=父实例业务、`default=0`；实例名取 `f"{模型名}_{父实例名}"` 保证全局唯一 |
+| 8.2 | 把**旧子实例**的 `bk_parent_id` 改写 | 同业务内，旧子的 `bk_parent_id` 由「父实例 ID」→「新模型实例 ID」，使其挂到新层之下 |
+| 8.3 | 空闲机池（默认集群模块，`default=1`）排序 | 拓扑树按 `ORDER BY "default" DESC, {id}` 拼装，保证 `default=1` 的集群/模块排在首位，兼容内置「空闲机池」语义 |
+
+> 末端新增（`--parent` 下原本没有子模型，即往主线末端追加）时，旧子不存在，**跳过 8.2**；如需立即为每个父实例建一层子实例，可加 `--spawn`（仅末端新增场景生效）。
+
+#### `mainline add` — 在指定父模型下注册自定义主线模型
+
+```bash
+cmdb mainline add --obj-id <模型id> --parent <父模型id> \
+    [--obj-name <模型名称>] [--classification <分类id>] [--icon <图标>] \
+    [--obj-sort-number <排序号>] [--spawn] [--dry-run] [--json]
+```
+
+| 选项 | 必填 | 说明 |
+| --- | --- | --- |
+| `--obj-id` | 是 | 子模型 ID（**C1 白名单** `^[a-z][a-z0-9_]*$`） |
+| `--parent` | 是 | 父模型 ID（须存在，否则退 3；`biz`/`set`/`module` 或已有自定义主线模型） |
+| `--obj-name` | 否 | 模型名称。**给定时若模型不存在则自动创建**（含实例表 + 系统属性 + 分类缺失自动补齐） |
+| `--classification` | 否 | 自动建模型时的分类，默认 `bk_biz_topo` |
+| `--icon` | 否 | 图标，默认 `icon-cc-default` |
+| `--obj-sort-number` | 否 | 排序号，默认 0 |
+| `--spawn` | 否 | 末端新增（父模型下原本无子模型）时，为父模型下**每个已有实例**批量生成一级新实例。⚠️ 若是「在已有父子之间插入新模型」（`--parent` 下已存在子模型），`--spawn` **不生效**——该场景由步骤 8 自动为每个 biz 建一层实例，无需 `--spawn`。 |
+| `--dry-run` | 否 | 仅打印将执行的 SQL，不落库 |
+| `--json` | 否 | 以 JSON 输出结果 |
+
+```bash
+# 在 biz 下插入 rack（biz 下已有 set，属于「父子间插入」）。此命令作用于【每个业务】：
+#  - cc_ObjAsst 新增 (rack→biz) 关联，set 旧子被重挂到 rack（模型层）
+#  - 步骤 8 为每个业务建 1 个 rack 实例（bk_parent_id=业务ID），
+#    并把该业务下所有 set 的 bk_parent_id 改写为对应 rack 实例 ID（实例层）
+#  - 注意：--spawn 在「父子间插入」场景下被忽略（实例已由步骤 8 建好）
+cmdb mainline add --obj-id rack --parent biz --obj-name 机柜
+
+# 在 set 与 module 之间插入 zone（自定义层级）
+cmdb mainline add --obj-id zone --parent set --obj-name 区域
+# 预期：退出 0；主线变为 biz→rack→set→zone→module（视已插入模型而定）
+
+# 末端追加（set 下原本没有子模型时）才用 --spawn 立即为每个 set 建一级实例
+cmdb mainline add --obj-id rack2 --parent set --obj-name 机柜2 --spawn
+```
+
+#### `mainline show` — 查看当前主线模型链
+
+```bash
+cmdb mainline show [--json]
+# 预期：退出 0；输出最左路径模型链，如 biz → set → module
+```
+
+#### `mainline remove` — 摘除自定义主线模型
+
+```bash
+cmdb mainline remove --obj-id <模型id> [--delete-instances] [--dry-run] [--json]
+```
+
+| 选项 | 必填 | 说明 |
+| --- | --- | --- |
+| `--obj-id` | 是 | 待摘除模型（须为 `bk_mainline` 关联中的子模型，否则退 2） |
+| `--delete-instances` | 否 | 一并删除该层级全部实例（实例级重挂先于删除执行） |
+| `--dry-run` / `--json` | 否 | 同 `add` |
+
+```bash
+cmdb mainline remove --obj-id zone --delete-instances
+# 预期：退出 0；zone 实例被删，module 实例的 bk_parent_id/bk_set_id 重挂回 set 实例；
+#      主线恢复为 biz→…→set→module
+```
+
+#### 服务层配套（实例创建 / 拓扑树）
+
+- `create_mainline_instance(parent_obj_id, parent_inst_id, model_id, names, bk_biz_id=None)`：在任意主线父实例下创建子实例，自动写入 `bk_parent_id`（=父实例ID）与 `bk_biz_id`（继承自父实例）；module 自动上溯定位 `bk_set_id`。`create_set` / `create_module` 已委托此方法，兼容标准链与「set/module 间插入自定义层级」。
+- `get_mainline_instance_topo(bk_biz_id, with_statistics=True)`：动态拼装 N 层实例树，不再写死 set/module；`count` 为各模块主机数，自底向上聚合（兼容自定义多层级）。
+
+#### 常见错误
+
+| 现象 | 原因 / 处理 |
+| --- | --- |
+| 退 3「父模型不存在」 | `--parent` 指向的模型未在 `cc_ObjDes` 注册 |
+| 退 2「模型不在主线」 | `mainline remove` 的 `--obj-id` 不是 `bk_mainline` 关联中的子模型 |
+| 创建实例报 `no such table` | 自定义模型实例表由 `mainline add`（或 `model create`）创建；先建模型再写实例 |
+| 内置模型实例 `NOT NULL` 失败 | 内置模型名称列为 `bk_set_name`/`bk_module_name`/`bk_biz_name`（非 `bk_inst_name`），由 `model_name_field` 自动适配 |
+
+---
+
 ## 3. CSV 文件格式汇总
 
 | 导入 | 表头（必填加粗） | 说明 |

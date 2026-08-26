@@ -292,10 +292,7 @@ export default {
         this.$emit('updated', this.node)
       } catch (error) {
         console.error('[NodeInfo] 更新失败:', error)
-        this.$bkMessage({
-          theme: 'error',
-          message: error.message || '更新失败'
-        })
+        this.$handleApiError(error)
       } finally {
         this.editLoading = false
       }
@@ -311,13 +308,14 @@ export default {
             const objId = this.node.data.bk_obj_id
             const instId = this.node.data.bk_inst_id
 
-            if (objId === 'set' || objId === 'module') {
-              // 复刻原项目：删除 set/module 时检查是否有主机关联
-              // 后端 topoAPI.deleteNode 会拒绝删除包含主机的节点
+            if (objId !== 'biz') {
+              // set/module 及自定义主线层（如 appsys）统一走拓扑删除接口，
+              // 复用后端 delete_node 的「含主机禁删 + 级联删下游 + 关联引用校验」
+              // （自定义层已由 _delete_custom_mainline_node 支持）
               const bizId = this.node.data.bk_biz_id
               await topoAPI.deleteNode(objId, instId, { bk_biz_id: bizId })
             } else {
-              // biz 等非拓扑节点使用通用删除接口
+              // biz 走通用删除接口
               await modelAPI.deleteInstances(objId, [instId])
             }
 
@@ -329,10 +327,7 @@ export default {
             this.$emit('deleted', this.node)
           } catch (error) {
             console.error('[NodeInfo] 删除失败:', error)
-            this.$bkMessage({
-              theme: 'error',
-              message: error.message || '删除失败'
-            })
+            this.$handleApiError(error)
           }
         }
       })

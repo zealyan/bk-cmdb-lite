@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from app.config.settings import get_config, config_by_env
 from app.db.engine import init_db, db_engine
+from app.db.dialect import adapt_sql, list_table_names
 from app.cli.safety import validate_identifier
 
 # lite 固定供应商账号（不支持多租户，设计文档 §1）
@@ -47,10 +48,10 @@ class CliConn:
         self.conn = conn
 
     def exec(self, sql: str, params: Optional[dict] = None):
-        return self.conn.execute(text(sql), params or {})
+        return self.conn.execute(text(adapt_sql(sql)), params or {})
 
     def query_all(self, sql: str, params: Optional[dict] = None):
-        result = self.conn.execute(text(sql), params or {})
+        result = self.conn.execute(text(adapt_sql(sql)), params or {})
         cols = result.keys()
         return [dict(zip(cols, row)) for row in result.fetchall()]
 
@@ -87,11 +88,8 @@ def assoc_table(obj_id: str) -> str:
 
 
 def table_exists(conn: CliConn, name: str) -> bool:
-    row = conn.query_one(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=:n",
-        {"n": name},
-    )
-    return row is not None
+    """跨库通用表存在性判断（取代 sqlite_master 内省）。"""
+    return name in list_table_names()
 
 
 # ---------------------------------------------------------------------------

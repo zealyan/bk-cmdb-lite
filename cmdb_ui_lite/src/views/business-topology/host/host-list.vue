@@ -99,6 +99,43 @@
         </div>
       </cmdb-dialog>
 
+      <!-- 跨业务转移：第一步「确认哪些主机不能转移」 -->
+      <cmdb-dialog
+        v-model="acrossConfirm.visible"
+        :width="700"
+        :height="430"
+        :show-footer="false"
+        @close="handleTransferCancel"
+        @cancel="handleTransferCancel">
+        <across-business-confirm
+          v-if="acrossConfirm.visible"
+          :count="acrossConfirm.count"
+          :invalid-list="acrossConfirm.invalidList"
+          @confirm="handleAcrossConfirmNext"
+          @cancel="handleTransferCancel">
+        </across-business-confirm>
+      </cmdb-dialog>
+
+      <!-- 跨业务转移：第二步「选择目标业务 + 目标模块」 -->
+      <cmdb-dialog
+        v-model="acrossSelector.visible"
+        :width="1100"
+        :height="600"
+        :show-footer="false"
+        @close="handleTransferCancel"
+        @cancel="handleTransferCancel">
+        <div class="transfer-dialog-body" style="height: 100%;">
+          <across-business-module-selector
+            v-if="acrossSelector.visible"
+            :business="acrossSelector.business"
+            :type="acrossBusinessType"
+            :confirm-loading="acrossSelector.confirmLoading"
+            @confirm="handleAcrossSelectorConfirm"
+            @cancel="handleTransferCancel">
+          </across-business-module-selector>
+        </div>
+      </cmdb-dialog>
+
       <!-- 批量编辑主机抽屉：复用原项目 edit-multiple-host 外壳 + cmdb-form-multiple 组件，
            与 general-model「批量更新」走同一套 modelAPI.batchUpdateInstancesWithSameData 调用。 -->
       <edit-multiple-host
@@ -116,6 +153,9 @@ import HostListOptions from './host-list-options.vue'
 import HostFilterTag from '@/components/filters/filter-tag.vue'
 import ModuleSelectorWithTab from './module-selector-with-tab.vue'
 import EditMultipleHost from './edit-multiple-host.vue'
+import AcrossBusinessConfirm from './across-business-confirm.vue'
+import AcrossBusinessModuleSelector from './across-business-module-selector.vue'
+import { ONE_TO_ONE } from '@/dictionary/host-transfer-type.js'
 import ColumnsConfig from '@/components/columns-config/columns-config.js'
 import FilterForm from '@/components/filters/filter-form.js'
 import FilterStore, { setupFilterStore } from '@/components/filters/store'
@@ -203,7 +243,9 @@ export default {
     HostListOptions,
     HostFilterTag,
     ModuleSelectorWithTab,
-    EditMultipleHost
+    EditMultipleHost,
+    AcrossBusinessConfirm,
+    AcrossBusinessModuleSelector
   },
   props: {
     // 当前选中的拓扑节点
@@ -272,7 +314,23 @@ export default {
         business: { bk_biz_id: 0, bk_biz_name: '' },
         modules: [],
         confirmLoading: false
-      }
+      },
+      // 跨业务转移（转移到其他业务）弹窗状态
+      acrossConfirm: {
+        visible: false,
+        count: 0,
+        invalidList: []
+      },
+      acrossSelector: {
+        visible: false,
+        business: {},
+        confirmLoading: false
+      },
+      acrossBiz: {
+        srcBizId: null,
+        hostIds: []
+      },
+      acrossBusinessType: ONE_TO_ONE
     }
   },
   computed: {
@@ -451,18 +509,31 @@ export default {
     },
 
     /**
-     * 直接监听 FilterStore 的 condition / IP 变化来触发列表重载。
-     * 这是修复“关闭筛选 tag 后列表不联动重新查询”的关键：
-     * 关闭 tag 时 FilterStore.resetValue 会将条件值置空（属于 condition 的响应式变更），
-     * 此处 deep watch 必然触发，从而在当前拓扑节点下重新查询。
+     * 直接监听「有效筛选签名」来触发列表重载，而非原始 FilterStore.condition 对象。
+     *
+     * 为什么不能 deep watch FilterStore.condition：
+     * 在高级筛选抽屉中点击「添加其他条件」时，handleConditionPickerChange 会更新
+     * FilterStore.selected，进而触发 store 内部 selected 监听 → initCondition()，
+     * 给新属性写入默认空值（Utils.getDefaultData 返回 value: '' / []），从而替换掉
+     * FilterStore.condition 的对象引用。若此处 deep watch 整个 condition 对象，
+     * 这次“仅添加空条件行、尚未查询”的变更就会被判定为 condition 变化并立即发起重载，
+     * 表现为“添加条件后主机列表 loading 转圈”——但列表内容其实没变。
+     *
+     * 改为监听 FilterStore.getQuery() 序列化后的有效查询串（filter|ip），
+     * 它与 loadHostList 实际发出的请求完全一致（空值被忽略）。
+     * 因此：
+     *  - 添加一条尚未填值的空条件 → 签名不变 → 不重载（修复本 bug）；
+     *  - 填值后点「查询」/ 删 tag（resetValue 置空）/ 清空条件 → 签名变化 → 重载。
      */
     registerFilterStoreWatch() {
       this.unwatchFilterStore = this.$watch(
-        () => [FilterStore.condition, FilterStore.IP],
+        () => {
+          const q = FilterStore.getQuery(FilterStore.condition)
+          return `${q.filter}|${q.ip}`
+        },
         () => {
           this.scheduleLoadHostList()
-        },
-        { deep: true }
+        }
       )
     },
 
@@ -673,9 +744,15 @@ export default {
             ]
           })
         } else {
-          this.table.data = []
-          this.table.pagination.count = 0
-          return
+          // 自定义主线层（如 appsys）：后端按该实例递归收集其下所有 module 实例 id，
+          // 聚合其下全部主机。与 biz/set/module 等价，支持业务拓扑任意层级节点查主机。
+          payload.condition.push({
+            bk_obj_id: objId,
+            fields: [],
+            condition: [
+              { field: 'bk_inst_id', operator: '$eq', value: data.bk_inst_id }
+            ]
+          })
         }
 
         // 添加搜索关键词条件（主机名称模糊搜索）
@@ -1061,7 +1138,11 @@ export default {
      * Phase 1：弹出对话框并加载/返回 API 数据（业务拓扑树 / 空闲机池 / 主机模块绑定），
      * 暂不执行写操作。
      */
-    async handleTransfer(type) {
+    handleTransfer(type) {
+      // 跨业务转移（转移到其他业务）：源业务 A → 目标业务 B
+      if (type === 'acrossBusiness') {
+        return this.handleAcrossBusinessTransfer()
+      }
       // Phase 1 聚焦"业务模块"与"空闲模块"；主机池/跨业务转移留待后续阶段
       if (!['idle', 'business'].includes(type)) {
         this.$bkMessage({
@@ -1079,39 +1160,109 @@ export default {
         return
       }
 
-      // 解析业务名称（用于对话框展示）
-      let bizName = ''
-      try {
-        const res = await topoAPI.getBizList()
-        const list = res || []
-        const biz = (Array.isArray(list) ? list : []).find(b => b.bk_biz_id === bkBizId)
-        bizName = biz ? biz.bk_biz_name : ''
-      } catch (e) {
-        console.warn('获取业务名称失败:', e)
-      }
+      // 业务名同步取自节点数据（无需再拉业务列表接口 getBizList）
+      const bizName = this.nodeData.bk_biz_name
+        || (this.objId === 'biz' ? this.nodeData.bk_inst_name : '')
 
-      // 预选：查询选中主机当前所属模块（来自 cc_ModuleHostConfig 绑定）
-      const hostIds = this.table.selection
-        .map(h => h.bk_host_id || (h.host && h.host.bk_host_id))
-        .filter(id => id != null)
-      let modules = []
-      if (hostIds.length) {
-        try {
-          const cfgRes = await topoAPI.getHostModuleConfig(bkBizId, hostIds)
-          const rows = cfgRes.data || cfgRes || []
-          const moduleIds = [...new Set(rows.map(r => r.bk_module_id))]
-          modules = moduleIds.map(mid => ({ bk_module_id: mid }))
-        } catch (e) {
-          console.warn('查询主机模块绑定失败:', e)
-        }
-      }
+      // 预选模块同步取自表格行数据：后端 search_hosts 已按主机拓扑聚合 row.module[]
+      // （元素含 bk_module_id，见 topo_service._enrich_hosts_with_topo），
+      // 无需再查 getHostModuleConfig，对齐原项目 selection[0].module 语义。
+      const modules = this.collectSelectionModules()
 
+      // 立即弹出对话框（与侧边抽屉一致：先出现外壳，内容由子组件异步加载），
+      // 不再被串行接口 await 阻塞"点击→出现"时间。
       this.transferDialog = {
         visible: true,
         type,
         business: { bk_biz_id: bkBizId, bk_biz_name: bizName },
         modules,
         confirmLoading: false
+      }
+    },
+
+    // 从选中主机行聚合其当前所属模块（row.module 由后端填充，元素含 bk_module_id）
+    collectSelectionModules() {
+      const moduleIds = []
+      this.table.selection.forEach((row) => {
+        ;(Array.isArray(row.module) ? row.module : []).forEach((m) => {
+          if (m && m.bk_module_id != null) {
+            moduleIds.push(m.bk_module_id)
+          }
+        })
+      })
+      return [...new Set(moduleIds)].map(mid => ({ bk_module_id: mid }))
+    },
+
+    /**
+     * 跨业务转移入口：转移到其他业务（源业务 A → 目标业务 B）
+     * 第一步：确认对话框（展示选中主机数；不实现主机池，invalidList 为空）
+     */
+    async handleAcrossBusinessTransfer() {
+      const bkBizId = this.objId === 'biz'
+        ? this.nodeData.bk_inst_id
+        : (this.nodeData.bk_biz_id || 0)
+      if (!bkBizId) {
+        this.$bkMessage({ message: '无法确定业务，无法执行跨业务转移', theme: 'warning' })
+        return
+      }
+      const hostIds = this.table.selection
+        .map(h => h.bk_host_id || (h.host && h.host.bk_host_id))
+        .filter(id => id != null)
+      if (!hostIds.length) {
+        this.$bkMessage({ message: '请先勾选需要转移的主机', theme: 'warning' })
+        return
+      }
+      this.acrossBiz = { srcBizId: bkBizId, hostIds }
+      this.acrossConfirm = {
+        visible: true,
+        count: hostIds.length,
+        invalidList: []
+      }
+    },
+
+    /**
+     * 跨业务转移「确认」对话框点击下一步：打开目标业务 + 模块选择器
+     */
+    handleAcrossConfirmNext() {
+      this.acrossConfirm.visible = false
+      this.acrossSelector = {
+        visible: true,
+        business: { bk_biz_id: this.acrossBiz.srcBizId },
+        confirmLoading: false
+      }
+    },
+
+    /**
+     * 跨业务转移「选择目标业务+模块」确认：提交后端
+     */
+    async handleAcrossSelectorConfirm(checked, targetBizId) {
+      const moduleIds = (checked || [])
+        .filter(node => node.data && node.data.bk_obj_id === 'module')
+        .map(node => node.data.bk_inst_id)
+      if (!moduleIds.length) {
+        this.$bkMessage({ message: '请选择目标业务下的模块', theme: 'warning' })
+        return
+      }
+      this.acrossSelector.confirmLoading = true
+      try {
+        await topoAPI.transferAcrossBiz({
+          src_bk_biz_id: this.acrossBiz.srcBizId,
+          dst_bk_biz_id: targetBizId,
+          bk_host_id: this.acrossBiz.hostIds,
+          module_id: moduleIds,
+          bk_supplier_account: '0'
+        })
+        this.$bkMessage({
+          message: `已转移 ${this.acrossBiz.hostIds.length} 台主机到业务 ${targetBizId} 的 ${moduleIds.length} 个模块`,
+          theme: 'success'
+        })
+        this.acrossSelector.visible = false
+        this.loadHostList()
+      } catch (e) {
+        console.error('[HostList] 跨业务转移失败:', e)
+        this.$handleApiError(e)
+      } finally {
+        this.acrossSelector.confirmLoading = false
       }
     },
 
@@ -1158,8 +1309,7 @@ export default {
         })
       } catch (e) {
         console.error('[HostList] 转移失败:', e)
-        const msg = (e && e.message) ? e.message : String(e)
-        this.$bkMessage({ message: `转移失败: ${msg}`, theme: 'error' })
+        this.$handleApiError(e)
       } finally {
         this.transferDialog.confirmLoading = false
       }
@@ -1170,6 +1320,10 @@ export default {
      */
     handleTransferCancel() {
       this.transferDialog.visible = false
+      this.acrossConfirm.visible = false
+      this.acrossSelector.visible = false
+      this.transferDialog.confirmLoading = false
+      this.acrossSelector.confirmLoading = false
     },
 
     /**

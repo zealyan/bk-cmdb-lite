@@ -21,7 +21,7 @@ from typing import Optional
 
 from sqlalchemy.exc import OperationalError
 
-from app.definitions import get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES
+from app.definitions import get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES, model_name_property
 from app.migrate.migrate import (
     SYSTEM_PROPERTIES, BUILTIN_TIME_PROPERTIES, convert_enum_option)
 from app.utils.tools import generate_id, parse_json, generate_group_id
@@ -32,24 +32,14 @@ from app.cli.io_utils import (
     read_csv_rows, write_seed_csv, sha256_of, coerce_value, parse_bool,
     RejectStore, write_manifest, now_iso, profile_source,
 )
+from app.service.user_service import UserService
 
 # ---------------------------------------------------------------------------
-# 退出码（§9）
+# 退出码与 CliError 统一来自 app/cli/errors（单一来源，规避 -m 双模块导致的类分裂）
 # ---------------------------------------------------------------------------
-EXIT_OK = 0
-EXIT_GENERAL = 1
-EXIT_PARAM = 2
-EXIT_DEP = 3
-EXIT_EXISTS = 4
-EXIT_DB = 5
-
-
-class CliError(Exception):
-    """带退出码的结构化错误。"""
-
-    def __init__(self, code: int, msg: str, step: Optional[str] = None):
-        self.code, self.msg, self.step = code, msg, step
-        super().__init__(msg)
+from app.cli.errors import (  # noqa: E402,F401
+    CliError, EXIT_OK, EXIT_GENERAL, EXIT_PARAM, EXIT_DEP, EXIT_EXISTS, EXIT_DB,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -57,11 +47,14 @@ class CliError(Exception):
 # ---------------------------------------------------------------------------
 INSTANCE_TABLE_DDL = """CREATE TABLE IF NOT EXISTS {tbl} (
     _id TEXT,
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     bk_inst_id INTEGER NOT NULL,
     bk_inst_name VARCHAR NOT NULL,
     bk_supplier_account VARCHAR DEFAULT '0',
     bk_obj_id VARCHAR NOT NULL,
+    bk_biz_id INTEGER DEFAULT 0,
+    bk_parent_id INTEGER DEFAULT 0,
+    "default" INTEGER DEFAULT 0,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     bk_operate_time TIMESTAMP
@@ -69,7 +62,7 @@ INSTANCE_TABLE_DDL = """CREATE TABLE IF NOT EXISTS {tbl} (
 
 ASSOC_TABLE_DDL = """CREATE TABLE IF NOT EXISTS {tbl} (
     _id TEXT,
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     bk_obj_id VARCHAR NOT NULL,
     bk_inst_id INTEGER NOT NULL,
     bk_asst_obj_id VARCHAR NOT NULL,
@@ -314,28 +307,515 @@ def create_model_core(c, o, dry_run):
             "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
             + ", ".join(f":{col}" for col in SYS_ATTR_COLS) + ")",
             _sys_attr_params(oid, sp))
+    # 3.1) 主线模型额外注册 bk_parent_id 系统属性（isonly=true），
+    #      对齐上游 createDefaultAttrs 中「仅 mainline 才写入 bk_parent_id」的逻辑；
+    #      它是 (bk_parent_id, bk_inst_name) 复合唯一约束的键之一。
+    if o.get('mainline'):
+        c.exec(
+            "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
+            + ", ".join(f":{col}" for col in SYS_ATTR_COLS) + ")",
+            _sys_attr_params(oid, MAINLINE_PARENT_ATTR))
     # 4) 实例分表 + 关联分表
     c.exec(INSTANCE_TABLE_DDL.format(tbl=quote_ident_raw(dbmod.instance_table(oid))))
     c.exec(ASSOC_TABLE_DDL.format(tbl=quote_ident_raw(dbmod.assoc_table(oid))))
-    # 5) 默认唯一约束（C3，以 --unique-by 默认 bk_inst_name）
+    # 5) 默认唯一约束（C3）
+    #    - 主线模型：内置 (bk_parent_id, bk_inst_name) 复合唯一，对齐上游
+    #      CreateObject(isMainline=true) 由 createDefaultAttrs 写入的 IsOnly 属性组合；
+    #      保证「同一父节点下实例名唯一」，而非全模型全局唯一。
+    #    - 非主线模型：单一 bk_inst_name 唯一（保持原行为）。
     if o['with_tables'] and o['unique_by']:
-        key_attr = c.query_one(
-            "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
-            {"o": oid, "p": o['unique_by']})
-        if key_attr:
-            keys = json.dumps(
-                [{"key_kind": "property", "key_id": key_attr['id']}],
-                ensure_ascii=False)
-            c.exec(
-                "INSERT OR REPLACE INTO cc_ObjectUnique "
-                "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
-                "(:_id, :id, :bk_obj_id, :keys, 1, '0')",
-                {"_id": f"{oid}_{o['unique_by']}", "id": generate_id(),
-                 "bk_obj_id": oid, "keys": keys})
+        if o.get('mainline'):
+            pid_attr = c.query_one(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_parent_id'",
+                {"o": oid})
+            name_attr = c.query_one(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
+                {"o": oid, "p": o['unique_by']})
+            if pid_attr and name_attr:
+                keys = json.dumps(
+                    [{"key_kind": "property", "key_id": pid_attr['id']},
+                     {"key_kind": "property", "key_id": name_attr['id']}],
+                    ensure_ascii=False)
+                c.exec(
+                    "INSERT OR REPLACE INTO cc_ObjectUnique "
+                    "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+                    "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+                    {"_id": f"{oid}_name_unique", "id": generate_id(),
+                     "bk_obj_id": oid, "keys": keys})
+            else:
+                warning = ("主线模型缺少 bk_parent_id/bk_inst_name 属性，"
+                           "跳过复合唯一约束写入")
         else:
-            warning = (f"唯一约束键属性 '{o['unique_by']}' 不存在，"
-                       f"跳过 cc_ObjectUnique 写入（该模型实例导入将退为纯 INSERT）")
+            key_attr = c.query_one(
+                "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
+                {"o": oid, "p": o['unique_by']})
+            if key_attr:
+                keys = json.dumps(
+                    [{"key_kind": "property", "key_id": key_attr['id']}],
+                    ensure_ascii=False)
+                c.exec(
+                    "INSERT OR REPLACE INTO cc_ObjectUnique "
+                    "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+                    "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+                    {"_id": f"{oid}_name_unique", "id": generate_id(),
+                     "bk_obj_id": oid, "keys": keys})
+            else:
+                warning = (f"唯一约束键属性 '{o['unique_by']}' 不存在，"
+                           f"跳过 cc_ObjectUnique 写入（该模型实例导入将退为纯 INSERT）")
     return {'action': 'create', 'warning': warning}
+
+
+# ---------------------------------------------------------------------------
+# 核心：自定义业务拓扑模型（主线 mainline 关联）
+# 对齐上游 CreateMainlineAssociation：在指定父模型下注册子模型进主线
+# （cc_ObjAsst.bk_asst_id='bk_mainline'），并把旧子重挂到新模型，
+# 可选为父下每个实例批量生成一级子实例（对齐 SetMainlineInstAssociation 回填 bk_parent_id）。
+# ---------------------------------------------------------------------------
+
+def ensure_mainline_unique_core(c, obj_id):
+    """对齐上游 CreateObject(isMainline=true) 的内置初始化（幂等）：
+
+    为自定义主线模型注册 bk_parent_id 系统属性（isonly=true），并保证其唯一约束为
+    复合键（同父节点下实例名唯一）。名称「键」按模型真实名称字段解析：
+    - 自定义主线（有 bk_inst_name，如 appsys）→ (bk_parent_id, bk_inst_name)；
+    - 内置主线 set/module → (bk_parent_id, bk_set_name / bk_module_name)；
+    - biz（无 bk_parent_id）→ 单键 (bk_biz_name) 全局唯一。
+
+    - bk_parent_id 属性缺失则补建；
+    - 清理任何旧规则（含仅 bk_inst_name 单键），确保最终只有一条期望唯一约束；
+    - 供 CLI mainline add（覆盖已存在模型）与一次性修复复用。
+    """
+    # 1) 注册 bk_parent_id 属性（仅 mainline 有）
+    if not c.query_one(
+            "SELECT 1 FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_parent_id'",
+            {"o": obj_id}):
+        c.exec(
+            "INSERT INTO cc_ObjAttDes (" + ", ".join(SYS_ATTR_COLS) + ") VALUES ("
+            + ", ".join(f":{col}" for col in SYS_ATTR_COLS) + ")",
+            _sys_attr_params(obj_id, MAINLINE_PARENT_ATTR))
+
+    pid_attr = c.query_one(
+        "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_parent_id'",
+        {"o": obj_id})
+
+    # 解析名称字段：自定义主线用 bk_inst_name，内置 set/module/biz 用专属名称字段
+    inst_name = c.query_one(
+        "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id='bk_inst_name'",
+        {"o": obj_id})
+    name_field = model_name_property(obj_id, bool(inst_name))
+    if not name_field:
+        return  # 无可用名称字段，跳过
+    name_attr = c.query_one(
+        "SELECT id FROM cc_ObjAttDes WHERE bk_obj_id=:o AND bk_property_id=:p",
+        {"o": obj_id, "p": name_field})
+    if not name_attr:
+        return  # 名称属性缺失，跳过
+
+    # 复合键（有 bk_parent_id）或单键（biz 无父）
+    expect = []
+    if pid_attr:
+        expect.append({"key_kind": "property", "key_id": pid_attr['id']})
+    expect.append({"key_kind": "property", "key_id": name_attr['id']})
+    expect_json = json.dumps(expect, ensure_ascii=False)
+
+    # 2) 清理所有旧规则（含仅 bk_inst_name 单键），仅保留期望唯一约束
+    existing = c.query_all(
+        "SELECT id, keys FROM cc_ObjectUnique WHERE bk_obj_id=:o AND bk_supplier_account='0'",
+        {"o": obj_id})
+    has_expect = False
+    for r in existing:
+        try:
+            parsed = json.loads(r['keys']) if r.get('keys') else []
+        except (json.JSONDecodeError, TypeError):
+            parsed = []
+        if parsed == expect:
+            has_expect = True
+        else:
+            c.exec("DELETE FROM cc_ObjectUnique WHERE id=:id", {"id": r['id']})
+
+    if not has_expect:
+        c.exec(
+            "INSERT INTO cc_ObjectUnique "
+            "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+            "(:_id, :id, :bk_obj_id, :keys, '1', '0')",
+            {"_id": f"{obj_id}_name_unique", "id": generate_id(),
+             "bk_obj_id": obj_id, "keys": expect_json})
+    return {'action': 'ensure_unique'}
+MAINLINE_ASST = 'bk_mainline'
+MAINLINE_MODEL_BIZ = 'biz'
+MAINLINE_MODEL_SET = 'set'
+MAINLINE_MODEL_MODULE = 'module'
+
+# 主线自动创建的实例名称需剔除的特殊字符
+# 对齐上游 inst/mainline_association.go: mainlineSpecialCharacterRegexp = [#/,><|]
+MAINLINE_SPECIAL_CHAR_RE = __import__('re').compile(r'[#/,><|]')
+
+# 主线自定义模型额外注册的系统属性模板（仅 mainline 模型创建时写入）。
+# 对齐上游 logics/model/object.go createDefaultAttrs：仅当 isMainline=true 时，
+# 除 bk_inst_name 外再写入 bk_parent_id（IsOnly:true, IsSystem:true）。
+# 该属性是 (bk_parent_id, bk_inst_name) 复合唯一约束的键之一，用于保证
+# 「同一父节点下实例名唯一」，故 isonly=true；bk_issystem=true 使其不出现在前端。
+MAINLINE_PARENT_ATTR = {
+    "bk_property_id": "bk_parent_id",
+    "bk_property_name": "父节点ID",
+    "bk_property_type": "int",
+    "isrequired": True,
+    "isreadonly": True,
+    "isonly": True,
+    "editable": False,
+    "bk_ispassword": False,
+    "bk_ishidden": False,
+    "bk_isapi": False,
+    "bk_issystem": True,
+    "ispre": True,
+    "bk_property_index": -1,
+    "bk_property_group": "default",
+    "placeholder": "",
+    "unit": "",
+    "option": None,
+}
+
+
+def add_mainline_core(c, obj_id, parent_obj_id, opts, dry_run):
+    validate_identifier(obj_id)
+    validate_identifier(parent_obj_id)
+    if dry_run:
+        print(f"[dry-run] MAINLINE ADD {obj_id} under {parent_obj_id} "
+              f"(spawn={opts.get('spawn', False)})")
+        return {'action': 'create'}
+
+    # 父模型必须存在
+    if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": parent_obj_id}):
+        raise CliError(EXIT_DEP, f"父模型不存在: {parent_obj_id}", "check_parent")
+
+    # 子模型不存在时可按 --obj-name 自动创建（含实例表 + 系统属性）
+    if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": obj_id}):
+        if opts.get('obj_name'):
+            cls = opts.get('classification') or 'bk_biz_topo'
+            # 分类缺失时一并自动创建，保证单步可用（不要求先建分类）
+            if not c.query_one(
+                    "SELECT 1 FROM cc_ObjClassification WHERE bk_classification_id=:cid",
+                    {"cid": cls}):
+                create_classification_core(
+                    c, cls, opts.get('cls_name') or cls,
+                    opts.get('icon') or 'icon-cc-default', False, 0, 'skip', False)
+            create_model_core(c, {
+                'bk_obj_id': obj_id,
+                'bk_obj_name': opts['obj_name'],
+                'bk_classification_id': cls,
+                'bk_obj_icon': opts.get('icon') or 'icon-cc-default',
+                'ispre': False,
+                'bk_ishidden': False,
+                'bk_ispaused': False,
+                'obj_sort_number': opts.get('sort', 0),
+                'with_system_props': True,
+                'with_tables': True,
+                'unique_by': 'bk_inst_name',
+                'mainline': True,
+                'on_dup': 'skip',
+            }, dry_run)
+        else:
+            raise CliError(EXIT_DEP,
+                           f"模型不存在: {obj_id}（可加 --obj-name 自动创建）",
+                           "check_model")
+
+    # 对齐上游 CreateObject(isMainline=true) 的内置初始化：保证该主线模型具备
+    # (bk_parent_id, bk_inst_name) 复合唯一约束（幂等，覆盖模型已存在但旧逻辑未建约束的情况）。
+    ensure_mainline_unique_core(c, obj_id)
+
+    # 已在主线则拒绝重复注册
+    existing = c.query_one(
+        "SELECT target_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND bk_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+    if existing:
+        raise CliError(EXIT_EXISTS,
+                       f"模型 {obj_id} 已在主线（父={existing['target_obj_id']}）",
+                       "dup_mainline")
+
+    # 父的当前子模型（用于重挂）
+    child = c.query_one(
+        "SELECT bk_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND target_obj_id=:p",
+        {"aid": MAINLINE_ASST, "p": parent_obj_id})
+    child_id = child['bk_obj_id'] if child else None
+
+    parent_name = (c.query_one(
+        "SELECT bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o",
+        {"o": parent_obj_id}) or {}).get('bk_obj_name', parent_obj_id)
+
+    c.exec(
+        "INSERT INTO cc_ObjAsst "
+        "(id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id, "
+        "bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete, "
+        "creator, modifier, bk_supplier_account) "
+        "VALUES (:id, :bk_obj_id, :target_obj_id, :target_obj_name, :aid, "
+        ":bk_obj_asst_id, :bk_obj_asst_name, :mapping, 'none', "
+        "'admin', 'admin', '0')",
+        {"id": generate_id(), "bk_obj_id": obj_id, "target_obj_id": parent_obj_id,
+         "target_obj_name": parent_name, "aid": MAINLINE_ASST,
+         "bk_obj_asst_id": f"{obj_id}_mainline_{parent_obj_id}",
+         "bk_obj_asst_name": f"属于{parent_name}", "mapping": "1:n"})
+
+    # 重挂：旧子 -> 新模型（cc_ObjAsst 模型关联层）
+    # 注意：必须同步更新 target_obj_name / bk_obj_asst_id / bk_obj_asst_name，
+    # 否则出现「target_obj_id 已是新父、但关联ID/名称仍是旧父」的数据不一致
+    # （此前只 UPDATE target_obj_id，导致 set 记录 target=subsys 却叫 set_mainline_biz）。
+    if child_id:
+        child_name = (c.query_one(
+            "SELECT bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o",
+            {"o": child_id}) or {}).get('bk_obj_name', child_id)
+        new_parent_name = (c.query_one(
+            "SELECT bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o",
+            {"o": obj_id}) or {}).get('bk_obj_name', obj_id)
+        c.exec(
+            "UPDATE cc_ObjAsst SET target_obj_id=:new, target_obj_name=:tname, "
+            "bk_obj_asst_id=:aid, bk_obj_asst_name=:aname "
+            "WHERE bk_asst_id=:aid0 AND bk_obj_id=:child AND target_obj_id=:old",
+            {"new": obj_id, "tname": new_parent_name,
+             "aid": f"{child_id}_mainline_{obj_id}",
+             "aname": f"属于{new_parent_name}",
+             "child": child_id, "old": parent_obj_id,
+             "aid0": MAINLINE_ASST})
+
+    # 上游步骤8：实例层重挂（建新模型实例 + 改写旧子实例 bk_parent_id）。
+    # 仅当插入在「已有父子」之间（child_id 存在）时执行；末端新增（无旧子）则跳过。
+    reparented_instances = 0
+    if child_id:
+        reparented_instances = _reparent_mainline_instances(
+            c, parent_obj_id, obj_id, child_id, opts.get('obj_name') or obj_id)
+
+    # 可选：--spawn 为每个父实例建一层子实例。
+    # 插入层时步骤8已建好实例，--spawn 仅对「末端新增（无旧子）」场景生效。
+    spawned = 0
+    if opts.get('spawn') and not child_id:
+        spawned = _spawn_mainline_instances(c, parent_obj_id, obj_id)
+
+    return {'action': 'create', 'reparented': child_id,
+            'reparented_instances': reparented_instances, 'spawned': spawned}
+
+
+def _spawn_mainline_instances(c, parent_obj_id, obj_id):
+    """为父模型每个实例在其下生成一级子实例（对齐上游 SetMainlineInstAssociation）。
+
+    注意：必须在调用方事务连接 c 上直接插入，而非 InstanceService.create_instance
+    （后者使用独立连接，既看不到本事务内新建的实例表 DDL，又会在异常时回滚整段
+    事务）。此处复用 c.exec，保证与主线关联注册原子可见。
+    """
+    from app.service.instance_service import InstanceService
+    from app.utils.tools import generate_id
+    import time
+
+    parent_table = InstanceService._get_table_name(parent_obj_id)
+    parent_id_field = InstanceService._get_id_field(parent_obj_id)
+    child_table = InstanceService._get_table_name(obj_id)
+    child_id_field = InstanceService._get_id_field(obj_id)
+
+    rows = c.query_all(
+        f'SELECT "{parent_id_field}" AS pid, bk_biz_id FROM "{parent_table}" '
+        f'WHERE bk_supplier_account=:sup',
+        {"sup": dbmod.SUPPLIER})
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    n = 0
+    seen = set()
+    for r in rows:
+        pid = r['pid']
+        biz = r.get('bk_biz_id') or 0
+        # 对齐上游 SetMainlineInstAssociation：自动生成的实例名剔除主线特殊字符
+        name = MAINLINE_SPECIAL_CHAR_RE.sub('', f"{obj_id}_{pid}")
+        if name in seen:
+            continue
+        seen.add(name)
+        c.exec(
+            f'INSERT INTO "{child_table}" '
+            f'({child_id_field}, bk_inst_name, bk_supplier_account, bk_obj_id, '
+            f'bk_biz_id, bk_parent_id, "default", create_time, last_time) '
+            f'VALUES (:iid, :name, :sup, :oid, :biz, :pid, 0, :ct, :lt)',
+            {"iid": generate_id(), "name": name, "sup": dbmod.SUPPLIER, "oid": obj_id,
+             "biz": biz, "pid": pid, "ct": now, "lt": now})
+        n += 1
+    return n
+
+
+def _reparent_mainline_instances(c, parent_obj_id, new_obj_id, old_child_obj_id, new_obj_name):
+    """上游 CreateMainlineAssociation 步骤8（SetMainlineInstAssociation）：
+
+    把新模型插入主线（parent 与 old_child 之间）后，为**每个已有父实例**建一层新模型实例
+    （bk_parent_id = 父实例ID），并把**旧子实例**的 bk_parent_id 从「父实例ID」改写为
+    「新模型实例ID」，使已有 set/module/host 数据原样保留、仅向上多挂一层。
+
+    这是 mainline add 此前漏做的环节——只改了 cc_ObjAsst 模型关联、未重挂实例，导致新模型
+    在拓扑树中与旧子实例成为兄弟（孤儿）。补齐后拓扑树恢复 parent -> new -> old_child。
+
+    幂等：已存在 bk_parent_id=父实例ID 的新模型实例则复用，不重复建。
+    返回：被重挂的旧子实例总数。
+    """
+    from app.service.instance_service import InstanceService
+    from app.service.topo_service import model_name_field
+
+    sup = dbmod.SUPPLIER
+    parent_table = InstanceService._get_table_name(parent_obj_id)
+    parent_id_field = InstanceService._get_id_field(parent_obj_id)
+    parent_name_field = model_name_field(parent_obj_id)
+    new_table = InstanceService._get_table_name(new_obj_id)
+    new_id_field = InstanceService._get_id_field(new_obj_id)
+    old_table = InstanceService._get_table_name(old_child_obj_id)
+
+    parents = c.query_all(
+        f'SELECT "{parent_id_field}" AS pid, bk_biz_id, "{parent_name_field}" AS pname '
+        f'FROM "{parent_table}" WHERE bk_supplier_account=:sup',
+        {"sup": sup})
+    if not parents:
+        return 0
+
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    reparented = 0
+    for p in parents:
+        pid = p['pid']
+        biz = p.get('bk_biz_id') or 0
+        pname = (p.get('pname') or '').strip() or str(pid)
+
+        # 取或建新模型实例（bk_parent_id = 父实例ID）
+        exist = c.query_one(
+            f'SELECT "{new_id_field}" FROM "{new_table}" '
+            f'WHERE bk_parent_id=:pid AND bk_supplier_account=:sup',
+            {"pid": pid, "sup": sup})
+        if exist:
+            nid = exist[new_id_field]
+        else:
+            nid = generate_id()
+            # 对齐上游 SetMainlineInstAssociation：自动生成的实例名剔除主线特殊字符
+            raw_name = f"{new_obj_name}_{pname}" if new_obj_name else f"{new_obj_id}_{pname}"
+            name = MAINLINE_SPECIAL_CHAR_RE.sub('', raw_name)
+            c.exec(
+                f'INSERT INTO "{new_table}" '
+                f'({new_id_field}, bk_inst_name, bk_supplier_account, bk_obj_id, '
+                f'bk_biz_id, bk_parent_id, "default", create_time, last_time) '
+                f'VALUES (:iid, :name, :sup, :oid, :biz, :pid, 0, :ct, :lt)',
+                {"iid": nid, "name": name, "sup": sup, "oid": new_obj_id,
+                 "biz": biz, "pid": pid, "ct": now, "lt": now})
+
+        # 对齐上游 getMainlineChildInst：旧子为 set 时排除空闲机池（default=1），
+        # 空闲机池(bk_parent_id=biz 的 default=1 set) 永远留在业务下，不随层级重挂。
+        extra_cond = ''
+        if old_child_obj_id == MAINLINE_MODEL_SET:
+            extra_cond = ' AND "default" != 1'
+        # 重挂旧子实例：bk_parent_id 由 pid -> nid（同业务内，仅普通实例）
+        before = c.query_one(
+            f'SELECT COUNT(*) AS c FROM "{old_table}" '
+            f'WHERE bk_parent_id=:pid AND bk_biz_id=:biz AND bk_supplier_account=:sup{extra_cond}',
+            {"pid": pid, "biz": biz, "sup": sup})
+        c.exec(
+            f'UPDATE "{old_table}" SET bk_parent_id=:nid '
+            f'WHERE bk_parent_id=:pid AND bk_biz_id=:biz AND bk_supplier_account=:sup{extra_cond}',
+            {"nid": nid, "pid": pid, "biz": biz, "sup": sup})
+        reparented += (before['c'] if before else 0)
+    return reparented
+
+
+def show_mainline_core(c, supplier='0'):
+    from app.service.topo_service import get_mainline_model_top
+    root = get_mainline_model_top(supplier)
+    chain = root.leftest_object_id_list()
+    rows = []
+    for i, oid in enumerate(chain):
+        rows.append({'level': i, 'bk_obj_id': oid})
+    return {'chain': chain, 'levels': rows}
+
+
+def remove_mainline_core(c, obj_id, delete_instances, dry_run):
+    validate_identifier(obj_id)
+    if dry_run:
+        print(f"[dry-run] MAINLINE REMOVE {obj_id} (delete_instances={delete_instances})")
+        return {'action': 'delete'}
+
+    row = c.query_one(
+        "SELECT target_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND bk_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+    if not row:
+        raise CliError(EXIT_PARAM, f"模型 {obj_id} 不在主线", "not_mainline")
+    parent = row['target_obj_id']
+
+    child = c.query_one(
+        "SELECT bk_obj_id FROM cc_ObjAsst "
+        "WHERE bk_asst_id=:aid AND target_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+    child_id = child['bk_obj_id'] if child else None
+
+    # —— 实例级重挂（先于删除本层级实例）——
+    # 每个子模型实例当前 bk_parent_id 指向某「本层级实例」，需改为该本层级实例的
+    # bk_parent_id（即父层级实例），保持实例树在摘除后仍然连续。
+    # 仅处理真正挂在「本层级实例」下的子实例（bk_parent_id IN 本层级主键集合），
+    # 避免误改历史遗留的子实例（其 bk_parent_id 直接指向更上层）。
+    if child_id:
+        from app.service.instance_service import InstanceService
+        child_tbl = InstanceService._get_table_name(child_id)
+        child_idf = InstanceService._get_id_field(child_id)
+        obj_tbl = InstanceService._get_table_name(obj_id)
+        obj_idf = InstanceService._get_id_field(obj_id)
+
+        # —— 重名预检（对齐上游 ResetMainlineInstAssociation.checkInstNameRepeat）——
+        # 子实例上提（bk_parent_id 改为本层级实例的父）后，同一目标父下不得互相重名，
+        # 否则违反 (bk_parent_id, bk_inst_name) 复合唯一约束；有冲突则拒绝删除。
+        obj_insts = c.query_all(
+            f'SELECT "{obj_idf}" AS oid, bk_parent_id FROM "{obj_tbl}" '
+            f'WHERE bk_supplier_account=:sup', {"sup": dbmod.SUPPLIER})
+        parent_of = {r['oid']: r['bk_parent_id'] for r in obj_insts}
+        child_insts = c.query_all(
+            f'SELECT "{child_idf}" AS cid, bk_inst_name, bk_parent_id FROM "{child_tbl}" '
+            f'WHERE bk_supplier_account=:sup AND bk_parent_id IN ('
+            f'SELECT "{obj_idf}" FROM "{obj_tbl}" WHERE bk_supplier_account=:sup)',
+            {"sup": dbmod.SUPPLIER})
+        name_by_target: dict = {}
+        for ch in child_insts:
+            target = parent_of.get(ch['bk_parent_id'])
+            if target is None:
+                continue
+            bucket = name_by_target.setdefault(target, set())
+            if ch['bk_inst_name'] in bucket:
+                raise CliError(
+                    EXIT_EXISTS,
+                    f"删除主线模型 {obj_id} 后，其子实例上提到同一父节点下将重名: "
+                    f"{ch['bk_inst_name']}（对齐上游 checkInstNameRepeat）",
+                    "name_repeat")
+            bucket.add(ch['bk_inst_name'])
+
+        c.exec(
+            f'UPDATE "{child_tbl}" SET bk_parent_id = ('
+            f'SELECT o.bk_parent_id FROM "{obj_tbl}" o '
+            f'WHERE o."{obj_idf}" = "{child_tbl}".bk_parent_id '
+            f"AND o.bk_supplier_account = :sup) "
+            f'WHERE bk_supplier_account = :sup '
+            f'AND bk_parent_id IN ('
+            f'SELECT "{obj_idf}" FROM "{obj_tbl}" WHERE bk_supplier_account = :sup)',
+            {"sup": dbmod.SUPPLIER})
+        # 子为 module 时，bk_set_id 同步为新的父（set）实例
+        if child_id == MAINLINE_MODEL_MODULE:
+            c.exec(
+                f'UPDATE "{child_tbl}" SET bk_set_id = bk_parent_id '
+                f'WHERE bk_supplier_account = :sup',
+                {"sup": dbmod.SUPPLIER})
+
+    # —— 模型级重挂：把旧子模型重新挂到本层级的父模型，保持主线连续 ——
+    if child_id:
+        c.exec(
+            "UPDATE cc_ObjAsst SET target_obj_id=:new "
+            "WHERE bk_asst_id=:aid AND bk_obj_id=:child",
+            {"new": parent, "child": child_id, "aid": MAINLINE_ASST})
+
+    c.exec(
+        "DELETE FROM cc_ObjAsst WHERE bk_asst_id=:aid AND bk_obj_id=:o",
+        {"aid": MAINLINE_ASST, "o": obj_id})
+
+    # 删除该层级全部实例（必须在子级重挂之后，因重挂依赖本层级实例的 bk_parent_id）
+    if delete_instances:
+        from app.service.instance_service import InstanceService
+        tbl = InstanceService._get_table_name(obj_id)
+        c.exec(f'DELETE FROM "{tbl}" WHERE bk_supplier_account=:sup', {"sup": dbmod.SUPPLIER})
+
+    return {'action': 'delete', 'reparented': child_id,
+            'deleted_instances': delete_instances}
 
 
 # ---------------------------------------------------------------------------
@@ -429,8 +909,11 @@ def add_attribute_core(c, oid, p, dry_run, on_dup='error'):
         + ", ".join(f":{col}" for col in ATTR_COLS) + ")",
         params)
     # ALTER 实例表加列（M5：先探测已存在列则跳过）
+    # 注意：必须用当前连接 c 查询列，禁止调用 get_column_names()（其内部 inspect(_engine())
+    # 会另开一个连接/事务；在 SQLite StaticPool 下与当前写事务共享同一底层连接，
+    # 会冲掉未提交的 INSERT，导致属性元数据丢失、仅实例表列生效）。
     tbl = dbmod.instance_table(oid)
-    cols = [r['name'] for r in c.query_all(f"PRAGMA table_info({quote_ident_raw(tbl)})")]
+    cols = [row['name'] for row in c.query_all(f"PRAGMA table_info({quote_ident_raw(tbl)})")]
     if p['bk_property_id'] not in cols:
         c.exec(
             f"ALTER TABLE {quote_ident_raw(tbl)} ADD COLUMN "
@@ -1065,6 +1548,27 @@ def cmd_table_create(args):
     return EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# user：用户管理（创建用户走 app.db.user 公共逻辑层，与后端 API 共用同一 SQL/方言）
+# ---------------------------------------------------------------------------
+def cmd_user_create(args):
+    name = (args.name or '').strip()
+    if not name:
+        raise CliError(EXIT_PARAM, "用户名不能为空（--name 必填）", "create_user")
+    try:
+        user = UserService.create_user(
+            name=name, password=args.password, role=args.role, supplier=args.supplier)
+    except ValueError as e:
+        msg = str(e)
+        code = EXIT_EXISTS if '已存在' in msg else EXIT_PARAM
+        raise CliError(code, msg, "create_user")
+    emit_result({
+        **user,
+        'human': f"用户 {name} 创建成功（bk_role={args.role}）",
+    }, args.json)
+    return EXIT_OK
+
+
 def cmd_model_show(args):
     oid = args.bk_obj_id
     validate_identifier(oid)
@@ -1141,6 +1645,68 @@ def _run_import(conn, kind, csv_path, opts, dry_run, skip_empty, json_out):
     if kind == 'instance':
         return do_instance_import(conn, csv_path, opts, dry_run, skip_empty)
     raise CliError(EXIT_PARAM, f"未知导入类型: {kind}", "import")
+
+
+def cmd_mainline_add(args):
+    opts = {'obj_name': args.obj_name, 'classification': args.classification,
+            'icon': args.icon, 'sort': args.obj_sort_number, 'spawn': args.spawn}
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            r = add_mainline_core(c, args.obj_id, args.parent, opts, args.dry_run)
+    if r.get('reparented'):
+        sys.stderr.write(f"[INFO] 旧子模型 {r['reparented']} 已重挂到 {args.obj_id}\n")
+    if r.get('spawned'):
+        sys.stderr.write(f"[INFO] 已为父实例批量生成 {r['spawned']} 个 {args.obj_id} 实例\n")
+    emit_result({**r, 'human': f"主线注册 {args.obj_id} (父={args.parent})"},
+                args.json)
+    return EXIT_OK
+
+
+def cmd_mainline_show(args):
+    with dbmod.cli_conn() as c:
+        r = show_mainline_core(c, '0')
+    chain = ' -> '.join(r['chain'])
+    emit_result({**r, 'human': f"主线模型链: {chain}"}, args.json)
+    return EXIT_OK
+
+
+def cmd_mainline_remove(args):
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            r = remove_mainline_core(c, args.obj_id, args.delete_instances, args.dry_run)
+    if r.get('reparented'):
+        sys.stderr.write(f"[INFO] 子模型 {r['reparented']} 已重挂回上一级\n")
+    emit_result({**r, 'human': f"主线摘除 {args.obj_id} (删实例={args.delete_instances})"},
+                args.json)
+    return EXIT_OK
+
+
+def cmd_mainline_fix_unique(args):
+    """为已有主线模型补齐/修正 (bk_parent_id, bk_inst_name) 内置唯一约束。
+
+    适用于：模型此前经由旧逻辑创建（仅 (bk_inst_name) 单键规则、缺 bk_parent_id 属性），
+    与上游 CreateObject(isMainline=true) 的内置初始化不一致。幂等，可重复执行。
+    """
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            if args.obj_id:
+                targets = [args.obj_id]
+            else:
+                rows = c.query_all(
+                    "SELECT DISTINCT bk_obj_id FROM cc_ObjAsst "
+                    "WHERE bk_asst_id='bk_mainline' AND bk_supplier_account='0'")
+                targets = [r['bk_obj_id'] for r in rows]
+            fixed = []
+            for oid in targets:
+                if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": oid}):
+                    sys.stderr.write(f"[WARN] 模型不存在，跳过: {oid}\n")
+                    continue
+                ensure_mainline_unique_core(c, oid)
+                fixed.append(oid)
+    emit_result({'action': 'fix_unique', 'fixed': fixed,
+                 'human': f"已修正 {len(fixed)} 个主线模型的唯一约束: {', '.join(fixed) or '无'}"},
+                args.json)
+    return EXIT_OK
 
 
 def cmd_classification_import(args):
@@ -1783,6 +2349,35 @@ def build_parser():
     x.add_argument('--bk_obj_id', required=True)
     x.set_defaults(func=cmd_model_delete)
 
+    # mainline：自定义业务拓扑模型（多模型多层级主线注册）
+    sp = sub.add_parser('mainline', help='自定义业务拓扑模型（主线 mainline）')
+    ml = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = ml.add_parser('add')
+    x.add_argument('--obj-id', required=True,
+                   help='待注册进主线的子模型ID（不存在时可用 --obj-name 自动建模型）')
+    x.add_argument('--parent', required=True,
+                   help='父模型ID（主线链中作为上级的模型，如 biz/set/module/自定义模型）')
+    x.add_argument('--obj-name', default=None, help='可选：模型不存在时自动创建的模型名称')
+    x.add_argument('--classification', default='bk_biz_topo',
+                   help='可选：自动建模型所属分类（默认 bk_biz_topo）')
+    x.add_argument('--icon', default='icon-cc-default', help='可选：模型图标')
+    x.add_argument('--obj-sort-number', dest='obj_sort_number', type=int, default=0)
+    x.add_argument('--spawn', action='store_true',
+                   help='为每个父实例批量生成一级子实例（对齐上游 SetMainlineInstAssociation 回填 bk_parent_id）')
+    x.set_defaults(func=cmd_mainline_add)
+    x = ml.add_parser('show')
+    x.set_defaults(func=cmd_mainline_show)
+    x = ml.add_parser('remove')
+    x.add_argument('--obj-id', required=True, help='从主线摘除的模型ID')
+    x.add_argument('--delete-instances', dest='delete_instances', action='store_true',
+                   help='同时删除该层级全部实例')
+    x.set_defaults(func=cmd_mainline_remove)
+    x = ml.add_parser('fix-unique',
+                      help='为已有主线模型补齐/修正 (bk_parent_id, bk_inst_name) 内置唯一约束')
+    x.add_argument('--obj-id', default=None, help='可选：仅修复指定模型；省略则修复全部主线模型')
+    x.set_defaults(func=cmd_mainline_fix_unique)
+
     # attribute
     sp = sub.add_parser('attribute', help='属性')
     asp = sp.add_subparsers(dest='sub', required=True,
@@ -1857,6 +2452,19 @@ def build_parser():
     x.add_argument('--no-skip-if-exists', dest='skip_if_exists', action='store_false')
     x.set_defaults(func=cmd_table_create)
 
+    # user：用户管理
+    sp = sub.add_parser('user', help='用户管理（创建用户，无 UI）')
+    us = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = us.add_parser('create', help='创建用户')
+    x.add_argument('--name', required=True, help='用户名（bk_user_name，唯一）')
+    x.add_argument('--password', required=True, help='密码明文（werkzeug 哈希后存储，绝不落库明文）')
+    x.add_argument('--role', type=int, default=2, choices=[1, 2],
+                   help='角色：1=超级管理员 2=普通用户（默认 2）')
+    x.add_argument('--supplier', default=None,
+                   help='供应商账户（多租户隔离；默认 settings.DEFAULT_SUPPLIER=0）')
+    x.set_defaults(func=cmd_user_create)
+
     # scaffold
     sp = sub.add_parser('scaffold', help='规格驱动（spec / seed / apply）')
     scs = sp.add_subparsers(dest='sub', required=True,
@@ -1888,6 +2496,10 @@ def build_parser():
     x.add_argument('--classification-name', default=None, help='分类中文名（缺省 分类-<id>）')
     x.add_argument('--model-name', default=None, help='模型中文名 bk_obj_name（缺省 模型-<模型id>）')
     x.set_defaults(func=cmd_scaffold_from_csv)
+
+    # auth（鉴权管理：用户 / 策略 / 按场景批量授权）
+    from app.cli import auth_cmd
+    auth_cmd.register(sub, common)
 
     return p
 

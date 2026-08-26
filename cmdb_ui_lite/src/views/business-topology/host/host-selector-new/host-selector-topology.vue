@@ -367,7 +367,11 @@
           const result = await this.$store.dispatch('objectMainLineModule/getTopoStatistics', {
             bizId: this.bizId,
             params: {
-              condition: nodes.map(({ data }) => ({ bk_obj_id: data.bk_obj_id, bk_inst_id: data.bk_inst_id }))
+              condition: nodes.map(({ data }) => ({
+                bk_obj_id: data.bk_obj_id,
+                bk_inst_id: data.bk_inst_id,
+                bk_biz_id: data.bk_biz_id || this.bizId
+              }))
             }
           })
           nodes.forEach(({ data }) => {

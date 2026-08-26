@@ -26,5 +26,11 @@ if __name__ == '__main__':
     app.run(
         host='0.0.0.0',
         port=int(os.environ.get('PORT', 5000)),
-        debug=config.DEBUG
+        debug=config.DEBUG,
+        # SECRET_KEY 已由 settings._resolve_secret_key() 生产级解析（env 优先 →
+        # instance/secret_key 持久化文件 → dev 回退），reloader 父子进程也读同一来源，
+        # 不会再出现「签发与校验跨进程密钥不一致」的问题。
+        # 此处关闭 reloader 仅为开发体验（避免双进程重复日志/端口竞态）；
+        # 生产部署请使用 uwsgi / gunicorn 多 worker，密钥天然同源。
+        use_reloader=False
     )

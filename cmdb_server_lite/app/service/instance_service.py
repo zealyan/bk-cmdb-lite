@@ -972,7 +972,9 @@ class InstanceService:
         columns = list(clean_data.keys())
         placeholders = [f':{col}' for col in columns]
 
-        sql = f'INSERT INTO "{table_name}" ({",".join([f"{col}" for col in columns])}) VALUES ({",".join(placeholders)})'
+        # 列名统一加双引号，规避 default 等 SQLite 保留字（上游 cc_ObjectBase 表含 default 列）
+        quoted_cols = ', '.join(f'"{col}"' for col in columns)
+        sql = f'INSERT INTO "{table_name}" ({quoted_cols}) VALUES ({",".join(placeholders)})'
         execute(sql, clean_data)
 
         return InstanceService.get_instance(model_id, instance_id)
@@ -1314,5 +1316,8 @@ SYSTEM_FIELDS = {
     'bk_module_id',
     'bk_module_name',
     'bk_biz_set_id',
-    'bk_biz_set_name'
+    'bk_biz_set_name',
+    'bk_parent_id',             # 主线拓扑父实例ID（每个主线实例表均含，对齐上游 bk_parent_id）
+    'default',                  # 空闲机/故障机等默认池标记（主线实例沿用）
+    'creator'                   # 实例创建者（RBAC「创建者自管」判定；对齐上游 owner 维度）
 }

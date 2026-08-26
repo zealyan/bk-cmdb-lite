@@ -1,4 +1,5 @@
 import {
+  MENU_INDEX,
   MENU_BUSINESS,
   MENU_BUSINESS_TOPOLOGY,
   MENU_RESOURCE,
@@ -9,6 +10,14 @@ import {
 import { DEFAULT_BIZ_ID } from '@/utils/biz-cache'
 
 const menus = [{
+  // 首页：顶部导航栏与左侧导航栏固定首位（业务/资源/模型依次其后）
+  id: MENU_INDEX,
+  i18n: '首页',
+  icon: 'icon-cc-home',
+  route: {
+    name: MENU_INDEX
+  }
+}, {
   id: MENU_BUSINESS,
   i18n: '业务',
   menu: [{
@@ -22,18 +31,23 @@ const menus = [{
       }
     }
   }]
-}, {
-  id: MENU_RESOURCE,
-  i18n: '资源',
-  menu: [{
-    id: MENU_RESOURCE_MANAGEMENT,
-    i18n: '资源目录',
-    icon: 'icon-cc-square',
-    route: {
-      name: MENU_RESOURCE_MANAGEMENT
-    }
+  },   {
+    id: MENU_RESOURCE,
+    i18n: '资源',
+    menu: [{
+      id: MENU_RESOURCE_MANAGEMENT,
+      i18n: '资源目录',
+      icon: 'icon-cc-square',
+      // 精确指向 /resource/index（与原项目一致）。
+      // 在实例页 #/resource/instance/:objId（含详情页 */*）下的"选中态"由 dynamic-navigation.vue
+      // 的 relative-active 机制根据路由 meta.menu.relative 派生：
+      // - 该 objId 为自定义收藏 → 收藏菜单项精确命中，资源目录不亮（优先突出收藏）；
+      // - 该 objId 非收藏 → 资源目录通过 is-relative-active 保持选中，与 #/resource/index 一致。
+      route: {
+        name: MENU_RESOURCE_MANAGEMENT
+      }
+    }]
   }]
-}]
 
 // 暂时未开发：模型（MENU_MODEL）入口暂不展示于头部导航菜单栏
 // , {

@@ -56,6 +56,13 @@ export default {
     nodeCountType: {
       type: String,
       default: 'host_count'
+    },
+    // 该节点在主线中的直接子层模型ID（由父组件按主线顺序计算）。
+    // 为空表示其为最底层（如 module），不显示新建按钮；非空则显示，
+    // 从而对任意主线顺序（biz→appsys→zone→set→module）都正确开放"新建"。
+    childModelId: {
+      type: String,
+      default: ''
     }
   },
   computed: {
@@ -76,13 +83,13 @@ export default {
     isTemplate() {
       return this.data.service_template_id || this.data.set_template_id
     },
-    // 是否显示新建按钮：业务(biz)和集群(set)节点显示，模块(module)和空闲机池不显示
+    // 是否显示新建按钮：仅当该节点在主线中存在直接子层（childModelId 非空）。
+    // 替代原写死的 biz/set 判断，使 appsys/zone 等自定义层也能在其父节点下新建，
+    // 且 module（最底层）因 childModelId 为空自动隐藏按钮。
+    // 空闲机池（is_idle_set）为内置特殊集群，禁止在其下新建模块（对齐原项目：
+    // 空闲机池/故障机池由系统维护，用户不可在业务拓扑手动新建子节点）。
     isShowCreate() {
-      const objId = this.data.bk_obj_id
-      const isModule = objId === 'module'
-      const isIdleSet = this.data.is_idle_set
-      // 业务和集群都可以新建子节点，模块是最底层不可新建
-      return !isModule && !isIdleSet
+      return !!this.childModelId && !this.data.is_idle_set
     }
   },
   methods: {

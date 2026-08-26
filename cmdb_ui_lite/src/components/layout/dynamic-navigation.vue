@@ -41,10 +41,13 @@
           <router-link
             :key="index"
             tag="a"
+            ref="menuLink"
             active-class="active"
             style="display: block;"
             v-if="menu.hasOwnProperty('route')"
-            :class="['menu-item', 'is-link']"
+            :class="['menu-item', 'is-link', {
+              'is-relative-active': isRelativeActive(menu)
+            }]"
             :to="menu.route"
             :title="menu.i18n">
             <h3 class="menu-info clearfix">
@@ -75,8 +78,10 @@ import {
   MENU_RESOURCE,
   MENU_MODEL,
   MENU_RESOURCE_INSTANCE,
+  MENU_RESOURCE_HOST,
   MENU_BUSINESS_TOPOLOGY
 } from '@/dictionary/menu-symbol'
+import { BUILTIN_MODEL_RESOURCE_MENUS } from '@/dictionary/model-constants'
 import { modelAPI } from '@/api/client'
 import { topoAPI } from '@/api/topo'
 import { getCachedBizId } from '@/utils/biz-cache'
@@ -88,7 +93,11 @@ export default {
       timer: null,
       bizList: [],
       bizLoading: false,
-      selectedBizId: ''
+      selectedBizId: '',
+      // 当前菜单中是否存在 router-link 精确命中（active 类）的项。
+      // 存在精确命中（如「自定义收藏」的模型实例页）时，relative-active 机制
+      // 不派生「资源目录」选中态，避免与精确命中项冲突（对齐原项目）。
+      hasExactActive: false
     }
   },
   computed: {
@@ -121,12 +130,7 @@ export default {
           id: `collection_${id}`,
           i18n: model?.bk_obj_name || id,
           icon: model?.bk_obj_icon || 'icon-cc-default',
-          route: {
-            name: MENU_RESOURCE_INSTANCE,
-            params: {
-              objId: id
-            }
-          }
+          route: this.getCollectionRoute(model)
         }
       })
     },
@@ -142,7 +146,7 @@ export default {
             const storeBizId = this.$store.getters['objectBiz/bizId']
             const effectiveBizId = (storeBizId && String(storeBizId) !== '0')
               ? String(storeBizId)
-              : getCachedBizId()
+              : getCachedBizId(this.$store.getters['user/userName'])
             return {
               ...menu,
               route: {
@@ -160,6 +164,25 @@ export default {
         menus.splice(1, 0, ...this.collectionMenus)
       }
       return menus
+    },
+    /**
+     * 派生「相对选中」菜单名（对齐原项目 dynamic-navigation）：
+     * 当当前路由 meta.menu.relative 指向某菜单（如实例页指向「资源目录」），
+     * 且当前菜单中不存在精确命中（active）项时，返回该菜单名，使其通过
+     * is-relative-active 类保持选中态。
+     * 一旦存在精确命中（如「自定义收藏」模型实例页命中收藏菜单项），
+     * 返回 null 以抑制派生选中，避免与精确命中项冲突。
+     */
+    relativeActiveName() {
+      const relative = this.$route.meta?.menu?.relative
+      if (relative && !this.hasExactActive) {
+        const names = Array.isArray(relative) ? relative : [relative]
+        const matched = names.find(name => this.currentMenus.some(
+          menu => menu.route && menu.route.name === name
+        ))
+        return matched || null
+      }
+      return null
     }
   },
   methods: {
@@ -180,6 +203,52 @@ export default {
         fold: !this.navFold,
         stick: !this.navStick
       })
+    },
+    /**
+     * 判断某菜单是否应呈现「相对选中」态：
+     * 其 route.name 等于 relativeActiveName 派生出的菜单名时返回 true。
+     */
+    isRelativeActive(menu) {
+      return !!menu.route && menu.route.name === this.relativeActiveName
+    },
+    /**
+     * 计算当前菜单中是否存在精确命中（active 类）的 router-link。
+     * 用于驱动 relativeActiveName 的抑制逻辑（精确命中优先）。
+     */
+    checkExactActive() {
+      if (!this.$refs.menuLink) {
+        this.hasExactActive = false
+        return
+      }
+      this.$nextTick(() => {
+        const links = Array.isArray(this.$refs.menuLink)
+          ? this.$refs.menuLink
+          : [this.$refs.menuLink]
+        this.hasExactActive = links.some(link => {
+          const el = link?.$el
+          return el && el.classList.contains('active')
+        })
+      })
+    },
+    /**
+     * 计算「自定义收藏」菜单项的路由（对齐原项目 getCollectionRoute）：
+     * - 内置模型（如 host）映射到其专属资源路由名（BUILTIN_MODEL_RESOURCE_MENUS，
+     *   如 MENU_RESOURCE_HOST → /resource/host），使收藏项在主机列表/详情页精确命中并高亮；
+     * - 其余模型使用通用实例路由 /resource/instance/:objId。
+     */
+    getCollectionRoute(model) {
+      const objId = model?.bk_obj_id
+      if (objId && Object.prototype.hasOwnProperty.call(BUILTIN_MODEL_RESOURCE_MENUS, objId)) {
+        return {
+          name: BUILTIN_MODEL_RESOURCE_MENUS[objId]
+        }
+      }
+      return {
+        name: MENU_RESOURCE_INSTANCE,
+        params: {
+          objId
+        }
+      }
     },
     async loadBizList() {
       if (this.bizList.length > 0) return
@@ -236,12 +305,18 @@ export default {
       immediate: true,
       handler() {
         this.syncSelectedBiz()
+        this.checkExactActive()
       }
     },
     // 业务列表异步加载完成后，重新同步选择器默认选中，
     // 避免「路由已就绪但选项尚未渲染」导致下拉框显示为空
     bizList() {
       this.syncSelectedBiz()
+    },
+    // 自定义收藏列表异步加载（或变更）后，动态菜单项会增删，
+    // 重新校验精确命中态，使「资源目录」在收藏实例页正确让位于收藏菜单项
+    resourceCollection() {
+      this.checkExactActive()
     }
   },
   async mounted() {
@@ -250,6 +325,7 @@ export default {
     } catch (e) {
       console.error('[DynamicNavigation] 加载用户配置失败:', e)
     }
+    this.checkExactActive()
   }
 }
 </script>
@@ -362,7 +438,8 @@ $color: #63656E;
       background-color: #F6F6F9;
     }
 
-    &.active.is-link {
+    &.active.is-link,
+    &.is-relative-active.is-link {
       background-color: #E1ECFF;
 
       .menu-icon,

@@ -127,12 +127,20 @@ export default {
         modelIds: ['host'],
         searchHandler: this.searchHandler.bind(this)
       })
+      // 监听「有效筛选签名」而非原始 FilterStore.condition 对象：
+      // 在高级筛选中点击「添加其他条件」时，store 的 selected 监听会调用 initCondition()
+      // 给新属性写入默认空值（value: '' / []），替换 condition 对象引用；若 deep watch 整个
+      // condition 对象，这次“仅添加空条件行、尚未查询”的变更会立即触发列表重载（loading 转圈）。
+      // 改为监听 getQuery 序列化后的有效查询串（与 loadHostList 实际请求一致，空值被忽略）：
+      // 添加空条件 → 签名不变 → 不重载；填值后查询 / 删 tag / 清空 → 签名变化 → 重载。
       this.unwatchFilter = this.$watch(
-        () => [FilterStore.selected, FilterStore.condition, FilterStore.IP],
+        () => {
+          const q = FilterStore.getQuery(FilterStore.condition)
+          return `${q.filter}|${q.ip}`
+        },
         () => {
           this.searchHandler()
-        },
-        { deep: true }
+        }
       )
     },
     searchHandler() {
@@ -200,10 +208,7 @@ export default {
         // 请求被取消（翻页/筛选重载时的 cancelPrevious）属预期行为，静默忽略
         if (isCancelError(error)) return
         console.error('加载主机列表失败:', error)
-        this.$bkMessage({
-          message: '加载主机列表失败',
-          theme: 'error'
-        })
+        this.$handleApiError(error)
       }
     },
     handleSearch (value) {
