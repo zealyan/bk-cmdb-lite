@@ -70,6 +70,70 @@ def find_object_association():
         logger.error(f"Error finding object associations: {e}")
         return error_response(f'查询对象关联失败: {str(e)}')
 
+@association_bp.route('/create/objectassociation', methods=['POST'])
+def create_object_association():
+    """创建通用（非主线）模型关联，幂等。
+
+    请求体（字段对齐前端通用关联语义）：
+      - bk_obj_id / src_obj_id   : 源模型ID（必填）
+      - target_obj_id / bk_asst_obj_id : 目标模型ID（必填）
+      - bk_asst_id               : 关联类型ID（必填，须存在于 cc_AsstDes，且非 bk_mainline）
+      - mapping                  : 1:1 / 1:n / n:1 / n:n（默认 1:n）
+      - on_delete                : none / ...（默认 none）
+      - bk_obj_asst_name         : 显示名（缺省由关联类型与模型名拼接）
+      - on_exist                 : skip（默认，已存在则跳过）/ update（已存在则更新 mapping/on_delete）
+    返回 AssociationService.create_model_association 的结果。
+    """
+    try:
+        data = request.get_json() or {}
+        src = data.get('bk_obj_id') or data.get('src_obj_id')
+        dst = data.get('target_obj_id') or data.get('bk_asst_obj_id')
+        asst_id = data.get('bk_asst_id')
+        if not (src and dst and asst_id):
+            return error_response(
+                'bk_obj_id(源模型)、target_obj_id(目标模型)、bk_asst_id(关联类型) 必填', 1199006)
+        result = AssociationService.create_model_association(
+            src_obj_id=src, dst_obj_id=dst, asst_id=asst_id,
+            mapping=data.get('mapping', '1:n'),
+            on_delete=data.get('on_delete', 'none'),
+            asst_name=data.get('bk_obj_asst_name'),
+            supplier=data.get('bk_supplier_account', '0'),
+            on_exist=data.get('on_exist', 'skip'))
+        msg = '模型关联创建成功' if result['created'] else '模型关联已存在（幂等跳过）'
+        return success_response(result, msg)
+    except ValueError as e:
+        return error_response(str(e), 1199006)
+    except Exception as e:
+        logger.error(f"Error creating object association: {e}")
+        return error_response(f'创建模型关联失败: {str(e)}')
+
+@association_bp.route('/delete/objectassociation', methods=['POST'])
+def delete_object_association():
+    """删除通用（非主线）模型关联，级联清理实例关联。
+
+    请求体（二选一）：
+      - bk_obj_asst_id            : 直接给主键（优先）
+      - 或 (bk_obj_id/src_obj_id, target_obj_id/bk_asst_obj_id, bk_asst_id) 三元组
+    禁止删除 bk_mainline 主线关联（由专用接口处理）。
+    """
+    try:
+        data = request.get_json() or {}
+        bk_obj_asst_id = data.get('bk_obj_asst_id')
+        src = data.get('bk_obj_id') or data.get('src_obj_id')
+        dst = data.get('target_obj_id') or data.get('bk_asst_obj_id')
+        asst_id = data.get('bk_asst_id')
+        result = AssociationService.delete_model_association(
+            src_obj_id=src, dst_obj_id=dst, asst_id=asst_id,
+            bk_obj_asst_id=bk_obj_asst_id,
+            supplier=data.get('bk_supplier_account', '0'))
+        msg = '模型关联删除成功' if result['deleted'] else '模型关联不存在'
+        return success_response(result, msg)
+    except ValueError as e:
+        return error_response(str(e), 1199006)
+    except Exception as e:
+        logger.error(f"Error deleting object association: {e}")
+        return error_response(f'删除模型关联失败: {str(e)}')
+
 @association_bp.route('/api/instances/<instance_id>/associations', methods=['GET'])
 def get_instance_associations(instance_id):
     """获取实例的关联关系"""

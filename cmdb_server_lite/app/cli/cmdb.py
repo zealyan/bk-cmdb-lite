@@ -1709,6 +1709,187 @@ def cmd_mainline_fix_unique(args):
     return EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# 通用（非主线）模型关联：create / delete / list
+# 与 mainline 接口区分：bk_mainline 主线关联由 cmdb mainline 子命令管理，
+# 此处只处理普通关联类型（default / belong / run / connect 等）。
+# 复用 CliConn（连池/事务/方言）与 emit_result（输出），与 mainline 保持同一框架。
+# ---------------------------------------------------------------------------
+MAINLINE_ASST = 'bk_mainline'
+
+
+def make_obj_asst_id(src_obj_id, asst_id, dst_obj_id):
+    """模型关联主键固定格式：{源}_{关联类型}_{目标}（与 Service 层一致）。"""
+    return f"{src_obj_id}_{asst_id}_{dst_obj_id}"
+
+
+def association_create_core(c, src, dst, asst_id, mapping='1:n', on_delete='none',
+                            name=None, on_exist='skip', dry_run=False):
+    validate_identifier(src)
+    validate_identifier(dst)
+    validate_identifier(asst_id)
+
+    if asst_id == MAINLINE_ASST:
+        raise CliError(EXIT_PARAM, "bk_mainline 为主线专用关联类型，通用模型关联不可使用；请用 mainline 接口",
+                       "check_asst")
+    asst = c.query_one(
+        "SELECT bk_asst_id, bk_asst_name FROM cc_AsstDes "
+        "WHERE bk_asst_id=:a AND bk_supplier_account='0'", {"a": asst_id})
+    if not asst:
+        raise CliError(EXIT_DEP, f"关联类型不存在: {asst_id}（请先通过 migrate 或 cc_AsstDes 注册）",
+                       "check_asst")
+
+    src_row = c.query_one("SELECT bk_obj_id, bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o AND bk_supplier_account='0'",
+                          {"o": src})
+    if not src_row:
+        raise CliError(EXIT_DEP, f"源模型不存在: {src}", "check_src")
+    dst_row = c.query_one("SELECT bk_obj_id, bk_obj_name FROM cc_ObjDes WHERE bk_obj_id=:o AND bk_supplier_account='0'",
+                          {"o": dst})
+    if not dst_row:
+        raise CliError(EXIT_DEP, f"目标模型不存在: {dst}", "check_dst")
+
+    bk_obj_asst_id = make_obj_asst_id(src, asst_id, dst)
+    exist = c.query_one(
+        "SELECT * FROM cc_ObjAsst WHERE bk_obj_asst_id=:aid AND bk_supplier_account='0'",
+        {"aid": bk_obj_asst_id})
+
+    if dry_run:
+        action = 'skip(exists)' if exist else 'create'
+        print(f"[dry-run] OBJ ASSOCIATION {bk_obj_asst_id} (mapping={mapping}, on_delete={on_delete}, on_exist={on_exist}) -> {action}")
+        # 返回结构与非 dry-run 分支对齐（含 created/updated/existing），
+        # 避免 cmd_association_create 拼接 human 文本时引用 r['created'] 抛 KeyError。
+        return {'action': action, 'bk_obj_asst_id': bk_obj_asst_id,
+                'created': action == 'create', 'updated': False,
+                'existing': exist is not None, 'src': src, 'dst': dst, 'asst_id': asst_id}
+
+    if exist:
+        if on_exist == 'update':
+            c.exec(
+                "UPDATE cc_ObjAsst SET mapping=:m, on_delete=:od, modifier='admin', last_time=CURRENT_TIMESTAMP "
+                "WHERE bk_obj_asst_id=:aid AND bk_supplier_account='0'",
+                {"m": mapping, "od": on_delete, "aid": bk_obj_asst_id})
+            return {'bk_obj_asst_id': bk_obj_asst_id, 'id': exist['id'],
+                    'created': False, 'updated': True, 'existing': True,
+                    'src': src, 'dst': dst, 'asst_id': asst_id}
+        return {'bk_obj_asst_id': bk_obj_asst_id, 'id': exist['id'],
+                'created': False, 'updated': False, 'existing': True,
+                'src': src, 'dst': dst, 'asst_id': asst_id}
+
+    rel_name = name or (asst.get('bk_asst_name') or asst_id)
+    display_name = f"{src_row.get('bk_obj_name')}{rel_name}{dst_row.get('bk_obj_name')}"
+    c.exec(
+        "INSERT INTO cc_ObjAsst "
+        "(id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id, "
+        " bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete, "
+        " creator, modifier, bk_supplier_account) "
+        "VALUES (:id, :bk_obj_id, :target_obj_id, :target_obj_name, :bk_asst_id, "
+        " :bk_obj_asst_id, :bk_obj_asst_name, :mapping, :on_delete, "
+        " 'admin', 'admin', '0')",
+        {"id": generate_id(), "bk_obj_id": src, "target_obj_id": dst,
+         "target_obj_name": dst_row.get('bk_obj_name'), "bk_asst_id": asst_id,
+         "bk_obj_asst_id": bk_obj_asst_id, "bk_obj_asst_name": display_name,
+         "mapping": mapping, "on_delete": on_delete})
+    return {'bk_obj_asst_id': bk_obj_asst_id, 'id': None,
+            'created': True, 'updated': False, 'existing': False,
+            'src': src, 'dst': dst, 'asst_id': asst_id}
+
+
+def association_delete_core(c, src=None, dst=None, asst_id=None, bk_obj_asst_id=None, dry_run=False):
+    if bk_obj_asst_id:
+        validate_identifier(bk_obj_asst_id)
+    else:
+        if not (src and dst and asst_id):
+            raise CliError(EXIT_PARAM, "需提供 --asst-id-key，或 (--src, --dst, --asst-id) 三元组", "args")
+        validate_identifier(src)
+        validate_identifier(dst)
+        validate_identifier(asst_id)
+        bk_obj_asst_id = make_obj_asst_id(src, asst_id, dst)
+
+    row = c.query_one(
+        "SELECT bk_asst_id FROM cc_ObjAsst WHERE bk_obj_asst_id=:aid AND bk_supplier_account='0'",
+        {"aid": bk_obj_asst_id})
+    if not row:
+        return {'deleted': False, 'bk_obj_asst_id': bk_obj_asst_id, 'found': False, 'inst_deleted': 0}
+    if row.get('bk_asst_id') == MAINLINE_ASST:
+        raise CliError(EXIT_PARAM, "bk_mainline 为主线专用关联，不可经通用接口删除；请用 mainline 接口",
+                       "check_asst")
+
+    if dry_run:
+        print(f"[dry-run] OBJ ASSOCIATION DELETE {bk_obj_asst_id} (found)")
+        return {'deleted': True, 'bk_obj_asst_id': bk_obj_asst_id, 'found': True, 'inst_deleted': 0}
+
+    # 级联清理所有模型实例关联分表中匹配该 bk_obj_asst_id 的记录
+    from app.service.instance_service import InstanceService
+    inst_deleted = 0
+    for m in InstanceService.list_models():
+        oid = m.get('bk_obj_id')
+        tbl = f"cc_InstAsst_0_pub_{oid}"
+        try:
+            r = c.exec(f'DELETE FROM "{tbl}" WHERE bk_obj_asst_id=:aid', {"aid": bk_obj_asst_id})
+            inst_deleted += getattr(r, 'rowcount', 0) or 0
+        except Exception:
+            pass
+
+    c.exec("DELETE FROM cc_ObjAsst WHERE bk_obj_asst_id=:aid AND bk_supplier_account='0'",
+           {"aid": bk_obj_asst_id})
+    return {'deleted': True, 'bk_obj_asst_id': bk_obj_asst_id, 'found': True, 'inst_deleted': inst_deleted}
+
+
+def association_list_core(c, src=None, asst_id=None):
+    where = []
+    params = {}
+    if src:
+        validate_identifier(src)
+        where.append("oa.bk_obj_id = :src")
+        params['src'] = src
+    if asst_id:
+        validate_identifier(asst_id)
+        where.append("oa.bk_asst_id = :asst")
+        params['asst'] = asst_id
+    where_sql = (" AND " + " AND ".join(where)) if where else ""
+    sql = (
+        "SELECT oa.bk_obj_asst_id, oa.bk_obj_id, oa.target_obj_id, oa.target_obj_name, "
+        "oa.bk_asst_id, oa.bk_obj_asst_name, oa.mapping, oa.on_delete "
+        "FROM cc_ObjAsst oa WHERE oa.bk_supplier_account='0'" + where_sql
+    )
+    return c.query_all(sql, params)
+
+
+def cmd_association_create(args):
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            r = association_create_core(
+                c, args.src, args.dst, args.asst_id,
+                mapping=args.mapping, on_delete=args.on_delete,
+                name=args.name, on_exist=args.on_exist, dry_run=args.dry_run)
+    human = (f"模型关联 {'已创建' if r['created'] else ('已更新' if r['updated'] else '已存在跳过')}: "
+             f"{r['bk_obj_asst_id']}")
+    emit_result({**r, 'human': human}, args.json)
+    return EXIT_OK
+
+
+def cmd_association_delete(args):
+    with dbmod.cli_conn() as c:
+        with c.conn.begin():
+            r = association_delete_core(
+                c, src=args.src, dst=args.dst, asst_id=args.asst_id,
+                bk_obj_asst_id=args.asst_id_key, dry_run=args.dry_run)
+    if not r['found']:
+        emit_result({**r, 'human': f"模型关联不存在: {r['bk_obj_asst_id']}"}, args.json)
+        return EXIT_OK
+    human = f"模型关联已删除: {r['bk_obj_asst_id']}（级联清理实例关联 {r['inst_deleted']} 条）"
+    emit_result({**r, 'human': human}, args.json)
+    return EXIT_OK
+
+
+def cmd_association_list(args):
+    with dbmod.cli_conn() as c:
+        rows = association_list_core(c, src=args.src, asst_id=args.asst_id)
+    emit_result({'count': len(rows), 'associations': rows,
+                 'human': f"模型关联 {len(rows)} 条"}, args.json)
+    return EXIT_OK
+
+
 def cmd_classification_import(args):
     opts = {'on_dup': args.on_duplicate, 'encoding': args.encoding,
             'delimiter': args.delimiter, 'strict': args.strict}
@@ -2377,6 +2558,33 @@ def build_parser():
                       help='为已有主线模型补齐/修正 (bk_parent_id, bk_inst_name) 内置唯一约束')
     x.add_argument('--obj-id', default=None, help='可选：仅修复指定模型；省略则修复全部主线模型')
     x.set_defaults(func=cmd_mainline_fix_unique)
+
+    # association：通用（非主线）模型关联（与 mainline 主线关联区分）
+    sp = sub.add_parser('association', help='通用模型关联（非主线，如 set 关联通用模型）')
+    asp = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = asp.add_parser('create', help='创建通用模型关联（幂等）')
+    x.add_argument('--src', required=True, help='源模型ID（如 set）')
+    x.add_argument('--dst', required=True, help='目标模型ID（如 bk_slb_server）')
+    x.add_argument('--asst-id', required=True,
+                   help='关联类型ID（须存在于 cc_AsstDes，且非 bk_mainline，如 default/belong/run/connect）')
+    x.add_argument('--mapping', default='1:n', choices=['1:1', '1:n', 'n:1', 'n:n'],
+                   help='关联映射基数（默认 1:n）')
+    x.add_argument('--on-delete', default='none', help='删除策略（默认 none）')
+    x.add_argument('--name', default=None, help='可选：关联显示名（缺省由关联类型与模型名拼接）')
+    x.add_argument('--on-exist', default='skip', choices=['skip', 'update'],
+                   help='已存在时：skip 跳过（默认）/ update 更新 mapping/on_delete')
+    x.set_defaults(func=cmd_association_create)
+    x = asp.add_parser('delete', help='删除通用模型关联（级联清理实例关联）')
+    x.add_argument('--asst-id-key', default=None, help='直接给 bk_obj_asst_id 主键（优先）')
+    x.add_argument('--src', default=None, help='源模型ID')
+    x.add_argument('--dst', default=None, help='目标模型ID')
+    x.add_argument('--asst-id', default=None, help='关联类型ID')
+    x.set_defaults(func=cmd_association_delete)
+    x = asp.add_parser('list', help='列举模型关联（可按源模型/关联类型过滤）')
+    x.add_argument('--src', default=None, help='可选：按源模型ID过滤')
+    x.add_argument('--asst-id', default=None, help='可选：按关联类型ID过滤')
+    x.set_defaults(func=cmd_association_list)
 
     # attribute
     sp = sub.add_parser('attribute', help='属性')

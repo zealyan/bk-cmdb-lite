@@ -107,7 +107,9 @@ def get_instance_mainline():
             })
         return jsonify({
             'result': True,
-            'data': instance_tree.to_dict(with_statistics=with_statistics),
+            'data': instance_tree.to_dict(
+                with_statistics=with_statistics,
+                model_name_map=topo_service.get_model_name_map(supplier_account)),
             'code': 0,
             'message': ''
         })
@@ -634,6 +636,7 @@ def get_topo_tree():
     try:
         biz_list = topo_service.get_biz_list(supplier_account)
         tree_data = []
+        model_name_map = topo_service.get_model_name_map(supplier_account)
         for biz in biz_list:
             biz_id = biz['bk_biz_id']
             instance_tree = topo_service.get_mainline_instance_topo(
@@ -643,7 +646,7 @@ def get_topo_tree():
                 supplier_account=supplier_account
             )
             if instance_tree:
-                tree_data.append(instance_tree.to_dict(with_statistics=with_statistics))
+                tree_data.append(instance_tree.to_dict(with_statistics=with_statistics, model_name_map=model_name_map))
         return jsonify({
             'result': True,
             'data': tree_data,

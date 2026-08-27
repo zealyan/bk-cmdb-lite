@@ -474,8 +474,14 @@ export default {
 // 关联 tab 为表格型内容，应随内容区宽度动态撑满（右缘贴窗口右侧），
 // 避免侧边栏收缩导致内容区变宽时，max-width:1200 在右侧留下过大空白。
 // 仅放开上限，左对齐与内边距仍与属性 tab 保持一致。
+// 注意：关联 tab 顶部仅需 .instance-association 内部 .options 的 15px 上间距，
+// 不应再叠加 .info-card 的 20px 上内边距（否则「新增关联」按钮离上边框过远）；
+// 但【左右 20px 必须保留】——它来自详情面板外层，是 tab 内容与属性 tab 左缘对齐的留白，
+// 若一并清零（padding:0）会导致 <section> 子 DOM 左边距为 0、缺少左侧空间。
+// 对齐原项目 relation tab（tab 内容直接渲染，无额外卡片上内边距）与主机详情关联 tab。
 .assoc-card {
   max-width: none;
+  padding: 0 20px;
 }
 
 .property-groups {

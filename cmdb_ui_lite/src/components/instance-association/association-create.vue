@@ -90,6 +90,7 @@
 import { modelAPI, freezeList, cancelRequest, isCancelError } from '@/api/client'
 import associationAPI from '@/api/association'
 import associationPropertyFilter from './association-property-filter.vue'
+import { formatPropertyValue } from '@/utils/property-value'
 
 export default {
   name: 'AssociationCreate',
@@ -968,10 +969,9 @@ export default {
       if (value === null || value === undefined || value === '') {
         return '-'
       }
-      if (column.bk_property_type === 'enum' && column.option) {
-        return column.option[value] || value
-      }
-      return String(value)
+      // 复用全站 property-value.js 的 formatPropertyValue：枚举/多选/列表按 option 映射为显示名，
+      // 避免直接用 column.option[value]（数组被当数字下标）导致返回对象并被渲染成 JSON 文本。
+      return formatPropertyValue(value, column)
     }
   }
 }
