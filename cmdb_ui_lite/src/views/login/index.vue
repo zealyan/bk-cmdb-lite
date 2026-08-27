@@ -84,15 +84,22 @@ export default {
         setToken(data.bk_token)
         setUserName(data.bk_user_name)
         this.$store.commit('user/setUser', { name: data.bk_user_name, skipLogin: false })
-        this.$router.replace(this.redirectTarget())
       } catch (e) {
         // 业务层（1302101 用户名或密码错误等）与系统层（网络 / 5xx / 网关）错误
         // 统一走项目公共错误提示（$handleApiError → bk-message / 无权限弹窗），
         // 不再用本地文本静默吞掉。
-        this.$handleApiError(e)
-      } finally {
         this.loading = false
+        this.$handleApiError(e)
+        return
       }
+      // 登录成功后保持 loading（遮罩 LOGIN form），直到路由真正跳转完成；
+      // 否则 finally 会在 $router.replace 发起、但守卫 ensureAuth 仍在等待后端
+      // 校验时提前关闭遮罩，导致 LOGIN form 再次闪现，再经过一段间隔才跳转到视图。
+      // 跳转期间 beforeEach 的 ensureAuth 复检（config + me）全程被遮罩覆盖，体验无缝。
+      // 导航与 API 的 try/catch 已拆开，避免守卫内的良性重定向被误当作 API 错误处理。
+      this.$router.replace(this.redirectTarget()).finally(() => {
+        this.loading = false
+      })
     }
   }
 }

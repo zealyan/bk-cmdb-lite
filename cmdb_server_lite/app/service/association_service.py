@@ -91,7 +91,149 @@ class AssociationService:
             WHERE oa.bk_obj_id = :model_id
         """
         return query_all(sql, {'model_id': model_id})
-    
+
+    # ---------------------------------------------------------------------------
+    # 通用（非主线）模型关联：创建（幂等）/ 删除（级联实例关联）
+    # 与主线 bk_mainline 关联区分：bk_mainline 由专用 mainline 接口管理，
+    # 此处只处理普通关联类型（如 default / belong / run / connect 等）。
+    # ---------------------------------------------------------------------------
+    MAINLINE_ASST_ID = 'bk_mainline'
+
+    @staticmethod
+    def _model_exists(obj_id, supplier='0'):
+        return query_one(
+            "SELECT bk_obj_id, bk_obj_name FROM cc_ObjDes "
+            "WHERE bk_obj_id = :o AND bk_supplier_account = :s",
+            {'o': obj_id, 's': supplier})
+
+    @staticmethod
+    def _asst_type_exists(asst_id, supplier='0'):
+        return query_one(
+            "SELECT bk_asst_id, bk_asst_name FROM cc_AsstDes "
+            "WHERE bk_asst_id = :a AND bk_supplier_account = :s",
+            {'a': asst_id, 's': supplier})
+
+    @staticmethod
+    def make_obj_asst_id(src_obj_id, asst_id, dst_obj_id):
+        """模型关联主键（bk_obj_asst_id）固定格式：{源}_{关联类型}_{目标}。"""
+        return f"{src_obj_id}_{asst_id}_{dst_obj_id}"
+
+    @staticmethod
+    def create_model_association(src_obj_id, dst_obj_id, asst_id,
+                                 mapping='1:n', on_delete='none',
+                                 asst_name=None, supplier='0',
+                                 on_exist='skip'):
+        """创建通用（非主线）模型关联，幂等。
+
+        校验：
+          - 关联类型必须存在且不得为 bk_mainline（主线关联由专用接口管理）；
+          - 源/目标模型必须存在。
+        幂等：bk_obj_asst_id 为固定格式主键。
+          - on_exist='skip'：已存在则跳过（返回 existing=True）；
+          - on_exist='update'：已存在则更新 mapping/on_delete。
+
+        返回 dict：{bk_obj_asst_id, id, created, updated, existing, src, dst, asst_id}
+        """
+        if asst_id == AssociationService.MAINLINE_ASST_ID:
+            raise ValueError("bk_mainline 为主线专用关联类型，通用模型关联不可使用；请用 mainline 接口")
+        asst = AssociationService._asst_type_exists(asst_id, supplier)
+        if not asst:
+            raise ValueError(f"关联类型不存在: {asst_id}（请先通过 migrate 或 cc_AsstDes 注册）")
+
+        src = AssociationService._model_exists(src_obj_id, supplier)
+        if not src:
+            raise ValueError(f"源模型不存在: {src_obj_id}")
+        dst = AssociationService._model_exists(dst_obj_id, supplier)
+        if not dst:
+            raise ValueError(f"目标模型不存在: {dst_obj_id}")
+
+        bk_obj_asst_id = AssociationService.make_obj_asst_id(src_obj_id, asst_id, dst_obj_id)
+        exist = query_one(
+            "SELECT * FROM cc_ObjAsst WHERE bk_obj_asst_id = :aid AND bk_supplier_account = :s",
+            {'aid': bk_obj_asst_id, 's': supplier})
+
+        rel_name = asst_name or (asst.get('bk_asst_name') or asst_id)
+        display_name = f"{src.get('bk_obj_name')}{rel_name}{dst.get('bk_obj_name')}"
+
+        if exist:
+            if on_exist == 'update':
+                execute(
+                    "UPDATE cc_ObjAsst SET mapping = :m, on_delete = :od, "
+                    "modifier = 'admin', last_time = CURRENT_TIMESTAMP "
+                    "WHERE bk_obj_asst_id = :aid AND bk_supplier_account = :s",
+                    {'m': mapping, 'od': on_delete, 'aid': bk_obj_asst_id, 's': supplier})
+                return {'bk_obj_asst_id': bk_obj_asst_id, 'id': exist['id'],
+                        'created': False, 'updated': True, 'existing': True,
+                        'src': src_obj_id, 'dst': dst_obj_id, 'asst_id': asst_id}
+            return {'bk_obj_asst_id': bk_obj_asst_id, 'id': exist['id'],
+                    'created': False, 'updated': False, 'existing': True,
+                    'src': src_obj_id, 'dst': dst_obj_id, 'asst_id': asst_id}
+
+        new_id = generate_id()
+        execute(
+            "INSERT INTO cc_ObjAsst "
+            "(id, bk_obj_id, target_obj_id, target_obj_name, bk_asst_id, "
+            " bk_obj_asst_id, bk_obj_asst_name, mapping, on_delete, "
+            " creator, modifier, bk_supplier_account) "
+            "VALUES (:id, :bk_obj_id, :target_obj_id, :target_obj_name, :bk_asst_id, "
+            " :bk_obj_asst_id, :bk_obj_asst_name, :mapping, :on_delete, "
+            " 'admin', 'admin', :bk_supplier_account)",
+            {'id': new_id, 'bk_obj_id': src_obj_id, 'target_obj_id': dst_obj_id,
+             'target_obj_name': dst.get('bk_obj_name'),
+             'bk_asst_id': asst_id, 'bk_obj_asst_id': bk_obj_asst_id,
+             'bk_obj_asst_name': display_name, 'mapping': mapping,
+             'on_delete': on_delete, 'bk_supplier_account': supplier})
+        return {'bk_obj_asst_id': bk_obj_asst_id, 'id': new_id,
+                'created': True, 'updated': False, 'existing': False,
+                'src': src_obj_id, 'dst': dst_obj_id, 'asst_id': asst_id}
+
+    @staticmethod
+    def delete_model_association(src_obj_id=None, dst_obj_id=None, asst_id=None,
+                                 bk_obj_asst_id=None, supplier='0'):
+        """删除通用（非主线）模型关联，并级联清理对应实例关联分表。
+
+        定位方式二选一：
+          - 直接给 bk_obj_asst_id（主键）；
+          - 或给 (src_obj_id, dst_obj_id, asst_id) 计算主键。
+        禁止：bk_mainline 主线关联（由专用接口删除）。
+
+        返回 dict：{deleted, bk_obj_asst_id, count, found, inst_deleted}
+        """
+        if not bk_obj_asst_id:
+            if not (src_obj_id and dst_obj_id and asst_id):
+                raise ValueError("需提供 bk_obj_asst_id，或 (src_obj_id, dst_obj_id, asst_id) 三元组")
+            bk_obj_asst_id = AssociationService.make_obj_asst_id(src_obj_id, asst_id, dst_obj_id)
+
+        row = query_one(
+            "SELECT bk_asst_id FROM cc_ObjAsst "
+            "WHERE bk_obj_asst_id = :aid AND bk_supplier_account = :s",
+            {'aid': bk_obj_asst_id, 's': supplier})
+        if not row:
+            return {'deleted': False, 'bk_obj_asst_id': bk_obj_asst_id,
+                    'count': 0, 'found': False, 'inst_deleted': 0}
+
+        if row.get('bk_asst_id') == AssociationService.MAINLINE_ASST_ID:
+            raise ValueError("bk_mainline 为主线专用关联，不可经通用接口删除；请用 mainline 接口")
+
+        # 级联清理所有模型实例关联分表中匹配该 bk_obj_asst_id 的记录
+        from app.service.instance_service import InstanceService
+        inst_deleted = 0
+        for m in InstanceService.list_models():
+            oid = m.get('bk_obj_id')
+            tbl = get_inst_asst_table_name(oid)
+            try:
+                r = execute(f'DELETE FROM "{tbl}" WHERE bk_obj_asst_id = :aid',
+                            {'aid': bk_obj_asst_id})
+                inst_deleted += getattr(r, 'rowcount', 0) or 0
+            except Exception:
+                pass
+
+        execute(
+            "DELETE FROM cc_ObjAsst WHERE bk_obj_asst_id = :aid AND bk_supplier_account = :s",
+            {'aid': bk_obj_asst_id, 's': supplier})
+        return {'deleted': True, 'bk_obj_asst_id': bk_obj_asst_id,
+                'count': 1, 'found': True, 'inst_deleted': inst_deleted}
+
     @staticmethod
     def get_instance_associations(instance_id, obj_id=None):
         """

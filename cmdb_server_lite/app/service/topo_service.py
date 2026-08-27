@@ -158,17 +158,22 @@ class TopoInstanceNode:
         self.children: List['TopoInstanceNode'] = []
         self.count = 0  # 子节点数量统计（with_statistics时使用）
 
-    def to_dict(self, with_statistics: bool = False) -> Dict[str, Any]:
+    def to_dict(self, with_statistics: bool = False, model_name_map: Dict[str, str] = None) -> Dict[str, Any]:
+        # model_name_map: {bk_obj_id: bk_obj_name}，供前端节点图标取「模型中文首字」
+        # （如 应用系统→"应"），对齐原项目 topology-tree-node.vue 的 {{ data.bk_obj_name[0] }}。
+        # 此前 to_dict 漏传 bk_obj_name，导致前端 mapTopoNode 回退到 obj_id 首字母（app_sys→"A"）。
+        # 懒加载路径 get_mainline_children 已携带该字段，此处补齐全量树路径，二者一致。
         result = {
             'bk_obj_id': self.object_id,
             'bk_inst_id': self.instance_id,
             'bk_inst_name': self.instance_name,
+            'bk_obj_name': (model_name_map or {}).get(self.object_id, self.object_id),
             'default': self.default,  # 返回 default 字段
         }
         if with_statistics:
             result['count'] = self.count
         if self.children:
-            result['child'] = [child.to_dict(with_statistics) for child in self.children]
+            result['child'] = [child.to_dict(with_statistics, model_name_map) for child in self.children]
         else:
             result['child'] = []
         return result

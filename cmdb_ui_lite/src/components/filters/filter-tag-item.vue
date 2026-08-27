@@ -13,6 +13,7 @@
 import FilterStore from './store'
 import Utils from './utils'
 import FilterForm from './filter-form.js'
+import { formatPropertyValue } from '@/utils/property-value'
 
 export default {
   name: 'FilterTagItem',
@@ -48,11 +49,17 @@ export default {
       return Utils.getOperatorSymbol(this.operator) || this.operator.replace('$', '')
     },
     displayText() {
-      const value = Array.isArray(this.value) ? this.value : [this.value]
-      const displayValue = value.join(' | ')
-      
+      // 多值统一为数组；枚举 / 列表 / 多选枚举类型按 option 映射为显示名（如 1 -> Linux），
+      // 空值跳过。其余类型（单字符 / 数值 / 时间等）保持原始值。
+      const ENUM_TYPES = ['enum', 'enummulti', 'list']
+      const isEnum = ENUM_TYPES.includes(this.property?.bk_property_type)
+      const displayValue = (Array.isArray(this.value) ? this.value : [this.value])
+        .map(v => (v === null || v === undefined ? '' : (isEnum ? formatPropertyValue(v, this.property) : String(v))))
+        .filter(v => v !== '')
+        .join(' | ')
+
       if (this.operator === '$range') {
-        const [start, end] = value
+        const [start, end] = (Array.isArray(this.value) ? this.value : [this.value])
         return `${start} ~ ${end}`
       }
       return `${this.operatorSymbol} ${displayValue}`

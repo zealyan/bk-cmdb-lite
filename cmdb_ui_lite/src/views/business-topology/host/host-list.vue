@@ -166,6 +166,7 @@ import { modelAPI, userCustom, freezeList, cancelRequest, isCancelError } from '
 import RouterQuery from '@/utils/router-query'
 import { MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
 import { isPropertySortable, getSort } from '@/utils/property-sort'
+import { formatPropertyValue } from '@/utils/property-value'
 
 // 默认表头列定义（简化版，与原项目 host 属性对应）
 // 与原项目 model-constants.js BUILTIN_MODEL_PROPERTY_KEYS 一致：
@@ -221,7 +222,7 @@ const DEFAULT_TABLE_HEADER = [
   { bk_property_id: 'bk_host_name', bk_property_name: '主机名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
   { bk_property_id: 'bk_host_outerip', bk_property_name: '外网IP', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
   { bk_property_id: 'bk_cloud_id', bk_property_name: '云区域', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
-  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
+  { bk_property_id: 'bk_os_type', bk_property_name: '操作系统类型', bk_property_type: 'enum', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false, option: [{ id: '1', name: 'Linux' }, { id: '2', name: 'Windows' }] },
   { bk_property_id: 'bk_os_name', bk_property_name: '操作系统名称', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
   { bk_property_id: 'bk_os_version', bk_property_name: '操作系统版本', bk_property_type: 'singlechar', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
   { bk_property_id: 'bk_cpu', bk_property_name: 'CPU核数', bk_property_type: 'int', bk_obj_id: 'host', bk_issystem: false, bk_isapi: false },
@@ -911,11 +912,17 @@ export default {
         return value === 0 ? '默认云区域' : `云区域${value}`
       }
 
-      // 空值处理
+      // 空值处理（保持 host 列表既有 '--' 占位约定）
       if (value === undefined || value === null || value === '') {
         return '--'
       }
-      return value
+
+      // 属性类型转换：枚举/多选枚举/列表按 option 映射为显示名（如 操作系统类型 '1' → 'Linux'），
+      // bool 转 是/否，其余按原类型格式化。统一复用全站 property-value.js 的 formatPropertyValue，
+      // 避免业务拓扑主机列表与资源/关联列表在属性格式化上实现漂移。
+      // 注意：column 来自后端属性（含 bk_property_type 与 option），未加载到属性时回退到
+      // DEFAULT_TABLE_HEADER（bk_os_type 已声明为 enum 并带 option），保证降级路径也能正确映射。
+      return formatPropertyValue(value, column)
     },
 
     /**

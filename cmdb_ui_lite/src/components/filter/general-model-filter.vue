@@ -95,7 +95,8 @@
                   :collapse-tags="true"
                   :paste-fn="(val) => handleTagPaste(val, item)"
                   size="small"
-                  @change="handleTagChange(item)">
+                  @change="handleTagChange(item)"
+                  @inputchange="val => { item.pendingText = val }">
                 </bk-tag-input>
                 <bk-input
                   v-else
@@ -366,7 +367,8 @@ export default {
           operator,
           valueText,
           valueRange,
-          valueTags
+          valueTags,
+          pendingText: ''
         })
       })
       
@@ -401,7 +403,17 @@ export default {
       }
       
       if (this.isInOperator(item.operator)) {
-        return item.valueTags.length > 0 ? item.valueTags : item.valueText
+        // 合并「已确认 tag」与「正在输入但尚未提交（点查询按钮不会触发提交）的缓冲文本」，
+        // 避免直接点查询时未确认的 in/not in 值丢失。
+        const tags = [...item.valueTags]
+        if (item.pendingText && String(item.pendingText).trim().length > 0) {
+          String(item.pendingText)
+            .split(/[\n,，;；]/)
+            .map(v => v.trim())
+            .filter(v => v.length > 0)
+            .forEach(v => { if (!tags.includes(v)) tags.push(v) })
+        }
+        return tags.length > 0 ? tags : item.valueText
       }
       
       return item.valueText || ''
@@ -549,7 +561,10 @@ export default {
         operator,
         valueText: isEnumOrList || isDateTime ? [] : (isBool ? '' : ''),
         valueRange: '',
-        valueTags: []
+        valueTags: [],
+        // 实时捕获 bk-tag-input 尚未提交的缓冲文本（点查询按钮不会触发 tag 提交，
+        // 否则正在输入的 in/not in 值会丢失），在 getItemValue 中与已确认 tags 合并。
+        pendingText: ''
       })
     },
     getDefaultOperator(property) {

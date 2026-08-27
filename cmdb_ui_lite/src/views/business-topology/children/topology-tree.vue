@@ -117,18 +117,21 @@ const MODEL_INFO = {
 
 // 递归映射后端主线实例树：保留任意层级结构与正确的 bk_obj_id，
 // 不再把树硬编码成 biz→set→module（否则 appsys 等自定义层会被吞掉/错显成 set）。
-// 自定义模型（如 appsys）无 MODEL_INFO 条目时用首字母兜底图标。
+// 图标首字一律取自「模型名称首字符」（对齐原项目规则：中文『应用系统』取『应』），
+// 不再用 obj_id 首字母兜底——新增主线模型（如 app_sys）无需再登记到 MODEL_INFO。
 function mapTopoNode(node, bizId, ctx) {
   const objId = node.bk_obj_id
-  const info = MODEL_INFO[objId] || {
-    bk_obj_name: objId,
-    icon_text: (objId && objId[0] ? objId[0].toUpperCase() : 'N')
-  }
+  const info = MODEL_INFO[objId] || {}
+  // 名称：优先用后端已注入的 bk_obj_name（含中文名），兜底用 MODEL_INFO / obj_id
+  const name = node.bk_obj_name || info.bk_obj_name || objId
   // 记录最近的 set 祖先实例 id，供 module 回填 bk_set_id（即使中间插入了 appsys 等自定义层）
   const nextCtx = { setId: objId === 'set' ? node.bk_inst_id : ctx.setId }
   return {
     ...node,
     ...info,
+    bk_obj_name: name,
+    // 图标取名称首字符（中文/英文均适用），不再退化成 obj_id 首字母
+    icon_text: (name && name[0]) || (objId && objId[0] ? objId[0].toUpperCase() : 'N'),
     bk_obj_id: objId,
     bk_inst_name: node.bk_inst_name,
     default: node.default || 0,

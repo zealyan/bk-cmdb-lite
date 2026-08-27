@@ -97,6 +97,7 @@ import AssociationCreate from './association-create.vue'
 import associationAPI from '@/api/association'
 import { modelAPI } from '@/api/client'
 import showInstanceDetails from '@/components/instance/details/index.js'
+import { formatPropertyValue } from '@/utils/property-value'
 
 export default {
   name: 'InstanceAssociation',
@@ -271,7 +272,14 @@ export default {
     doInit() {
       // 标记为正在初始化，防止 watch 重复触发
       this._isInitializing = true
+
+      // 确保模型中文名已就绪：searchClassificationsObjects 不含主线模型(set/module/biz)，
+      // 用 loadModels（/api/v1/models，返回全部模型含 bk_obj_name）补全，使关联标题正确显示中文名
+      if (!this.$store.getters['objectModelClassify/getModelById']('set')) {
+        this.$store.dispatch('objectModelClassify/loadModels').catch(() => {})
+      }
       
+
       const keys = this.initGroupStates()
       if (!keys || keys.length === 0) {
         this._isInitializing = false
@@ -336,14 +344,24 @@ export default {
       this.$forceUpdate()
     },
     getModelDisplayName(objId) {
-      const modelNames = {
-        'bk_slb': '负载均衡',
-        'bk_slb_server': '后端服务器',
-        'bk_slb_listener': '监听器',
-        'host': '主机',
-        'biz': '业务'
+      // 优先从全局模型 store 取中文名（data 来自 listModels，含主线 biz/set/module 与自定义模型，bk_obj_name 为标准中文名）
+      const model = this.$store.getters['objectModelClassify/getModelById'](objId)
+      if (model && model.bk_obj_name) {
+        return model.bk_obj_name
       }
-      return modelNames[objId] || objId
+      // 兜底：内置主线模型标准中文名（searchClassificationsObjects 不含 set/module/biz 时仍能正确显示）
+      const BUILTIN_NAMES = {
+        biz: '业务',
+        set: '集群',
+        module: '模块',
+        host: '主机',
+        bk_biz_set_obj: '业务集',
+        bk_switch: '交换机',
+        bk_slb: '负载均衡',
+        bk_slb_server: '后端服务器',
+        bk_slb_listener: '监听器'
+      }
+      return BUILTIN_NAMES[objId] || objId
     },
     // 获取模型的主键字段（内置模型使用专用字段，自定义模型用 bk_inst_id）
     getIdFieldByModel(objId) {
@@ -409,21 +427,30 @@ export default {
       try {
         const attrResponse = await modelAPI.getModelAttributes(modelId)
         if (attrResponse && attrResponse.attributes) {
-          // 系统字段过滤列表（包含内置模型专用ID/名称字段）
-          const systemFields = [
-            'id', 'bk_inst_id', 'bk_inst_name', 'bk_obj_id', 'bk_supplier_account',
+          // 纯内部字段过滤（保留名称字段参与默认列筛选，对齐原项目关联列表首列即实例名）
+          const internalFields = [
+            'id', 'bk_inst_id', 'bk_obj_id', 'bk_supplier_account',
             'create_time', 'last_time', 'bk_operate_time',
-            'bk_host_id', 'bk_host_name',
-            'bk_biz_id', 'bk_biz_name',
-            'bk_set_id', 'bk_set_name',
-            'bk_module_id', 'bk_module_name',
-            'bk_biz_set_id', 'bk_biz_set_name'
+            'bk_host_id',
+            'bk_biz_id', 'bk_set_id', 'bk_module_id', 'bk_biz_set_id'
           ]
-          const sortedAttrs = attrResponse.attributes
-            .filter(p => p.bk_property_index !== -1 && !systemFields.includes(p.bk_property_id))
+          const all = attrResponse.attributes
+          // 实例名称字段强制置首列（set→bk_set_name / module→bk_module_name / 通用→bk_inst_name ...）
+          const nameField = this.getNameFieldByModel(modelId)
+          const nameAttr = all.find(p => p.bk_property_id === nameField)
+          // 其余默认列：排除隐藏字段(-1)、内部字段、名称字段，按 bk_property_index 升序取前5
+          const restAttrs = all
+            .filter(p => p.bk_property_index !== -1
+              && !internalFields.includes(p.bk_property_id)
+              && p.bk_property_id !== nameField)
             .sort((a, b) => a.bk_property_index - b.bk_property_index)
             .slice(0, 5)
-          this.$set(this.cachedProperties, modelId, sortedAttrs)
+          const columns = []
+          if (nameAttr) {
+            columns.push(nameAttr)
+          }
+          columns.push(...restAttrs)
+          this.$set(this.cachedProperties, modelId, columns)
         }
       } catch (err) {
         console.warn(`加载 ${modelId} 属性定义失败:`, err)
@@ -476,22 +503,10 @@ export default {
       return '第' + item.current + '/' + item.totalPages + '页，共' + total + '条'
     },
     formatValue(value, column, row) {
-      if (value === null || value === undefined || value === '') {
-        return '-'
-      }
-      if (column.bk_property_type === 'list' && Array.isArray(value)) {
-        return value.join(', ')
-      }
-      if (column.bk_property_type === 'enum' && column.option) {
-        return column.option[value] || value
-      }
-      if (Array.isArray(value)) {
-        return value.map(v => (typeof v === 'object' && v !== null ? JSON.stringify(v) : v)).join(', ')
-      }
-      if (typeof value === 'object' && value !== null) {
-        return JSON.stringify(value)
-      }
-      return String(value)
+      // 复用全局属性值格式化工具，统一枚举 / 多选枚举 / 列表等类型的「键 → 显示名」映射。
+      // 旧逻辑用 column.option[value]（数组按数字下标取值）会错误返回对象并被 Vue 渲染为 JSON 文本，
+      // 全局实现用 buildOptionMap 把 [{id,name}] 正确转为 {id:name} 并按 id 查 name，覆盖数组/字符串/对象三种来源。
+      return formatPropertyValue(value, column)
     },
     handleAddAssociation() {
       this.showCreateDialog = true

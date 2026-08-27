@@ -296,6 +296,7 @@ import QS from 'qs'
 import throttle from 'lodash/throttle'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
+import { formatPropertyValue } from '@/utils/property-value'
 import { MENU_INDEX, MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
 import AppMixin from '@/mixins/app'
 
@@ -1277,10 +1278,15 @@ export default {
       console.log('[Debug] columnsConfig.selected synced to:', this.columnsConfig.selected)
     },
     formatCellValue(value, column) {
+      // column.property 为完整属性定义（含 bk_property_type 与 option），
+      // 未取到时回退到 column 本身，保证枚举/多选/列表等类型按 option 映射为显示名。
+      // 统一复用全站 property-value.js 的 formatPropertyValue，避免通用模型列表与
+      // 资源/关联/业务拓扑列表在属性格式化上实现漂移。
+      const property = (column && column.property) || column
       if (value === null || value === undefined || value === '') {
         return '-'
       }
-      return String(value)
+      return formatPropertyValue(value, property)
     },
     handleFieldChange() {
       // 只清空当前输入框的值，保留之前的搜索条件
