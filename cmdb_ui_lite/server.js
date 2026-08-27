@@ -92,7 +92,9 @@ function serveStaticFile(res, filePath, contentType) {
     }
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=31536000'
+      // dev 预览环境：禁止长缓存，避免浏览器/代理层钉死旧 JS/CSS
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Expires': '0'
     });
     res.end(content);
   });

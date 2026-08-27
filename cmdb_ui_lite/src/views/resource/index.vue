@@ -50,7 +50,8 @@
 <script>
 import { mapState, mapGetters, mapActions } from 'vuex'
 import debounce from 'lodash.debounce'
-import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_COLLECTION } from '@/dictionary/menu-symbol'
+import { MENU_RESOURCE_INSTANCE, MENU_RESOURCE_COLLECTION, MENU_RESOURCE_HOST } from '@/dictionary/menu-symbol'
+import { BUILTIN_MODELS } from '@/dictionary/model-constants'
 import InstanceCount from '@/components/instance-count/index.vue'
 import { modelAPI } from '@/api/client'
 
@@ -79,6 +80,13 @@ export default {
       const result = []
       this.classifications.forEach((classification) => {
         const models = classification.bk_objects.filter((model) => {
+          // 隐藏不可见模型（与原项目 resource-manage 一致）
+          if (model.bk_ishidden) return false
+          // 隐藏已停用的模型（与原项目 resource-manage 一致）
+          if (model.bk_ispaused) return false
+          // 集群/模块暂不允许在资源目录查看实例（与原项目 resource-manage 一致）
+          const isModuleOrSet = [BUILTIN_MODELS.SET, BUILTIN_MODELS.MODULE].includes(model.bk_obj_id)
+          if (isModuleOrSet) return false
           const isMatched = this.matchedModels ? this.matchedModels.includes(model.bk_obj_id) : true
           return isMatched
         })
@@ -199,12 +207,20 @@ export default {
       return 46 + 16 + (classify.bk_objects.length * 36)
     },
     redirect(model) {
-      this.$router.push({
-        name: MENU_RESOURCE_INSTANCE,
-        params: {
-          objId: model.bk_obj_id
-        }
-      })
+      // 内置模型 host 使用专属资源路由 /resource/host（与「主机」收藏项完全一致），
+      // 其余模型走通用实例路由 /resource/instance/:objId。
+      // 这样无论是从「资源目录树」点主机，还是从「主机」收藏项进入，都落在同一入口，
+      // 左侧「主机」收藏项的选中态始终同步（对齐原 bk-cmdb 的 host 专属路由语义）。
+      if (model.bk_obj_id === BUILTIN_MODELS.HOST) {
+        this.$router.push({ name: MENU_RESOURCE_HOST })
+      } else {
+        this.$router.push({
+          name: MENU_RESOURCE_INSTANCE,
+          params: {
+            objId: model.bk_obj_id
+          }
+        })
+      }
     },
     isCollected(model) {
       return this.resourceCollection.includes(model.bk_obj_id)
@@ -228,10 +244,7 @@ export default {
         })
       } catch (error) {
         console.error('[ResourceIndex] 收藏操作失败:', error)
-        this.$bkMessage({
-          message: '操作失败，请重试',
-          theme: 'error'
-        })
+        this.$handleApiError(error)
       }
     }
   }

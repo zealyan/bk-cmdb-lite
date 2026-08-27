@@ -64,11 +64,9 @@
 
 <script>
 import { parseOption, validateValue, charLength, getMaxCharsByType } from '@/utils/validate-utils'
+import { sortPropertyGroups } from '@/utils/property-sort'
+import { BUILTIN_UNEDITABLE_FIELDS } from '@/dictionary/model-constants'
 import isEqual from 'lodash/isEqual'
-
-// 不能更新修改的字段(在可能发生编辑操作的页面里不显示出来)
-// 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/dictionary/model-constants.js
-const BUILTIN_UNEDITABLE_FIELDS = ['bk_updated_by', 'bk_updated_at', 'bk_created_by', 'bk_created_at']
 
 const UNEDITABLE_ASSOCIATION_TYPES = ['singleasst', 'multiasst', 'foreignkey']
 
@@ -119,6 +117,10 @@ export default {
     instanceId: {
       type: [String, Number],
       default: null
+    },
+    propertyGroups: {
+      type: Array,
+      default: () => []
     }
   },
   data() {
@@ -166,30 +168,11 @@ export default {
       return false
     },
     groupedPropertiesList() {
-      const groupNameMap = {
-        'base': '基本信息',
-        'default': '默认',
-        'extend': '扩展信息'
-      }
-      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
-      const groups = {}
-      this.properties.forEach(property => {
-        const groupId = property.bk_property_group || 'default'
-        if (!groups[groupId]) {
-          groups[groupId] = {
-            bk_group_id: groupId,
-            bk_group_name: groupNameMap[groupId] || groupId,
-            properties: []
-          }
-        }
-        groups[groupId].properties.push(property)
-      })
-      // 对每个分组内的属性按 bk_property_index 排序
-      Object.values(groups).forEach(group => {
-        group.properties.sort((a, b) => (a.bk_property_index || 0) - (b.bk_property_index || 0))
-      })
-      // 对分组按预定义顺序排序，然后过滤组内属性
-      return Object.values(groups).sort((a, b) => (groupOrder[a.bk_group_id] || 99) - (groupOrder[b.bk_group_id] || 99)).map(group => ({
+      // 分组排序对齐详情页 effectivePropertyGroups：按 propertyGroups(API) 的 bk_group_index，
+      // 不再使用写死的 groupOrder 映射。
+      const groups = sortPropertyGroups(this.properties, this.propertyGroups)
+      // 过滤关联类型与内置不可编辑字段后返回（与原项目 groupedProperties 一致）
+      return groups.map(group => ({
         ...group,
         properties: this.filterGroupProperties(group.properties)
       }))
@@ -290,6 +273,7 @@ export default {
         'datetime': 'cmdb-form-datetime',
         'timezone': 'cmdb-form-timezone',
         'list': 'cmdb-form-list',
+        'objuser': 'cmdb-form-user',
         'organization': 'cmdb-form-organization',
         'user': 'cmdb-form-user'
       }

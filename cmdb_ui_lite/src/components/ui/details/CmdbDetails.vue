@@ -174,16 +174,24 @@ export default {
       if (this.propertyGroups.length > 0) {
         return this.propertyGroups
       }
-      return [{ bk_group_id: 'default', bk_group_name: '基本信息' }]
+      // 兜底分组：ID 用上游标准的小写 default，显示名用「基础信息」（上游 BaseInfoName）
+      return [{ bk_group_id: 'default', bk_group_name: '基础信息' }]
     }
   },
   created() {
     this.initGroupState()
   },
+  watch: {
+    // 实例详情侧滑栏复用同一组件实例，重新加载属性分组时需重置折叠状态，
+    // 默认折叠依据分组的 is_collapse 字段（与上游 form.js:59 一致）。
+    propertyGroups() {
+      this.initGroupState()
+    }
+  },
   methods: {
     initGroupState() {
       this.propertyGroups.forEach(group => {
-        this.$set(this.groupState, group.bk_group_id, false)
+        this.$set(this.groupState, group.bk_group_id, group.is_collapse)
       })
       this.$set(this.groupState, 'default', false)
     },

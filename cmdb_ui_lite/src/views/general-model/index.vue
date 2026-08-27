@@ -141,7 +141,7 @@
         :max-height="tableContentHeight"
         :sort="tableSort"
         :selected-data.sync="selectedIds"
-        :row-key="row => row.bk_inst_id"
+        :row-key="row => row[instanceIdField]"
         @selection-change="handleSelectionChange"
         @page-change="handlePageChange"
         @page-limit-change="handleLimitChange"
@@ -154,7 +154,7 @@
             :label="column.name"
             :sortable="getColumnSortable(column.id)"
             :show-overflow-tooltip="true">
-            <template v-if="column.id === 'bk_inst_id'" #default="{ row }">
+            <template v-if="column.id === instanceIdField" #default="{ row }">
               <span class="cell-id-link" @click="handleViewDetails(row)">
                 {{ row[column.id] }}
               </span>
@@ -183,7 +183,7 @@
           v-if="columnsConfig.show"
           :properties="allProperties"
           :selected="columnsConfig.selected"
-          :disabled-columns="columnsConfig.disabledColumns"
+          :disabled-columns="disabledColumns"
           :max="20"
           @on-apply="handleApplyColumns"
           @on-cancel="handleCancelColumns"
@@ -207,6 +207,7 @@
           <cmdb-form
             ref="cmdbFormRef"
             :properties="allProperties"
+            :property-groups="propertyGroups"
             :values="createForm"
             :type="'create'"
             :model-id="objId"
@@ -244,6 +245,7 @@
           <form-multiple
             ref="formMultipleRef"
             :properties="allProperties"
+            :property-groups="propertyGroups"
             :show-options="true"
             :submitting="batchUpdateFormLoading"
             :model-id="objId"
@@ -259,6 +261,27 @@
 </template>
 
 <script>
+// 全局模糊搜索状态：持久化到 localStorage，跨模型 / 会话 / 标签页保持一致
+const FUZZY_STORAGE_KEY = 'bk_cmdb_fuzzy_query'
+
+function getInitialFuzzyQuery() {
+  try {
+    const stored = window.localStorage.getItem(FUZZY_STORAGE_KEY)
+    // 未设置时默认勾选（true）
+    if (stored === null || stored === undefined) return true
+    return stored === 'true'
+  } catch (e) {
+    return true
+  }
+}
+
+function saveFuzzyQuery(val) {
+  try {
+    window.localStorage.setItem(FUZZY_STORAGE_KEY, val ? 'true' : 'false')
+  } catch (e) {
+    // 忽略隐私模式 / 写入失败
+  }
+}
 import ColumnsConfig from '@/components/columns-config/index.vue'
 import FilterTag from '@/components/filter-tag/index.vue'
 import FilterTagItem from '@/components/filter-tag/filter-tag-item.vue'
@@ -267,12 +290,14 @@ import FormMultiple from '@/components/ui/form/form-multiple.vue'
 import CmdbForm from '@/components/ui/form/form.vue'
 import DateSearch from '@/components/search/date.vue'
 import TimeSearch from '@/components/search/time.vue'
-import { modelAPI, userCustom } from '@/api/client'
+import { modelAPI, userCustom, cancelRequest, isCancelError, freezeList } from '@/api/client'
 import routerQuery from '@/utils/router-query'
 import QS from 'qs'
+import throttle from 'lodash/throttle'
 import isEqual from 'lodash/isEqual'
 import { buildSearchParams } from '@/utils/query-builder'
-import { MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT } from '@/dictionary/menu-symbol'
+import { formatPropertyValue } from '@/utils/property-value'
+import { MENU_INDEX, MENU_RESOURCE_INSTANCE_DETAILS, MENU_RESOURCE_MANAGEMENT, MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
 import AppMixin from '@/mixins/app'
 
 export default {
@@ -294,13 +319,15 @@ export default {
         field: '',
         value: '',
         values: [],
-        fuzzyQuery: true
+        fuzzyQuery: getInitialFuzzyQuery()
       },
       enumDropdownVisible: false,
       enumSearchQuery: '',
-      objId: 'bk_switch',
+      // 不再硬编码默认模型；缺失 objId 时由 resolveObjId 按数据（模型列表首个）动态定位
+      objId: '',
       modelData: null,
       allProperties: [],
+      propertyGroups: [],
       defaultColumns: [],
       // 与原项目保持一致: customColumns 是从存储加载的自定义列配置（存储状态）
       // columnsConfig.selected 是 UI 状态（抽屉中已勾选的属性），由 setTableHeader 同步更新
@@ -343,16 +370,14 @@ export default {
       },
       columnsConfig: {
         show: false,
-        selected: [],
-        // 与原项目保持一致: 禁用 bk_inst_id、bk_inst_name 列，这些是系统字段不能移除
-        // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue disabledColumns: ['bk_inst_id', 'bk_inst_name']
-        disabledColumns: ['bk_inst_id', 'bk_inst_name']
+        selected: []
       },
       isUrlUpdateTriggered: false,
       searchTimeout: null,
       filterTagHeight: 0,
       tableMaxHeight: 600,
       MENU_RESOURCE_INSTANCE_DETAILS,
+      MENU_RESOURCE_HOST_DETAILS,
       MENU_RESOURCE_MANAGEMENT
     }
   },
@@ -362,6 +387,32 @@ export default {
         return this.modelData.bk_obj_name
       }
       return this.objId
+    },
+    // 内置模型主键字段映射（与后端 BUILTIN_ID_FIELD_MAP 保持一致）
+    instanceIdField() {
+      const idFieldMap = {
+        'host': 'bk_host_id',
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'bk_biz_set_obj': 'bk_biz_set_id'
+      }
+      return idFieldMap[this.objId] || 'bk_inst_id'
+    },
+    // 内置模型名称字段映射
+    instanceNameField() {
+      const nameFieldMap = {
+        'host': 'bk_host_name',
+        'biz': 'bk_biz_name',
+        'set': 'bk_set_name',
+        'module': 'bk_module_name',
+        'bk_biz_set_obj': 'bk_biz_set_name'
+      }
+      return nameFieldMap[this.objId] || 'bk_inst_name'
+    },
+    // 禁用列：内置模型的 ID/名称字段为系统固定字段，不可移除
+    disabledColumns() {
+      return [this.instanceIdField, this.instanceNameField]
     },
     searchableProperties() {
       // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)
@@ -389,8 +440,7 @@ export default {
       const propertyType = property.bk_property_type
       if (!propertyType) return false
       const supportedTypes = [
-        'singlechar', 'longchar', 'shortchar', 'text',
-        'enum', 'int', 'bool', 'time', 'date', 'float', 'list', 'map'
+        'singlechar', 'longchar', 'enum', 'int', 'bool', 'time', 'date', 'float', 'list'
       ]
       return supportedTypes.includes(propertyType)
     },
@@ -527,7 +577,10 @@ export default {
     }
   },
   created() {
-    this.objId = this.$route.params.objId || 'bk_switch'
+    // 面包屑活跃守卫：本视图的 updateBreadcrumbs 可能在异步加载完成后才执行，
+    // 若期间路由已切换到其它视图（组件销毁），必须拦截写入，避免旧标题串扰新视图。
+    this._breadcrumbGuard = true
+    this.resolveObjId()
     this.updateBreadcrumbs()
 
     this.stopRouteQueryWatch = routerQuery.watch('*', (query, oldQuery) => {
@@ -620,7 +673,7 @@ export default {
           }
         }
       }
-    }, { throttle: 100 })
+    }, { throttle: 300 })
   },
   mounted() {
     console.log('[Index.mounted] 组件挂载')
@@ -672,6 +725,8 @@ export default {
     }, 0)
   },
   beforeDestroy() {
+    // 组件销毁：解除面包屑活跃守卫，阻止异步回调继续写入全局面包屑
+    this._breadcrumbGuard = false
     if (this.stopRouteQueryWatch) {
       this.stopRouteQueryWatch()
     }
@@ -684,6 +739,8 @@ export default {
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler)
     }
+    // 取消进行中的列表请求，释放大列表数据引用，避免组件销毁后陈旧 500+ 行响应挂载/驻留（GC）
+    cancelRequest('inst-list')
   },
   watch: {
     filterTags: {
@@ -704,13 +761,22 @@ export default {
         }
       }
     },
+    'filter.fuzzyQuery'(val) {
+      // 全局模糊状态：任意变化（勾选/取消/URL 同步）均写回 localStorage
+      saveFuzzyQuery(val)
+    },
     '$route.params.objId': {
       handler(newObjId) {
-        if (newObjId !== this.objId) {
-          this.objId = newObjId || 'bk_switch'
-          this.updateBreadcrumbs()
-          this.restoreStateFromUrl()
-          this.loadModelData()
+        if (newObjId) {
+          if (newObjId !== this.objId) {
+            this.objId = newObjId
+            this.updateBreadcrumbs()
+            this.restoreStateFromUrl()
+            this.loadModelData()
+          }
+        } else {
+          // 路由未携带 objId：提示错误并返回首页，避免硬编码兜底
+          this.resolveObjId()
         }
       }
     },
@@ -782,8 +848,11 @@ export default {
                   }
                 }
               }
-              if (query.fuzzy !== undefined) {
-                this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+              // 仅当 URL 显式给出 fuzzy 取值时覆盖；缺失/空串保留默认（已勾选）
+              if (query.fuzzy === 'true' || query.fuzzy === '1') {
+                this.filter.fuzzyQuery = true
+              } else if (query.fuzzy === 'false' || query.fuzzy === '0') {
+                this.filter.fuzzyQuery = false
               }
               this.hasRestoredFromUrl = true
               this.updateFilterTagsFromQuery()
@@ -816,11 +885,27 @@ export default {
      * 3. 支持点击跳转到实例详情
      */
     createIdProperty(objId) {
+      const idFieldMap = {
+        'host': 'bk_host_id',
+        'biz': 'bk_biz_id',
+        'set': 'bk_set_id',
+        'module': 'bk_module_id',
+        'bk_biz_set_obj': 'bk_biz_set_id'
+      }
+      const idField = idFieldMap[objId] || 'bk_inst_id'
+      const nameMap = {
+        'host': '主机ID',
+        'biz': '业务ID',
+        'set': '集群ID',
+        'module': '模块ID',
+        'bk_biz_set_obj': '业务集ID'
+      }
+      const name = nameMap[objId] || '实例ID'
       return {
         id: Date.now(),
         bk_obj_id: objId,
-        bk_property_id: 'bk_inst_id',
-        bk_property_name: '实例ID',
+        bk_property_id: idField,
+        bk_property_name: name,
         bk_property_index: -1,
         bk_property_type: 'int',
         isonly: true,
@@ -833,8 +918,35 @@ export default {
         _is_inject_: true
       }
     },
+    // 模型 ID 解析：
+    // - 路由已携带 objId：直接使用（无硬编码兜底）
+    // - 路由缺失 objId：提示 UI 错误并返回首页 index（不异步拉取后端数据、不跳首个模型）
+    resolveObjId() {
+      // 优先取路由参数 objId；内置模型专属资源路由（如 /resource/host）在 meta 中显式声明 objId，
+      // 作为其路由语义（非缺省兜底），保证收藏项在该路由下精确命中。
+      const paramObjId = this.$route.params.objId || this.$route.meta?.objId
+      if (paramObjId) {
+        this.objId = paramObjId
+        return
+      }
+      this.$bkMessage({
+        message: '未指定模型（objId），无法打开实例列表，已返回首页',
+        theme: 'error'
+      })
+      this.$router.replace({ name: MENU_INDEX })
+    },
     updateBreadcrumbs() {
       this.$nextTick(() => {
+        // 竞态守卫：本视图可能已在异步加载期间被路由替换（组件销毁），
+        // 或当前路由已切换到其它模型实例。此时若仍写入自定义面包屑，
+        // 会把旧视图标题串扰到新视图（如业务拓扑页显示"负载均衡"）。
+        if (!this._breadcrumbGuard) {
+          return
+        }
+        const routeObjId = this.$route.params.objId || this.$route.meta.objId
+        if (routeObjId && routeObjId !== this.objId) {
+          return
+        }
         this.$store.commit('setCustomBreadcrumbs', {
           enable: true,
           title: this.modelName,
@@ -883,7 +995,10 @@ export default {
         const query = this.$route.query
         const currentField = query.field || this.filter.field
         const currentValue = query.filter !== undefined ? String(query.filter) : this.filter.value
-        const currentFuzzy = query.fuzzy !== undefined ? (query.fuzzy === 'true' || query.fuzzy === '1') : this.filter.fuzzyQuery
+        // 仅当 URL 显式给出 fuzzy 取值时使用；缺失/空串保留当前/默认值（已勾选）
+        const currentFuzzy = (query.fuzzy === 'true' || query.fuzzy === '1') ? true
+          : (query.fuzzy === 'false' || query.fuzzy === '0') ? false
+          : this.filter.fuzzyQuery
         const currentSort = query.sort || this.table.sort
         const currentPage = query.page ? parseInt(query.page, 10) : this.table.pagination.current
         const currentLimit = query.limit ? parseInt(query.limit, 10) : this.table.pagination.limit
@@ -917,6 +1032,15 @@ export default {
         this.allProperties = rawAttributes
         this.defaultColumns = attrResult.default_columns || []
         console.log('[Persistence] Loaded model attributes, objId:', this.objId, 'defaultColumns:', this.defaultColumns, 'allProperties count:', this.allProperties.length)
+
+        // 拉取分组定义，供 cmdb-form 使用权威 bk_group_name 渲染分组标题
+        try {
+          const groupsResult = await modelAPI.getModelPropertyGroups(this.objId)
+          this.propertyGroups = (groupsResult && groupsResult.groups) || []
+        } catch (e) {
+          console.log('[Index.loadModelData] 获取分组失败:', e)
+          this.propertyGroups = []
+        }
 
         try {
           const modelResult = await modelAPI.getModel(this.objId)
@@ -976,7 +1100,7 @@ export default {
           
           instResult = await modelAPI.searchInstances(this.objId, {
             ...searchParams
-          })
+          }, { requestId: 'inst-list', cancelPrevious: true })
         } else {
           // 否则使用原有的简单搜索方式
           const isMultiSelectEnum = this.isEnumField || this.isBoolField || this.isEnumMultiField
@@ -1006,7 +1130,8 @@ export default {
             }
           }
 
-          instResult = await modelAPI.searchInstances(this.objId, searchParams)
+          instResult = await modelAPI.searchInstances(this.objId, searchParams,
+            { requestId: 'inst-list', cancelPrevious: true })
         }
 
         console.log('[Index.loadModelData] API返回结果:', {
@@ -1017,14 +1142,39 @@ export default {
         this.setTableHeader()
         this.updateTableSortState()
 
-        this.table.list = instResult.instances || []
+        // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理：
+        // 与上游 relation/create.vue 对 originalList 使用 Object.freeze 的意图一致，
+        // 避免 500+ 行 × 上百列在初始化/重载时产生大量响应式 getter 与内存开销（DOM 替换/GC 更快）。
+        this.table.list = freezeList(instResult.instances || [])
         this.table.pagination.count = instResult.total || 0
+
+        // 复刻原项目 bk-cmdb（general-model/index.vue getTableData）：
+        // 当后端返回 count > 0 但当前页 info 为空时，回退到「当前页 - 1」重新加载，
+        // 而非停留在空页。典型场景：末页（如 page=7）仅剩的 1 条被删除后，该页被删空、
+        // 但总记录仍 > 0，若不做处理表格会显示「暂无数据」且翻页组件因 current 越界而丢失。
+        // 原项目用 RouterQuery.set({ page: current - 1 }) 触发 watch 重新拉取上一页数据。
+        // lite 这里改为「同步内联递归重载」：直接递减 current 并就地重新请求上一页，
+        // 同时同步 URL。这样避免依赖 watch 异步链（watch 读取 current 的时序可能仍读到
+        // 旧值 7，导致用空页参数再请求一次、陷入延迟级联回退）。
+        // 注意：回到的是「上一页」(current-1)，既不是首页(1)也不是末页，这是删除后
+        // 剩余数据最自然的落点（上一页恰好承载被删空页之前的最后若干条）。
+        if (this.table.pagination.count && this.table.list.length === 0 && this.table.pagination.current > 1) {
+          this.table.pagination.current -= 1
+          routerQuery.set({ page: this.table.pagination.current, _t: Date.now() })
+          // 用更新后的页码内联重新加载上一页（递归，但最终页有数据时自然收敛）
+          return this.loadModelData(searchParams)
+        }
 
         console.log('[Index.loadModelData] 加载完成，当前列表行数:', this.table.list.length)
 
       } catch (error) {
+        // 请求被取消（翻页/筛选重载时的 cancelPrevious）属预期行为，静默忽略，不弹错误
+        if (isCancelError(error)) {
+          console.log('[Index.loadModelData] 请求已取消（被新请求取代）')
+          return
+        }
         console.error('[ERROR] 加载数据失败:', error)
-        this.$bkMessage({ message: '加载数据失败', theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.table.loading = false
       }
@@ -1089,12 +1239,12 @@ export default {
       console.log('[Debug] setTableHeader start')
       console.log('[Debug] allProperties:', this.allProperties?.length)
       console.log('[Debug] customColumns:', this.customColumns)
-      console.log('[Debug] disabledColumns:', this.columnsConfig.disabledColumns)
+      console.log('[Debug] disabledColumns:', this.disabledColumns)
 
       // 与原项目保持一致: 从存储状态 customColumns 读取，不从 UI 状态 columnsConfig.selected 读取
       // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue#L654-L667
       const customColumns = this.customColumns || []
-      const fixedPropertyIds = this.columnsConfig.disabledColumns || []
+      const fixedPropertyIds = this.disabledColumns || []
 
       // 调用与原项目一致的 getHeaderProperties 函数
       // - 有自定义列时: 按自定义列顺序生成（固定字段始终前置）
@@ -1128,17 +1278,21 @@ export default {
       console.log('[Debug] columnsConfig.selected synced to:', this.columnsConfig.selected)
     },
     formatCellValue(value, column) {
+      // column.property 为完整属性定义（含 bk_property_type 与 option），
+      // 未取到时回退到 column 本身，保证枚举/多选/列表等类型按 option 映射为显示名。
+      // 统一复用全站 property-value.js 的 formatPropertyValue，避免通用模型列表与
+      // 资源/关联/业务拓扑列表在属性格式化上实现漂移。
+      const property = (column && column.property) || column
       if (value === null || value === undefined || value === '') {
         return '-'
       }
-      return String(value)
+      return formatPropertyValue(value, property)
     },
     handleFieldChange() {
       // 只清空当前输入框的值，保留之前的搜索条件
       // 条件清空将在提交查询时（handleSearch）触发
       this.filter.value = ''
       this.filter.values = []
-      this.filter.fuzzyQuery = false
     },
     handleEnumSelect(event) {
       const selected = event.target.selectedOptions
@@ -1199,18 +1353,11 @@ export default {
     restoreStateFromUrl() {
       console.log('[restoreStateFromUrl] 开始恢复状态')
       
-      // 获取 hash 路由中的参数（Vue Router）- 这是主要来源
+      // 获取 Vue Router hash 路由中的参数 — 唯一数据源
       const routeQuery = this.$route.query
       
-      // 获取主 URL 中的参数（通过 URLSearchParams）- 作为补充
-      const urlParams = new URLSearchParams(window.location.search)
-      const mainQuery = {}
-      urlParams.forEach((value, key) => {
-        mainQuery[key] = value
-      })
-      
-      // 合并参数：hash路由参数优先，缺失时从主URL补充
-      const query = { ...mainQuery, ...routeQuery }
+      // 只使用路由查询（window.location.search 可能含有 query-builder 遗留的双重编码值，忽略之）
+      const query = { ...routeQuery }
       
       console.log('[restoreStateFromUrl] 合并后的URL query:', query)
 
@@ -1228,8 +1375,11 @@ export default {
       } else {
         this.filter.value = ''
       }
-      if (query.fuzzy !== undefined) {
-        this.filter.fuzzyQuery = query.fuzzy === 'true' || query.fuzzy === '1'
+      // 仅当 URL 显式给出 fuzzy 取值时覆盖；缺失/空串保留默认（已勾选）
+      if (query.fuzzy === 'true' || query.fuzzy === '1') {
+        this.filter.fuzzyQuery = true
+      } else if (query.fuzzy === 'false' || query.fuzzy === '0') {
+        this.filter.fuzzyQuery = false
       }
       if (query.sort) {
         this.table.sort = query.sort
@@ -1486,8 +1636,10 @@ export default {
         query.s = 'adv'
       }
 
+      // 使用 replaceQuery 完整替换 query（而非 setAll 的合并），
+      // 确保被省略的参数（如清除筛选时的 filter_adv/s）被真正移除，不会因合并残留
       this.isUrlUpdateTriggered = true
-      routerQuery.setAll(query)
+      routerQuery.replaceQuery(query)
     },
     handleSearch() {
       this.table.pagination.current = 1
@@ -1706,7 +1858,6 @@ export default {
       // 清除快速搜索输入框
       this.filter.value = ''
       this.filter.values = []
-      this.filter.fuzzyQuery = false
       this.isUrlUpdateTriggered = true
       // 清除URL中的filter_adv和s参数，保持与原项目一致
       const query = {
@@ -1736,17 +1887,17 @@ export default {
       this.batchUpdateFormLoading = true
       try {
         const result = await modelAPI.batchUpdateInstancesWithSameData(this.objId, this.selectedIds, data)
-        if (result.success) {
+        if (result) {
           this.$bkMessage({ message: `成功更新 ${this.selectedIds.length} 个实例`, theme: 'success' })
           this.handleBatchUpdateDialogClose()
           this.selectedIds = []
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: result.message || '更新失败', theme: 'error' })
+          this.$bkMessage({ message: '未获取到更新结果', theme: 'error' })
         }
       } catch (error) {
         console.error('Batch update error:', error)
-        this.$bkMessage({ message: '更新失败，请稍后重试', theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.batchUpdateFormLoading = false
       }
@@ -1780,10 +1931,10 @@ export default {
       this.hiddenUniqueProperties = properties || []
     },
     handleSelectionChange(selection) {
-      this.selectedIds = selection.map(row => row.bk_inst_id)
+      this.selectedIds = selection.map(row => row[this.instanceIdField])
     },
     handleDeleteSingle(row) {
-      this.handleDelete([row.bk_inst_id])
+      this.handleDelete([row[this.instanceIdField]])
     },
     handleBatchDelete() {
       if (this.selectedIds.length === 0) {
@@ -1824,7 +1975,7 @@ export default {
                 await this.loadModelData(this.currentSearchParams)
               } catch (error) {
                 console.error('Delete error:', error)
-                this.$bkMessage({ message: '删除失败，请稍后重试', theme: 'error' })
+                this.$handleApiError(error)
               } finally {
                 this.table.loading = false
               }
@@ -1837,7 +1988,7 @@ export default {
         })
         .catch(error => {
           console.error('Check associations error:', error)
-          this.$bkMessage({ message: '检查关联关系失败，请稍后重试', theme: 'error' })
+          this.$handleApiError(error)
           this.table.loading = false
         })
     },
@@ -1966,29 +2117,17 @@ export default {
       try {
         const result = await modelAPI.createInstance(this.objId, formData)
         
-        if (result.success) {
+        if (result) {
           this.$bkMessage({ message: '实例创建成功', theme: 'success' })
           this.handleCreateDialogClose()
           // 刷新列表
           await this.loadModelData(this.currentSearchParams)
         } else {
-          this.$bkMessage({ message: result.message || '创建失败', theme: 'error' })
+          this.$bkMessage({ message: '未获取到创建结果', theme: 'error' })
         }
       } catch (error) {
         console.error('Create instance error:', error)
-        let errorMsg = '创建失败，请稍后重试'
-
-        if (error.response) {
-          const errorData = error.response.data
-          // 适配原项目 BaseResp 错误格式: { result: false, bk_error_code: xxx, bk_error_msg: 'xxx' }
-          if (errorData && errorData.bk_error_msg) {
-            errorMsg = errorData.bk_error_msg
-          } else if (errorData && errorData.detail) {
-            errorMsg = errorData.detail
-          }
-        }
-
-        this.$bkMessage({ message: errorMsg, theme: 'error' })
+        this.$handleApiError(error)
       } finally {
         this.createFormLoading = false
       }
@@ -2026,15 +2165,24 @@ export default {
       
       const s = query.s || 'adv'
       
-      this.syncStateToUrl({ 
+      this.syncStateToUrl({
         filter_adv: filterAdv,
         s: filterAdv ? s : undefined
       })
-      this.prevInstanceId = instance.bk_inst_id
-      this.$router.push({
-        name: MENU_RESOURCE_INSTANCE_DETAILS,
-        params: { objId: this.objId, instId: instance.bk_inst_id }
-      })
+      const instanceId = instance[this.instanceIdField]
+      this.prevInstanceId = instanceId
+      // 内置 host 模型使用专门的主机详情页，其他模型使用通用实例详情页
+      if (this.objId === 'host') {
+        this.$router.push({
+          name: MENU_RESOURCE_HOST_DETAILS,
+          params: { id: instanceId }
+        })
+      } else {
+        this.$router.push({
+          name: MENU_RESOURCE_INSTANCE_DETAILS,
+          params: { objId: this.objId, instId: instanceId }
+        })
+      }
     },
     handlePageChange(page) {
       this.table.pagination.current = page
@@ -2199,7 +2347,6 @@ export default {
       if (tag.id === this.filter.field) {
         this.filter.value = ''
         this.filter.values = []
-        this.filter.fuzzyQuery = false
       }
       this.table.pagination.current = 1
       this.currentSearchParams = null
@@ -2247,7 +2394,6 @@ export default {
       // 清除快速搜索输入框
       this.filter.value = ''
       this.filter.values = []
-      this.filter.fuzzyQuery = false
       this.table.pagination.current = 1
       this.currentSearchParams = null
       this.advancedFilterConditions = null
@@ -2429,26 +2575,14 @@ export default {
     border-radius: 2px 0 0 2px;
     margin-right: -1px;
 
-    :deep(.bk-select) {
+    .bk-select {
+      width: 100%;
       height: 32px;
       min-height: 32px;
       box-sizing: border-box;
-      
+
       .bk-select-name {
         font-size: 12px;
-        height: 30px;
-        line-height: 30px;
-      }
-
-      .bk-select-trigger {
-        height: 32px;
-        min-height: 32px;
-        box-sizing: border-box;
-
-        .bk-select-name {
-          height: 30px;
-          line-height: 30px;
-        }
       }
     }
   }
@@ -2458,7 +2592,7 @@ export default {
     width: 320px;
     border-radius: 0 2px 2px 0;
 
-    :deep(.bk-form-input) {
+    .bk-form-input {
       line-height: 32px;
     }
 
@@ -2473,7 +2607,7 @@ export default {
         padding: 0 10px;
         border: 1px solid #c4c6cc;
         border-radius: 2px;
-        font-size: 14px;
+        font-size: 12px;
         outline: none;
         min-width: 0;
         box-sizing: border-box;
@@ -2498,8 +2632,8 @@ export default {
             height: 32px;
             padding: 0 32px 0 10px;
             border: 1px solid #c4c6cc;
-            border-radius: 0;
-            font-size: 14px;
+            border-radius: 2px;
+            font-size: 12px;
             outline: none;
             cursor: pointer;
             background: #fff;
@@ -2694,7 +2828,7 @@ export default {
       min-width: unset;
       width: auto;
 
-      :deep(.bk-select) {
+      .bk-select {
         width: 100%;
       }
     }

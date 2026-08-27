@@ -27,7 +27,9 @@ export default {
   async findAssociationType() {
     try {
       const res = await client.post('/find/associationtype', {})
-      return res?.info || []
+      // 与 findObjectAssociation 保持一致：后端 success_response(associations) 将列表置于 data，
+      // 响应拦截器返回该数组；兼容 {info} 结构兜底
+      return Array.isArray(res) ? res : (res?.data || res?.info || [])
     } catch (e) {
       return []
     }

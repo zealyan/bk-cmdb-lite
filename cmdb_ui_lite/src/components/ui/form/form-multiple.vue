@@ -68,6 +68,8 @@
 <script>
 import { parseOption, charLength, getMaxCharsByType } from '@/utils/validate-utils'
 import { modelAPI } from '@/api/client'
+import { sortPropertyGroups } from '@/utils/property-sort'
+import { BUILTIN_UNEDITABLE_FIELDS } from '@/dictionary/model-constants'
 export default {
   name: 'cmdb-form-multiple',
   props: {
@@ -94,6 +96,10 @@ export default {
     modelId: {
       type: String,
       default: ''
+    },
+    propertyGroups: {
+      type: Array,
+      default: () => []
     }
   },
   data() {
@@ -133,30 +139,9 @@ export default {
       return hiddenNames
     },
     groupedPropertiesList() {
-      const groupNameMap = {
-        'base': '基本信息',
-        'default': '默认',
-        'extend': '扩展信息'
-      }
-      const groupOrder = { 'base': 0, 'default': 1, 'extend': 2 }
-      const groups = {}
-      this.properties.forEach(property => {
-        const groupId = property.bk_property_group || 'default'
-        if (!groups[groupId]) {
-          groups[groupId] = {
-            bk_group_id: groupId,
-            bk_group_name: groupNameMap[groupId] || groupId,
-            properties: []
-          }
-        }
-        groups[groupId].properties.push(property)
-      })
-      // 对每个分组内的属性按 bk_property_index 排序
-      Object.values(groups).forEach(group => {
-        group.properties.sort((a, b) => (a.bk_property_index || 0) - (b.bk_property_index || 0))
-      })
-      // 对分组按预定义顺序排序
-      return Object.values(groups).sort((a, b) => (groupOrder[a.bk_group_id] || 99) - (groupOrder[b.bk_group_id] || 99))
+      // 分组排序对齐详情页 effectivePropertyGroups：按 propertyGroups(API) 的 bk_group_index，
+      // 不再使用写死的 groupOrder 映射。
+      return sortPropertyGroups(this.properties, this.propertyGroups)
     }
   },
   async created() {
@@ -205,8 +190,7 @@ export default {
     },
     isPropertyEditable(property) {
       // 与原项目保持一致: /workspace/bk-cmdb/src/ui/src/components/ui/form/form-multiple.vue
-      const BUILTIN_UNEDITABLE_FIELDS = ['bk_updated_by', 'bk_updated_at', 'bk_created_by', 'bk_created_at']
-      
+      // BUILTIN_UNEDITABLE_FIELDS 已统一从 model-constants 导入，覆盖 create_time / last_time 等内置字段
       const { editable } = property
       const isapi = property.bk_isapi
       const { isonly } = property

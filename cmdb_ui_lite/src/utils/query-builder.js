@@ -105,39 +105,71 @@ export function buildSearchParams(condition, properties, options = {}) {
         sort: sort
     }
 
+    // 属性类型映射，用于判断 date/time 类型
+    const propertyMap = {}
+    if (Array.isArray(properties)) {
+        properties.forEach(p => {
+            propertyMap[p.bk_property_id] = p
+        })
+    }
+
     // 处理所有条件，支持多条件AND组合查询
     const conditionIds = Object.keys(condition)
     if (conditionIds.length > 0) {
         const conditions = []
-        
+
         conditionIds.forEach(fieldId => {
             const { operator, value } = condition[fieldId]
-            
+
             // 跳过空值
             if (value === undefined || value === null || (typeof value === 'string' && value.length === 0)) {
                 return
             }
-            
+
             // 跳过空数组
             if (Array.isArray(value) && value.length === 0) {
                 return
             }
-            
+
+            const property = propertyMap[fieldId]
+            const propertyType = property ? property.bk_property_type : ''
+
+            // $range 操作符拆分（与原项目一致）
+            if (operator === '$range' || operator === '$nrange') {
+                const rangeValues = Array.isArray(value) ? value : String(value).split(/[\n,，;；]/).filter(v => v.trim().length)
+                if (rangeValues.length >= 2) {
+                    if (operator === '$range') {
+                        conditions.push({ field: fieldId, operator: '$gte', value: rangeValues[0], fuzzy: false })
+                        conditions.push({ field: fieldId, operator: '$lte', value: rangeValues[1], fuzzy: false })
+                    } else {
+                        conditions.push({ field: fieldId, operator: '$nrange', value: [rangeValues[0], rangeValues[1]], fuzzy: false })
+                    }
+                } else if (rangeValues.length === 1 && operator === '$range') {
+                    conditions.push({ field: fieldId, operator: '$gte', value: rangeValues[0], fuzzy: false })
+                }
+                return
+            }
+
+            // $in/$nin 操作符：将字符串分割为数组
+            let submitValue = value
+            if (operator === '$in' || operator === '$nin') {
+                if (typeof value === 'string') {
+                    submitValue = value.split(/[\n,，;；]/).map(s => s.trim()).filter(s => s.length > 0)
+                } else if (!Array.isArray(value)) {
+                    submitValue = [value]
+                }
+            }
+
             const cond = {
                 field: fieldId,
                 operator: operator,
+                value: submitValue,
                 fuzzy: operator === '$regex' || operator === '$like'
             }
-            
-            if (Array.isArray(value) && value.length > 0) {
-                cond.value = value
-            } else {
-                cond.value = value
-            }
-            
+
             conditions.push(cond)
         })
-        
+
         if (conditions.length > 0) {
             params.conditions = conditions
         }

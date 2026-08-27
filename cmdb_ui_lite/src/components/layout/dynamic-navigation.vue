@@ -5,15 +5,49 @@
     @mouseleave="handleMouseLeave">
     <div class="nav-wrapper"
       :class="{ unfold: unfold, flexible: !navStick }">
+      <!-- 业务选择器（仅业务视图显示） -->
+      <div class="business-wrapper" v-if="isBusinessView">
+        <transition name="fade">
+          <div class="business-selector" v-show="unfold">
+            <bk-select
+              v-model="selectedBizId"
+              :loading="bizLoading"
+              :searchable="true"
+              :clearable="false"
+              placeholder="请选择业务"
+              popover-width="240"
+              ext-popover-cls="biz-selector-dropdown"
+              @selected="handleBizChange">
+              <bk-option
+                v-for="biz in bizList"
+                :key="biz.bk_biz_id"
+                :id="String(biz.bk_biz_id)"
+                :name="`${biz.bk_biz_name}(${biz.bk_biz_id})`">
+                <div class="biz-option-item">
+                  <span class="biz-name">{{ biz.bk_biz_name }}</span>
+                  <span class="biz-id">({{ biz.bk_biz_id }})</span>
+                </div>
+              </bk-option>
+            </bk-select>
+          </div>
+        </transition>
+        <transition name="fade">
+          <i class="business-flag bk-icon icon-angle-down" v-show="!unfold"
+            v-bk-tooltips.right="currentBizName"></i>
+        </transition>
+      </div>
       <div class="menu-list">
         <template v-for="(menu, index) in currentMenus">
           <router-link
             :key="index"
             tag="a"
+            ref="menuLink"
             active-class="active"
             style="display: block;"
             v-if="menu.hasOwnProperty('route')"
-            :class="['menu-item', 'is-link']"
+            :class="['menu-item', 'is-link', {
+              'is-relative-active': isRelativeActive(menu)
+            }]"
             :to="menu.route"
             :title="menu.i18n">
             <h3 class="menu-info clearfix">
@@ -39,13 +73,31 @@
 <script>
 import { mapGetters, mapActions } from 'vuex'
 import MENU_DICTIONARY from '@/dictionary/menu'
-import { MENU_RESOURCE, MENU_MODEL, MENU_RESOURCE_INSTANCE } from '@/dictionary/menu-symbol'
+import {
+  MENU_BUSINESS,
+  MENU_RESOURCE,
+  MENU_MODEL,
+  MENU_RESOURCE_INSTANCE,
+  MENU_RESOURCE_HOST,
+  MENU_BUSINESS_TOPOLOGY
+} from '@/dictionary/menu-symbol'
+import { BUILTIN_MODEL_RESOURCE_MENUS } from '@/dictionary/model-constants'
+import { modelAPI } from '@/api/client'
+import { topoAPI } from '@/api/topo'
+import { getCachedBizId } from '@/utils/biz-cache'
 
 export default {
   name: 'DynamicNavigation',
   data() {
     return {
-      timer: null
+      timer: null,
+      bizList: [],
+      bizLoading: false,
+      selectedBizId: '',
+      // 当前菜单中是否存在 router-link 精确命中（active 类）的项。
+      // 存在精确命中（如「自定义收藏」的模型实例页）时，relative-active 机制
+      // 不派生「资源目录」选中态，避免与精确命中项冲突（对齐原项目）。
+      hasExactActive: false
     }
   },
   computed: {
@@ -55,9 +107,21 @@ export default {
     unfold() {
       return this.navStick || !this.navFold
     },
+    isBusinessView() {
+      const [topRoute] = this.$route.matched
+      return topRoute?.name === MENU_BUSINESS
+    },
+    currentBizId() {
+      const bizId = this.$route.params.bizId
+      return bizId ? String(bizId) : ''
+    },
+    currentBizName() {
+      const biz = this.bizList.find(b => String(b.bk_biz_id) === this.currentBizId)
+      return biz ? biz.bk_biz_name : ''
+    },
     owner() {
       const [topRoute] = this.$route.matched
-      return topRoute?.name || MENU_RESOURCE
+      return topRoute?.name || MENU_BUSINESS
     },
     collectionMenus() {
       return this.resourceCollection.map((id) => {
@@ -66,22 +130,59 @@ export default {
           id: `collection_${id}`,
           i18n: model?.bk_obj_name || id,
           icon: model?.bk_obj_icon || 'icon-cc-default',
-          route: {
-            name: MENU_RESOURCE_INSTANCE,
-            params: {
-              objId: id
-            }
-          }
+          route: this.getCollectionRoute(model)
         }
       })
     },
     currentMenus() {
       const target = MENU_DICTIONARY.find(menu => menu.id === this.owner)
-      const menus = [...((target && target.menu) || [])]
+      let menus = [...((target && target.menu) || [])]
+      if (this.owner === MENU_BUSINESS) {
+        menus = menus.map(menu => {
+          if (menu.id === MENU_BUSINESS_TOPOLOGY) {
+            // 对齐原项目 getMenuLink：菜单链接的 bizId 取自 store 的 objectBiz/bizId
+            // （由路由守卫在进入业务时绑定），缺失时回退到全局默认缓存的业务 ID，
+            // 保证菜单链接本身指向一个合法业务，而非 /business/0/index
+            const storeBizId = this.$store.getters['objectBiz/bizId']
+            const effectiveBizId = (storeBizId && String(storeBizId) !== '0')
+              ? String(storeBizId)
+              : getCachedBizId(this.$store.getters['user/userName'])
+            return {
+              ...menu,
+              route: {
+                name: MENU_BUSINESS_TOPOLOGY,
+                params: {
+                  bizId: effectiveBizId
+                }
+              }
+            }
+          }
+          return menu
+        })
+      }
       if (this.owner === MENU_RESOURCE && this.collectionMenus.length > 0) {
         menus.splice(1, 0, ...this.collectionMenus)
       }
       return menus
+    },
+    /**
+     * 派生「相对选中」菜单名（对齐原项目 dynamic-navigation）：
+     * 当当前路由 meta.menu.relative 指向某菜单（如实例页指向「资源目录」），
+     * 且当前菜单中不存在精确命中（active）项时，返回该菜单名，使其通过
+     * is-relative-active 类保持选中态。
+     * 一旦存在精确命中（如「自定义收藏」模型实例页命中收藏菜单项），
+     * 返回 null 以抑制派生选中，避免与精确命中项冲突。
+     */
+    relativeActiveName() {
+      const relative = this.$route.meta?.menu?.relative
+      if (relative && !this.hasExactActive) {
+        const names = Array.isArray(relative) ? relative : [relative]
+        const matched = names.find(name => this.currentMenus.some(
+          menu => menu.route && menu.route.name === name
+        ))
+        return matched || null
+      }
+      return null
     }
   },
   methods: {
@@ -102,6 +203,120 @@ export default {
         fold: !this.navFold,
         stick: !this.navStick
       })
+    },
+    /**
+     * 判断某菜单是否应呈现「相对选中」态：
+     * 其 route.name 等于 relativeActiveName 派生出的菜单名时返回 true。
+     */
+    isRelativeActive(menu) {
+      return !!menu.route && menu.route.name === this.relativeActiveName
+    },
+    /**
+     * 计算当前菜单中是否存在精确命中（active 类）的 router-link。
+     * 用于驱动 relativeActiveName 的抑制逻辑（精确命中优先）。
+     */
+    checkExactActive() {
+      if (!this.$refs.menuLink) {
+        this.hasExactActive = false
+        return
+      }
+      this.$nextTick(() => {
+        const links = Array.isArray(this.$refs.menuLink)
+          ? this.$refs.menuLink
+          : [this.$refs.menuLink]
+        this.hasExactActive = links.some(link => {
+          const el = link?.$el
+          return el && el.classList.contains('active')
+        })
+      })
+    },
+    /**
+     * 计算「自定义收藏」菜单项的路由（对齐原项目 getCollectionRoute）：
+     * - 内置模型（如 host）映射到其专属资源路由名（BUILTIN_MODEL_RESOURCE_MENUS，
+     *   如 MENU_RESOURCE_HOST → /resource/host），使收藏项在主机列表/详情页精确命中并高亮；
+     * - 其余模型使用通用实例路由 /resource/instance/:objId。
+     */
+    getCollectionRoute(model) {
+      const objId = model?.bk_obj_id
+      if (objId && Object.prototype.hasOwnProperty.call(BUILTIN_MODEL_RESOURCE_MENUS, objId)) {
+        return {
+          name: BUILTIN_MODEL_RESOURCE_MENUS[objId]
+        }
+      }
+      return {
+        name: MENU_RESOURCE_INSTANCE,
+        params: {
+          objId
+        }
+      }
+    },
+    async loadBizList() {
+      if (this.bizList.length > 0) return
+      this.bizLoading = true
+      try {
+        const res = await topoAPI.getBizList()
+        if (res) {
+          this.bizList = res.filter(b => b.default !== 1)
+        }
+      } catch (e) {
+        console.error('[DynamicNavigation] 加载业务列表失败:', e)
+      } finally {
+        this.bizLoading = false
+      }
+    },
+    handleBizChange(value) {
+      if (!value) return
+      const targetBizId = value
+      // 保存与数据绑定由路由守卫（beforeEach）在进入目标业务路由时统一处理，
+      // 这里仅负责导航到目标业务（守卫会写入 localStorage['selectedBusiness'] 并提交 store）
+      const currentPath = this.$route.path
+      const bizIdPattern = /^\/business\/(\d+)(\/.*)?$/
+      if (bizIdPattern.test(currentPath)) {
+        const newPath = currentPath.replace(bizIdPattern, `/business/${targetBizId}$2`)
+        this.$router.replace(newPath)
+      } else {
+        this.$router.push({
+          name: MENU_BUSINESS_TOPOLOGY,
+          params: { bizId: targetBizId }
+        })
+      }
+    },
+    syncSelectedBiz() {
+      if (this.isBusinessView && this.currentBizId && this.currentBizId !== '0') {
+        // 选择器默认选中当前业务：优先取 store 中由守卫绑定的 objectBiz/bizId，
+        // 与导航栏菜单链接、业务内容保持一致（原项目的数据绑定方式）
+        const storeBizId = this.$store.getters['objectBiz/bizId']
+        this.selectedBizId = (storeBizId && String(storeBizId) !== '0')
+          ? String(storeBizId)
+          : this.currentBizId
+      }
+    }
+  },
+  watch: {
+    isBusinessView: {
+      immediate: true,
+      handler(val) {
+        if (val) {
+          this.loadBizList()
+        }
+      }
+    },
+    '$route': {
+      immediate: true,
+      handler() {
+        this.syncSelectedBiz()
+        this.checkExactActive()
+      }
+    },
+    // 业务列表异步加载完成后，重新同步选择器默认选中，
+    // 避免「路由已就绪但选项尚未渲染」导致下拉框显示为空
+    bizList() {
+      this.syncSelectedBiz()
+    },
+    // 自定义收藏列表异步加载（或变更）后，动态菜单项会增删，
+    // 重新校验精确命中态，使「资源目录」在收藏实例页正确让位于收藏菜单项
+    resourceCollection() {
+      this.checkExactActive()
     }
   },
   async mounted() {
@@ -110,6 +325,7 @@ export default {
     } catch (e) {
       console.error('[DynamicNavigation] 加载用户配置失败:', e)
     }
+    this.checkExactActive()
   }
 }
 </script>
@@ -153,6 +369,50 @@ $color: #63656E;
   }
 }
 
+.business-wrapper {
+  border-bottom: 1px solid #DCDEE5;
+
+  .business-selector {
+    width: 100%;
+    padding: 10px 16px;
+
+    .bk-select {
+      width: 100%;
+    }
+  }
+
+  .business-flag {
+    display: block;
+    width: 100%;
+    padding: 10px 0;
+    text-align: center;
+    font-size: 16px;
+    color: #979BA5;
+    cursor: pointer;
+    line-height: 20px;
+  }
+}
+
+.biz-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  .biz-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .biz-id {
+    color: #979BA5;
+    font-size: 12px;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+}
+
 .menu-list {
   padding: 10px 0;
   height: calc(100% - 60px);
@@ -178,7 +438,8 @@ $color: #63656E;
       background-color: #F6F6F9;
     }
 
-    &.active.is-link {
+    &.active.is-link,
+    &.is-relative-active.is-link {
       background-color: #E1ECFF;
 
       .menu-icon,

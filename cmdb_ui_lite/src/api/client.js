@@ -1,10 +1,14 @@
 import axios from 'axios';
+import { showNoPermission, NO_PERMISSION_CODE, AUTH_ERR_UNAUTHORIZED } from '@/utils/error-handler';
+import { redirectToLogin } from '@/auth';
 
 const baseURL = '/';
 
 const http = axios.create({
   baseURL,
-  timeout: 10000,
+  // 拓扑分层懒加载后单次请求已降至 KB 级；此处放宽到 60s 以兼容首屏
+  // 建树缓存（冷启动 ~1.8s）及弱网环境下的传输余量，避免误超时。
+  timeout: 60000,
   withCredentials: false,
   headers: {
     'Content-Type': 'application/json'
@@ -24,6 +28,24 @@ const http = axios.create({
 // 基本 API 请求拦截器
 http.interceptors.request.use(
   (config) => {
+    // 最小内置鉴权：携带 lite_bk_token（localStorage 键名，本 lite 自定义）
+    // 承载方式由后端配置决定（auth.js loadAuthConfig 写入 localStorage 开关）：
+    //   AUTH_BEARER=1   → Authorization: Bearer <token>
+    //   AUTH_BEARER=0/缺 → X-Lite-Token: <token>（自定义头，agentos 网关对 X- 前缀头透传，
+    //      用于 Bearer 被网关注入/覆盖污染的部署形态；【默认走此路】）
+    // URL query 兜底受 AUTH_TOKEN_QUERY 开关控制（默认关闭：避免 token 进 URL 日志/
+    // 浏览器历史造成泄露），仅当开关为 '1' 时追加 ?lite_bk_token=<token>。
+    const token = localStorage.getItem('lite_bk_token')
+    if (token) {
+      if (localStorage.getItem('cmdb_auth_bearer') === '1') {
+        config.headers['Authorization'] = `Bearer ${token}`
+      } else {
+        config.headers['X-Lite-Token'] = token
+      }
+      if (localStorage.getItem('cmdb_auth_token_query') === '1') {
+        config.params = { ...(config.params || {}), lite_bk_token: token }
+      }
+    }
     return config
   },
   (error) => {
@@ -31,15 +53,102 @@ http.interceptors.request.use(
   }
 )
 
-// 响应拦截器
+// 响应拦截器 - 统一处理原项目 BaseResp 格式
+// 与原项目一致：成功时返回 data 字段，错误时抛出包含 bk_error_msg 的异常
 http.interceptors.response.use(
   (response) => {
-    return response.data
+    const data = response.data
+    // 如果响应格式符合原项目 BaseResp 格式（含 result 字段）
+    if (data !== null && typeof data === 'object' && 'result' in data) {
+      if (data.result === false) {
+        const code = data.bk_error_code
+        // 业务错误：抛出异常，包含 bk_error_msg 和 bk_error_code
+        const error = new Error(data.bk_error_msg || '请求处理未完成')
+        error.response = { data }
+        error.bk_error_code = code
+        error.isBusinessError = true
+        // 无权限（1302102）：全局兜底弹出统一对话框，并标记 handled 避免组件层重复提示
+        if (code === NO_PERMISSION_CODE) {
+          showNoPermission(error)
+          error.handled = true
+        } else if (code === AUTH_ERR_UNAUTHORIZED) {
+          // 登录态失效（超时 / 被踢 / 签名不符，bk_error_code=1302100）：
+          // 这是「会话已不可恢复」的明确信号，不再交由路由守卫兜底，而是就地统一处理——
+          // 提示「登录已失效」并跳转登录页（携带当前路由作回跳参数），
+          // 用户重新登录即可回到原页面。标记 handled 避免组件层重复弹窗。
+          redirectToLogin(data.bk_error_msg)
+          error.handled = true
+        }
+        return Promise.reject(error)
+      }
+      // 成功：返回 data 字段内容
+      return data.data !== undefined ? data.data : data
+    }
+    // 非标准格式：直接返回原始数据（向后兼容）
+    return data
   },
   (error) => {
+    // HTTP 层错误（网络超时、状态码非 2xx 等）
+    // 统一处理：若响应体符合 BaseResp 格式（含 result:false），提取 bk_error_msg
+    // 作为错误信息，避免上层只拿到 "Request failed with status code 400" 这类传输层文案。
+    // 无权限（1302102）在此全局兜底弹出统一对话框，并标记 handled，避免组件层重复提示。
+    const resp = error.response
+    if (resp && resp.data && typeof resp.data === 'object'
+        && 'result' in resp.data && resp.data.result === false) {
+      const bizError = new Error(resp.data.bk_error_msg || '请求处理未完成')
+      bizError.response = resp
+      bizError.bk_error_code = resp.data.bk_error_code
+      bizError.isBusinessError = true
+      if (bizError.bk_error_code === NO_PERMISSION_CODE) {
+        showNoPermission(bizError)
+        bizError.handled = true
+      }
+      return Promise.reject(bizError)
+    }
     return Promise.reject(error)
   }
 )
+
+// ============================================================
+// 请求取消机制（对齐上游 bk-cmdb $http 的 requestId + cancelPrevious）
+// ------------------------------------------------------------
+// 列表分页/筛选重载时，用 requestId 取消上一批未完成的请求，
+// 避免「陈旧的大列表响应」在翻页过程中挂载到 DOM（卸载/移除/GC），
+// 也避免 500+ 行数据在竞态下反复重建导致卡顿。
+// ============================================================
+const CancelToken = axios.CancelToken
+const cancelRegistry = new Map() // requestId -> CancelTokenSource
+
+export function cancelRequest(requestId) {
+  if (!requestId) return
+  const source = cancelRegistry.get(requestId)
+  if (source) {
+    source.cancel(`request cancelled: ${requestId}`)
+    cancelRegistry.delete(requestId)
+  }
+}
+
+export function isCancelError(error) {
+  return axios.isCancel(error)
+}
+
+// 为请求附加取消能力：cancelPrevious 时先取消同 requestId 的旧请求
+function withCancelToken(httpConfig = {}, options = {}) {
+  const { requestId, cancelPrevious } = options
+  if (!requestId) return httpConfig
+  if (cancelPrevious) cancelRequest(requestId)
+  const source = CancelToken.source()
+  cancelRegistry.set(requestId, source)
+  return { ...httpConfig, cancelToken: source.token }
+}
+
+// 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（数百行 × 上百列场景下的关键性能优化，
+// 与原项目在 relation/create.vue 中对 originalList 使用 Object.freeze 的意图一致）。
+// 冻结后仍可被 bk-table 正常渲染、排序与按 row-key 选择；仅不可再被运行时写回（列表展示场景无需写回）。
+export function freezeList(list) {
+  if (!Array.isArray(list)) return list
+  return Object.freeze(list.map(row => (row && typeof row === 'object') ? Object.freeze(row) : row))
+}
 
 // 模型相关 API
 export const modelAPI = {
@@ -67,7 +176,12 @@ export const modelAPI = {
   getModel (modelId) {
     return http.get(`/api/v1/models/${modelId}`)
   },
-  
+
+  // 更新模型元数据（停用/启用等）
+  updateModel (modelId, data) {
+    return http.put(`/api/v1/models/${modelId}`, { data })
+  },
+
   // 获取模型属性
   getModelAttributes (modelId) {
     return http.get(`/api/v1/models/${modelId}/attributes`)
@@ -77,15 +191,32 @@ export const modelAPI = {
   getModelPropertyGroups (modelId) {
     return http.get(`/api/v1/models/${modelId}/property-groups`)
   },
-  
+
+  // 新建属性分组（bk_group_id 由后端随机生成）
+  createModelPropertyGroup (modelId, payload) {
+    return http.post(`/api/v1/models/${modelId}/property-groups`, payload)
+  },
+
+  // 修改属性分组（显示名 / 排序 / 折叠）
+  updateModelPropertyGroup (modelId, groupId, payload) {
+    return http.put(`/api/v1/models/${modelId}/property-groups/${groupId}`, payload)
+  },
+
+  // 删除属性分组（默认分组不可删，其下属性回落 default）
+  deleteModelPropertyGroup (modelId, groupId) {
+    return http.delete(`/api/v1/models/${modelId}/property-groups/${groupId}`)
+  },
+
   // 获取模型实例列表
-  listInstances (modelId, params = {}) {
-    return http.get(`/api/v1/models/${modelId}/instances`, { params })
+  // config: { requestId, cancelPrevious } —— 用于翻页/筛选重载时取消上一批请求
+  listInstances (modelId, params = {}, config = {}) {
+    return http.get(`/api/v1/models/${modelId}/instances`, withCancelToken({ params }, config))
   },
 
   // 搜索模型实例 (使用POST避免URL编码问题)
-  searchInstances (modelId, params = {}) {
-    return http.post(`/api/v1/models/${modelId}/instances/search`, params)
+  // config: { requestId, cancelPrevious }
+  searchInstances (modelId, params = {}, config = {}) {
+    return http.post(`/api/v1/models/${modelId}/instances/search`, params, withCancelToken({}, config))
   },
   
   // 获取单个实例
@@ -114,12 +245,21 @@ export const modelAPI = {
   },
 
   // 按实例ID列表查询实例（使用搜索接口 + $in 条件）
+  // 内置模型使用专用主键字段（如 host 用 bk_host_id），自定义模型用 bk_inst_id
   getInstancesByIds (modelId, ids = []) {
+    const idFieldMap = {
+      'host': 'bk_host_id',
+      'biz': 'bk_biz_id',
+      'set': 'bk_set_id',
+      'module': 'bk_module_id',
+      'bk_biz_set_obj': 'bk_biz_set_id'
+    }
+    const idField = idFieldMap[modelId] || 'bk_inst_id'
     return http.post(`/api/v1/models/${modelId}/instances/search`, {
       conditions: {
         condition: 'AND',
         rules: [{
-          field: 'bk_inst_id',
+          field: idField,
           operator: '$in',
           value: ids
         }]
@@ -156,7 +296,9 @@ export const modelAPI = {
 
   // 更新单个实例
   updateInstance (modelId, instanceId, data) {
-    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, data)
+    // 与 createInstance 保持一致：后端 update_instance 读取 data.get('data', {}),
+    // 必须将请求体包裹为 { data }，否则扁平 body 会被当成空 data，更新成为空操作。
+    return http.put(`/api/v1/models/${modelId}/instances/${instanceId}`, { data })
   },
 
   // 批量更新实例（格式1：每个实例有不同数据）
@@ -172,6 +314,13 @@ export const modelAPI = {
   // 批量获取模型实例数量统计
   getInstanceCounts (objIds = []) {
     return http.post('/api/v1/models/instances/count', { obj_ids: objIds })
+  },
+
+  // 获取主机拓扑信息（业务拓扑下的主机详情）
+  getHostTopology (hostId, bizId) {
+    const params = {}
+    if (bizId) params.bk_biz_id = bizId
+    return http.get(`/api/v1/topo/host/${hostId}/topology`, { params })
   },
 
   // 查询模型的唯一约束
@@ -196,4 +345,5 @@ export const modelAPI = {
 }
 
 export { default as userCustom } from './user-custom.js';
+export { withCancelToken };
 export default http

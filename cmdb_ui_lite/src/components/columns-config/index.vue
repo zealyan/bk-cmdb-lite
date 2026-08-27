@@ -107,7 +107,13 @@ export default {
   data() {
     return {
       filter: '',
-      localSelected: []
+      localSelected: [],
+      dataEmpty: {
+        type: 'empty',
+        payload: {
+          defaultText: '暂无数据'
+        }
+      }
     }
   },
   computed: {
@@ -169,6 +175,9 @@ export default {
   watch: {
     selected() {
       this.initLocalSelected()
+    },
+    filter(value) {
+      this.dataEmpty.type = value ? 'search' : 'empty'
     }
   },
   created() {
@@ -179,6 +188,14 @@ export default {
       this.localSelected = this.selected.filter(propertyId => 
         this.properties.some(property => property.bk_property_id === propertyId)
       )
+    },
+    checkDisabled(property) {
+      return this.disabledColumns.includes(property.bk_property_id)
+    },
+    columnsChangedValues() {
+      const localStr = JSON.stringify(this.localSelected)
+      const selectedStr = JSON.stringify(this.selected)
+      return localStr !== selectedStr
     },
     selectProperty(property) {
       // 与原项目保持一致: 直接 push（disabledColumns 中的字段不会出现在 unselectedProperties 中）
@@ -223,6 +240,9 @@ export default {
         }
       })
     },
+    handleClearFilter() {
+      this.filter = ''
+    }
   }
 }
 </script>

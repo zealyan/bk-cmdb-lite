@@ -1,9 +1,15 @@
 <template>
-  <div class="editable-property">
-    <!-- 详情态 -->
-    <div v-if="!isEditing" class="property-display">
-      <span class="property-value">{{ displayValue }}</span>
-      <i v-if="isEditable" class="icon-cc-edit property-edit-icon" @click.stop="startEdit"></i>
+  <div :class="['editable-property', { 'action-active': isEditing }]">
+    <!-- 详情态：属性值 -->
+    <div v-if="!isEditing" class="property-value" v-bk-overflow-tips="overflowTips">{{ displayValue }}</div>
+
+    <!-- 非编辑态：操作图标（编辑 + 复制） -->
+    <div class="property-actions" v-show="!isEditing">
+      <i
+        v-if="isEditable"
+        class="property-edit-button icon-cc-edit"
+        @click.stop="startEdit">
+      </i>
       <div v-if="showCopy" class="copy-box">
         <i class="property-copy icon-cc-details-copy" @click.stop="handleCopy"></i>
         <transition name="fade">
@@ -62,7 +68,14 @@ export default {
     return {
       editValue: '',
       showCopyTips: false,
-      copyTipsText: '复制成功'
+      copyTipsText: '复制成功',
+      // tooltip 边界钳制在浏览器“可见视口”内（而非整篇文档），
+      // 避免属性位于长页面底部 / 滚动后 tooltip 被视口边缘裁切。
+      // 指令默认 boundary 为 'window'（Popper 里 = 整篇文档高度），此处覆盖为 'viewport'。
+      overflowTips: {
+        boundary: 'viewport',
+        maxWidth: 480
+      }
     }
   },
   computed: {
@@ -379,90 +392,104 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+// 与原项目 editable-property.vue 保持一致：
+// .property-value 与 .property-actions 作为 .editable-property 的 flex 子项平级排列，
+// actions 用 visibility:hidden 占位，hover 时切换可见性，避免图标显隐导致布局位移。
 .editable-property {
   display: flex;
   align-items: center;
   width: 100%;
 
-  .property-display {
+  &:hover,
+  &.action-active {
+    .property-actions {
+      visibility: visible;
+    }
+  }
+
+  .property-value {
+    color: #313238;
+    font-size: 14px;
+    // 与原项目 cmdb-property-value 的 value-default-theme 保持一致：
+    // 最多展示 2 行，超出部分省略号（...），溢出时由 v-bk-overflow-tips 悬浮展示全文
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-all;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .property-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    flex: none;
+    // 固定 margin-left，使编辑图标与值文本保持恒定间距；
+    // 复制图标在 .property-actions 内部再固定间距，保证无论复制图标是否存在，
+    // 编辑图标位置都不会左右漂移。
+    margin-left: 12px;
+    visibility: hidden;
+  }
+
+  .property-edit-button {
+    flex: none;
     cursor: pointer;
-    flex: 1;
-    
-    .property-value {
-      color: #313238;
-      font-size: 14px;
-      word-break: break-all;
-      flex: 1;
+    font-size: 16px;
+    color: #3c96ff;
+
+    &:hover {
+      color: #3a84ff;
     }
-    
-    .property-edit-icon {
-      visibility: hidden;
+  }
+
+  .copy-box {
+    position: relative;
+    font-size: 0;
+    flex: none;
+
+    .property-copy {
+      margin: 0 0 0 8px;
+      color: #3c96ff;
       cursor: pointer;
       font-size: 16px;
-      color: #3c96ff;
-      transition: color 0.2s;
-      
+
       &:hover {
         color: #3a84ff;
       }
     }
-    
-    &:hover .property-edit-icon {
-      visibility: visible;
-    }
-    
-    .property-copy {
-      margin: 2px 0 0 2px;
-      color: #3c96ff;
-      cursor: pointer;
-      display: none;
-      font-size: 16px;
-    }
-    
-    &:hover .property-copy {
-      display: inline-block;
-    }
-    
-    .copy-box {
-      position: relative;
-      font-size: 0;
-      
-      .copy-tips {
-        position: absolute;
-        top: -22px;
-        left: -18px;
-        min-width: 70px;
-        height: 26px;
-        line-height: 26px;
-        text-align: center;
-        background: rgba(0, 0, 0, 0.7);
-        border-radius: 4px;
-        font-size: 12px;
-        color: #fff;
-        white-space: nowrap;
-        padding: 0 8px;
-      }
+
+    .copy-tips {
+      position: absolute;
+      top: -22px;
+      left: -18px;
+      min-width: 70px;
+      height: 26px;
+      line-height: 26px;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 4px;
+      font-size: 12px;
+      color: #fff;
+      white-space: nowrap;
+      padding: 0 8px;
     }
   }
-  
+
   .property-edit {
     display: flex;
     align-items: flex-start;
     gap: 8px;
     width: 100%;
-    
+
     .edit-form {
       flex: 1;
     }
-    
+
     .edit-actions {
       display: flex;
       gap: 4px;
       padding-top: 2px;
-      
+
       .confirm-btn,
       .cancel-btn {
         cursor: pointer;
@@ -471,14 +498,14 @@ export default {
         border-radius: 2px;
         transition: all 0.2s;
       }
-      
+
       .confirm-btn {
         color: #2dcb56;
         &:hover {
           background-color: rgba(45, 203, 86, 0.1);
         }
       }
-      
+
       .cancel-btn {
         color: #979BA5;
         &:hover {

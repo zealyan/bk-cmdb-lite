@@ -177,7 +177,25 @@ class RouterQuery {
 
     this.router.replace({
       ...route,
-      query: { ...query }
+      query: { ...route.query, ...query }
+    })
+  }
+
+  /**
+   * 完整替换 query（而非合并），用于确保省略的参数被真正移除
+   * 与 setAll 的区别：setAll 做 { ...route.query, ...query } 的合并，
+   * 当某个 key 在新 query 中不存在时，旧值会残留，
+   * replaceQuery 则用 newQuery 完全替换 route.query。
+   */
+  replaceQuery (newQuery) {
+    if (!this.router) return
+
+    const route = this.route
+    if (!route) return
+
+    this.router.replace({
+      ...route,
+      query: newQuery
     })
   }
 

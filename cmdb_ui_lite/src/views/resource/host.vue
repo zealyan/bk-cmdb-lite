@@ -17,32 +17,40 @@
           style="width: 300px;"
           @change="handleSearch"
         />
+        <icon-button
+          class="ml10"
+          icon="icon-cc-funnel"
+          v-bk-tooltips.top="'高级筛选'"
+          @click="handleSetFilters">
+        </icon-button>
       </div>
 
       <bk-table
         :data="filteredHosts"
         :pagination="paginationConfig"
+        :max-height="tableMaxHeight"
+        :row-key="row => row.bk_host_id"
         @page-change="handlePageChange"
         @page-limit-change="handleLimitChange"
       >
-        <bk-table-column label="主机ID" prop="id" width="100">
+        <bk-table-column label="主机ID" prop="bk_host_id" width="100">
           <template #default="{ row }">
             <bk-button
               :text="true"
               :primary="true"
               @click="handleView(row)">
-              {{ row.id }}
+              {{ row.bk_host_id }}
             </bk-button>
           </template>
         </bk-table-column>
-        <bk-table-column label="内网IP" prop="inner_ip" />
-        <bk-table-column label="外网IP" prop="outer_ip">
+        <bk-table-column label="内网IP" prop="bk_host_innerip" />
+        <bk-table-column label="外网IP" prop="bk_host_outerip">
           <template #default="{ row }">
-            {{ row.outer_ip || '-' }}
+            {{ row.bk_host_outerip || '-' }}
           </template>
         </bk-table-column>
-        <bk-table-column label="管控区域" prop="cloud_area" />
-        <bk-table-column label="主机名称" prop="host_name" />
+        <bk-table-column label="管控区域" prop="bk_cloud_id" />
+        <bk-table-column label="主机名称" prop="bk_host_name" />
         <bk-table-column label="云服务商" prop="cloud_vendor" />
         <bk-table-column label="状态" prop="status">
           <template #default="{ row }">
@@ -62,86 +70,156 @@
 </template>
 
 <script>
+import IconButton from '@/components/ui/button/icon-button.vue'
+import FilterForm from '@/components/filters/filter-form.js'
+import FilterStore, { setupFilterStore } from '@/components/filters/store'
+import { modelAPI, cancelRequest, isCancelError, freezeList } from '@/api/client'
+import { MENU_RESOURCE_HOST_DETAILS } from '@/dictionary/menu-symbol'
+
 export default {
   name: 'ResourceHost',
+  components: {
+    IconButton
+  },
   data () {
     return {
       searchKeyword: '',
-      hosts: [
-        {
-          id: 1,
-          inner_ip: '192.168.1.101',
-          outer_ip: '10.0.0.101',
-          cloud_area: '北京一区',
-          host_name: 'web-server-01',
-          cloud_vendor: '腾讯云',
-          status: 'running'
-        },
-        {
-          id: 2,
-          inner_ip: '192.168.1.102',
-          outer_ip: '10.0.0.102',
-          cloud_area: '北京一区',
-          host_name: 'web-server-02',
-          cloud_vendor: '腾讯云',
-          status: 'running'
-        },
-        {
-          id: 3,
-          inner_ip: '192.168.1.103',
-          outer_ip: '',
-          cloud_area: '上海一区',
-          host_name: 'db-server-01',
-          cloud_vendor: '阿里云',
-          status: 'stopped'
-        },
-        {
-          id: 4,
-          inner_ip: '192.168.1.104',
-          outer_ip: '10.0.0.104',
-          cloud_area: '上海一区',
-          host_name: 'cache-server-01',
-          cloud_vendor: '阿里云',
-          status: 'running'
-        },
-        {
-          id: 5,
-          inner_ip: '192.168.1.105',
-          outer_ip: '10.0.0.105',
-          cloud_area: '广州一区',
-          host_name: 'app-server-01',
-          cloud_vendor: '华为云',
-          status: 'running'
-        }
-      ],
+      hosts: [],
       paginationConfig: {
-        count: 5,
+        count: 0,
         limit: 10,
         current: 1,
         'limit-list': [10, 20, 50, 100, 500]
-      }
+      },
+      unwatchFilter: null
     }
   },
+  mounted() {
+    this.initFilterStore()
+    this.loadHostList()
+  },
+  beforeDestroy() {
+    if (this.unwatchFilter) {
+      this.unwatchFilter()
+    }
+    // 取消进行中的列表请求，释放大列表数据引用，避免组件销毁后陈旧 500+ 行响应挂载/驻留（GC）
+    cancelRequest('host-list')
+  },
   computed: {
+    // 固定表头 + 视口滚动：与上游 host-list.vue 的 :max-height 一致，
+    // 仅渲染/绘制视口内行，降低 500+ 行时的 DOM 与绘制压力
+    tableMaxHeight () {
+      return Math.max(300, window.innerHeight - 320)
+    },
     filteredHosts () {
       if (!this.searchKeyword) return this.hosts
       const keyword = this.searchKeyword.toLowerCase()
       return this.hosts.filter(host =>
-        host.inner_ip.includes(keyword) ||
-        host.host_name.toLowerCase().includes(keyword)
+        (host.bk_host_innerip || '').includes(keyword) ||
+        (host.bk_host_name || '').toLowerCase().includes(keyword)
       )
     }
   },
   methods: {
+    async initFilterStore() {
+      await setupFilterStore({
+        bk_biz_id: 0,
+        modelIds: ['host'],
+        searchHandler: this.searchHandler.bind(this)
+      })
+      // 监听「有效筛选签名」而非原始 FilterStore.condition 对象：
+      // 在高级筛选中点击「添加其他条件」时，store 的 selected 监听会调用 initCondition()
+      // 给新属性写入默认空值（value: '' / []），替换 condition 对象引用；若 deep watch 整个
+      // condition 对象，这次“仅添加空条件行、尚未查询”的变更会立即触发列表重载（loading 转圈）。
+      // 改为监听 getQuery 序列化后的有效查询串（与 loadHostList 实际请求一致，空值被忽略）：
+      // 添加空条件 → 签名不变 → 不重载；填值后查询 / 删 tag / 清空 → 签名变化 → 重载。
+      this.unwatchFilter = this.$watch(
+        () => {
+          const q = FilterStore.getQuery(FilterStore.condition)
+          return `${q.filter}|${q.ip}`
+        },
+        () => {
+          this.searchHandler()
+        }
+      )
+    },
+    searchHandler() {
+      this.loadHostList()
+    },
+    async loadHostList() {
+      try {
+        const filterCondition = FilterStore.condition
+        const filterIP = FilterStore.IP
+        const filterSelected = FilterStore.selected || []
+        
+        const params = {
+          page: this.paginationConfig.current,
+          page_size: this.paginationConfig.limit
+        }
+        
+        if (Object.keys(filterCondition).length > 0) {
+          params.condition = []
+          Object.keys(filterCondition).forEach(key => {
+            const cond = filterCondition[key]
+            const val = cond.value
+            if (val === null || val === undefined || val === '') return
+            
+            const property = filterSelected.find(p => p.bk_property_id === key)
+            const modelId = property ? property.bk_obj_id : 'host'
+            
+            let submitValue = val
+            if (['$in', '$nin'].includes(cond.operator)) {
+              if (typeof val === 'string') {
+                submitValue = val.split(/[\n,，;；]/).map(s => s.trim()).filter(s => s.length > 0)
+              } else if (!Array.isArray(val)) {
+                submitValue = [val]
+              }
+            }
+            
+            const existing = params.condition.find(c => c.bk_obj_id === modelId)
+            if (existing) {
+              existing.condition.push({
+                field: key,
+                operator: cond.operator || '$eq',
+                value: submitValue
+              })
+            } else {
+              params.condition.push({
+                bk_obj_id: modelId,
+                fields: [],
+                condition: [{
+                  field: key,
+                  operator: cond.operator || '$eq',
+                  value: submitValue
+                }]
+              })
+            }
+          })
+        }
+        
+        const result = await modelAPI.listInstances('host', params,
+          { requestId: 'host-list', cancelPrevious: true })
+        if (result) {
+          // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（与上游一致，避免 500+ 行卡顿）
+          this.hosts = freezeList(result.instances || [])
+          this.paginationConfig.count = result.total || 0
+        }
+      } catch (error) {
+        // 请求被取消（翻页/筛选重载时的 cancelPrevious）属预期行为，静默忽略
+        if (isCancelError(error)) return
+        console.error('加载主机列表失败:', error)
+        this.$handleApiError(error)
+      }
+    },
     handleSearch (value) {
       this.searchKeyword = value
       this.paginationConfig.current = 1
     },
+    handleSetFilters () {
+      FilterForm.show()
+    },
     handleRefresh () {
-      this.$bkMessage({
-        message: '刷新成功',
-        theme: 'success'
-      })
+      this.loadHostList()
     },
     handleAdd () {
       this.$bkInfo({
@@ -151,17 +229,20 @@ export default {
     },
     handleView (host) {
       this.$router.push({
-        name: 'ResourceHostDetails',
+        name: MENU_RESOURCE_HOST_DETAILS,
         params: {
-          id: host.id
+          id: host.bk_host_id
         }
       })
     },
     handlePageChange (page) {
       this.paginationConfig.current = page
+      this.loadHostList()
     },
     handleLimitChange (limit) {
       this.paginationConfig.limit = limit
+      this.paginationConfig.current = 1
+      this.loadHostList()
     }
   }
 }
@@ -192,6 +273,8 @@ export default {
 }
 
 .search-bar {
+  display: flex;
+  align-items: center;
   margin-bottom: 16px;
 }
 

@@ -7,16 +7,44 @@ import bkMagic from 'bk-magic-vue'
 import 'bk-magic-vue/dist/bk-magic-vue.min.css'
 import '@/assets/icon/bk-icon-cmdb/style.css'
 import '@/assets/scss/common.scss'
+import '@/assets/scss/magicbox.scss'
 
 import { initRouterQuery } from '@/utils/router-query'
 import SearchComponents from '@/components/search'
 import CmdbFormComponents from '@/components/ui/form'
+import ResizeLayout from '@/components/ui/other/resize.vue'
+import CmdDialog from '@/components/ui/dialog/dialog.vue'
 import userCustom from '@/api/user-custom'
 import cmdbAppMixin from './mixins/app.js'
+import { bindMagic, handleApiError } from '@/utils/error-handler'
 
 Vue.use(bkMagic)
 Vue.use(SearchComponents)
 Vue.use(CmdbFormComponents)
+Vue.component('cmdb-resize-layout', ResizeLayout)
+Vue.component('cmdb-dialog', CmdDialog)
+// 统一错误呈现：组件 catch 中调用 this.$handleApiError(error) 即可
+Vue.prototype.$handleApiError = handleApiError
+// 移植自原项目：蓝鲸 CMDB 上游依赖全局 $success 提示方法（旧版 bk-magic-vue 内置），
+// 当前工程所用的 bk-magic-vue 2.5.9-beta.39 已不再注册 $success，
+// 直接用 this.$success(...) 会抛 TypeError → 被组件 catch 误判为“操作失败”。
+// 这里用 $bkMessage({ theme: 'success' }) 补齐该全局方法，使「收藏成功 / 复制成功」等提示正常工作。
+Vue.prototype.$success = function $success(message, options = {}) {
+  if (this && typeof this.$bkMessage === 'function') {
+    this.$bkMessage({ theme: 'success', message, ...options })
+  }
+}
+// 移植自原项目：v-transfer-dom，把弹框挂到 body，
+// 避免祖先元素的 transform 破坏 .dialog-wrapper 的 position: fixed 视口定位。
+Vue.directive('transfer-dom', {
+  inserted(el, binding) {
+    const target = binding.value ? document.querySelector(binding.value) : document.body
+    if (target) target.appendChild(el)
+  },
+  unbind(el) {
+    if (el && el.parentNode) el.parentNode.removeChild(el)
+  }
+})
 Vue.mixin(cmdbAppMixin)
 
 Vue.config.productionTip = false
@@ -25,6 +53,8 @@ const app = new Vue({
   router,
   store,
   async created() {
+    // 注入 bkMagic 实例，供统一错误处理器（error-handler.js）弹出无权限对话框
+    bindMagic(this)
     console.log('[App] 应用启动中...')
     
     // 并行加载模型分类数据和用户配置

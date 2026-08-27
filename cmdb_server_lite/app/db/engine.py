@@ -60,6 +60,7 @@ class DatabaseEngine:
                 pool_size=config.SQLALCHEMY_POOL_SIZE,
                 max_overflow=config.SQLALCHEMY_MAX_OVERFLOW,
                 pool_recycle=config.SQLALCHEMY_POOL_RECYCLE,
+                pool_pre_ping=True,
                 echo=config.SQLALCHEMY_ECHO
             )
         elif db_type == DatabaseType.MYSQL.value:
@@ -74,7 +75,11 @@ class DatabaseEngine:
                 pool_size=config.SQLALCHEMY_POOL_SIZE,
                 max_overflow=config.SQLALCHEMY_MAX_OVERFLOW,
                 pool_recycle=config.SQLALCHEMY_POOL_RECYCLE,
-                echo=config.SQLALCHEMY_ECHO
+                pool_pre_ping=True,
+                echo=config.SQLALCHEMY_ECHO,
+                # ANSI_QUOTES: 让存量双引号标识符在 MySQL 也按标识符解析，
+                # 与 SQLite / PostgreSQL 行为一致（sqlglot 转译后双引号无需再改）。
+                connect_args={'init_command': "SET sql_mode='ANSI_QUOTES'"}
             )
         else:
             raise ValueError(f"Unsupported database type: {db_type}")
