@@ -1,13 +1,24 @@
 <template>
-  <div class="instance-association" v-bkloading="{ isLoading: loading }">
+  <div class="instance-association" v-bkloading="{ isLoading: rootLoading }">
     <div class="options clearfix">
       <div class="fl">
         <bk-button theme="primary" class="options-button" @click="handleAddAssociation">
           新增关联
         </bk-button>
       </div>
-      <div class="fr" v-if="hasAssociations">
+      <div class="fr">
+        <!-- 显示空列表：勾选后加载当前实例所属模型的「全部关联关系定义」，
+             无关联实例数据的关系也以空 table（0 条）呈现。样式/组件与「全部展开」一致。
+             该多选框需常驻可见（即便当前无任何关联数据），否则无关联时用户无法勾选。 -->
         <bk-checkbox
+          :size="16"
+          class="options-checkbox"
+          :value="showEmptyList"
+          @change="handleShowEmptyList">
+          <span class="checkbox-label">显示空列表</span>
+        </bk-checkbox>
+        <bk-checkbox
+          v-if="hasAssociations"
           :size="16"
           class="options-checkbox"
           :value="expandAll"
@@ -50,11 +61,15 @@
             </span>
           </div>
         </div>
+        <!-- 不设置固定 max-height：page size=10，让 10 行以自然高度展开，
+             高度与父级 body 内容一致，避免 table-body 内部再出现虚拟滚动条
+             （长内容由页面整体滚动承载，而非 table 内部滚动）。 -->
         <bk-table
           class="association-table"
           v-show="item.expanded"
           :data="item.displayInstances"
-          :max-height="462"
+          :max-height="tableMaxHeight"
+          v-bkloading="{ isLoading: tableBodyLoading && groupLoading[item.key] }"
         >
           <bk-table-column
             v-for="(column, colIndex) in item.columns"
@@ -72,10 +87,17 @@
               <span v-else>{{ formatValue(row[column.bk_property_id], column, row) }}</span>
             </template>
           </bk-table-column>
-          <bk-table-column label="操作" width="100">
+          <bk-table-column label="操作" width="160">
             <template #default="{ row }">
               <bk-link theme="primary" @click.stop="handleRemoveAssociation(row, item)">
                 取消关联
+              </bk-link>
+              <!-- 详情：新建窗口打开所关联实例的资源详情页（#/resource/instance/{objId}/{instId}） -->
+              <bk-link
+                theme="primary"
+                class="row-detail-link"
+                @click.stop="handleOpenDetails(row, item)">
+                详情
               </bk-link>
             </template>
           </bk-table-column>
@@ -120,6 +142,14 @@ export default {
     relations: {
       type: Array,
       default: () => []
+    },
+    // 是否将「展开分组 / 翻页」的数据加载 loading 收敛到 table body 内（而非罩住整个组件）。
+    // true → 仅对应分组表格显示 loading，tab 内容区其余部分（如「新增关联」按钮、其它分组）不受影响；
+    // false（默认）→ 维持原行为：整个关联组件统一显示一个 loading 遮罩。
+    // 资源实例详情关联 tab 传 true；业务拓扑关联 tab 保持默认 false，互不影响（工程隔离）。
+    tableBodyLoading: {
+      type: Boolean,
+      default: false
     }
   },
   created() {
@@ -131,17 +161,39 @@ export default {
     this.$nextTick(() => {
       this.tryInit()
     })
+    // 关联表格高度随视口/page size 动态计算，监听窗口变化重算（与实例列表页 table 逻辑一致）
+    this.resizeHandler = () => this.calcTableMaxHeight()
+    window.addEventListener('resize', this.resizeHandler)
+    this.$nextTick(() => this.calcTableMaxHeight())
+  },
+  beforeDestroy() {
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+    }
   },
   data() {
     return {
       pageSize: 10,
+      // 关联表格 max-height：按 page size 动态计算（pageSize 行 + 表头），并以抽屉/内容区
+      // 视口为上界（最高不超过视口、最低为 page size 行）。初始化为 462（=10×42+42，对齐上游）。
+      tableMaxHeight: 462,
       groupStates: {},
       showCreateDialog: false,
-      loading: false,
       cachedProperties: {},
+      // 每个分组的独立加载态（按 group.key 索引），用于 table body 级 loading
+      groupLoading: {},
       // 每个分组的当前页实例数据缓存
       groupInstances: {},
       expandAll: false,
+      // 「显示空列表」开关：true 时把当前模型的全部关联关系定义都渲染为分组，
+      // 没有关联实例数据的分组显示空 table（0 条）
+      showEmptyList: false,
+      // 当前模型的全部关联关系定义（findObjectAssociation 源端+目标端合并，懒加载一次）
+      modelAssocDefs: [],
+      // 关联类型定义（findAssociationType），用于生成空分组标题的 src_des / dest_des
+      assocTypes: [],
+      // 关联定义是否已加载，避免重复请求
+      assocDefsLoaded: false,
       // 记录上次展开状态用于判断变化
       prevExpanded: {},
       // 是否正在初始化中，防止 watch 重复触发
@@ -151,6 +203,13 @@ export default {
   computed: {
     hasAssociations() {
       return this.associationGroups.length > 0
+    },
+    // 根级 loading：仅当「未开启 table body 级 loading」时生效（即业务拓扑 tab 的旧行为），
+    // 用于展开/翻页时罩住整个关联组件。资源实例详情 tab 开启 tableBodyLoading 后，
+    // 根级 loading 恒为 false，loading 只出现在对应分组的 table body 内。
+    rootLoading() {
+      if (this.tableBodyLoading) return false
+      return Object.keys(this.groupLoading).some(key => this.groupLoading[key])
     },
     associationGroups() {
       const groupedMap = new Map()
@@ -226,7 +285,64 @@ export default {
         })
       })
 
+      // 「显示空列表」开启时：补齐当前模型「有定义但当前实例无关联数据」的关系分组，
+      // 以空 table（total=0）呈现；已有数据的分组不受影响（上面已生成）。
+      if (this.showEmptyList) {
+        this.emptyGroupDefs.forEach((eg) => {
+          if (groupedMap.has(eg.key)) return
+          const state = this.groupStates[eg.key]
+          if (!state) return
+          result.push({
+            ...eg,
+            instanceIds: [],
+            total: 0,
+            totalPages: 0,
+            current: state.current,
+            expanded: state.expanded,
+            currentPageIds: [],
+            displayInstances: [],
+            columns: this.getColumnsForModel(eg.relatedObjId)
+          })
+        })
+      }
+
       return result
+    },
+    // 由「模型全部关联定义」推导出的分组骨架（key/标题/关联模型/方向），
+    // 与 associationGroups 的 key 规则保持一致：当前实例为源 → to_<目标模型>，为目标 → from_<源模型>
+    emptyGroupDefs() {
+      const list = []
+      const seen = new Set()
+      this.modelAssocDefs.forEach((def) => {
+        const srcObjId = def.bk_obj_id
+        const dstObjId = def.target_obj_id || def.bk_asst_obj_id
+        if (!srcObjId || !dstObjId) return
+
+        const isSource = String(srcObjId) === String(this.objId)
+        const isTarget = String(dstObjId) === String(this.objId)
+        if (!isSource && !isTarget) return
+
+        // 自关联（源=目标=当前模型）时按「源」方向处理，避免同 key 重复
+        const relatedObjId = isSource ? dstObjId : srcObjId
+        const key = isSource ? `to_${relatedObjId}` : `from_${relatedObjId}`
+        if (seen.has(key)) return
+        seen.add(key)
+
+        const type = this.assocTypes.find(t => t.bk_asst_id === def.bk_asst_id)
+        let desc
+        if (isSource) {
+          desc = (type && (type.src_des || type.bk_asst_name)) || def.bk_asst_name || def.bk_asst_id
+        } else {
+          desc = (type && (type.dest_des || type.bk_asst_name)) || `被${this.getModelDisplayName(srcObjId)}关联`
+        }
+        list.push({
+          key,
+          relationTypeName: `${desc}-${this.getModelDisplayName(relatedObjId)}`,
+          relatedObjId,
+          isSource
+        })
+      })
+      return list
     }
   },
   watch: {
@@ -333,7 +449,18 @@ export default {
         })
         this.$set(this.prevExpanded, key, false)
       })
-      
+
+      // 关联数据重载（新增/取消关联后）会重建 groupStates，若「显示空列表」仍开启，
+      // 需同步补回空分组的 state，否则空 table 会在数据刷新后消失
+      if (this.showEmptyList) {
+        this.emptyGroupDefs.forEach((eg) => {
+          if (!this.groupStates[eg.key]) {
+            this.$set(this.groupStates, eg.key, { expanded: false, current: 1 })
+            this.$set(this.prevExpanded, eg.key, false)
+          }
+        })
+      }
+
       return keys
     },
     handleExpandAll(expandAll) {
@@ -342,6 +469,66 @@ export default {
         this.groupStates[key].expanded = expandAll
       })
       this.$forceUpdate()
+    },
+    // 「显示空列表」切换：
+    // true  → 懒加载当前模型的全部关联定义（源端+目标端），为「无数据」的关系补建分组状态，
+    //         UI 上出现多个 0 条数据的空 table；
+    // false → 回到默认：仅展示有关联实例数据的分组，无数据的关系不显示。
+    async handleShowEmptyList(value) {
+      this.showEmptyList = value
+      if (!value) {
+        // 关闭时清理空分组的展开状态，避免残留影响「全部展开」的全选语义
+        this.emptyGroupDefs.forEach((eg) => {
+          if (this.groupStates[eg.key] && !this.hasRealData(eg.key)) {
+            this.$delete(this.groupStates, eg.key)
+            this.$delete(this.prevExpanded, eg.key)
+          }
+        })
+        return
+      }
+
+      if (!this.assocDefsLoaded) {
+        await this.loadModelAssocDefs()
+      }
+      // 为补齐的空分组建立 state（默认合并，避免一次性展开过多空表格）
+      this.emptyGroupDefs.forEach((eg) => {
+        if (!this.groupStates[eg.key]) {
+          this.$set(this.groupStates, eg.key, { expanded: false, current: 1 })
+          this.$set(this.prevExpanded, eg.key, false)
+        }
+      })
+    },
+    // 判断某分组 key 是否存在真实关联数据（用于关闭空列表时保留有数据的分组状态）
+    hasRealData(key) {
+      return this.associations.some((asst) => {
+        const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
+        const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
+        if (!isSource && !isTarget) return false
+        const k = isSource ? `to_${asst.bk_asst_obj_id}` : `from_${asst.bk_obj_id}`
+        return k === key
+      })
+    },
+    // 加载当前模型的全部关联定义 + 关联类型（用于空分组标题），仅首次勾选时请求
+    async loadModelAssocDefs() {
+      try {
+        // 无任何关联数据时不会走 doInit，模型中文名可能尚未就绪，这里补齐，
+        // 保证空分组标题显示「集群/交换机」等中文名而非 obj_id
+        if (!this.$store.getters['objectModelClassify/getModelById']('set')) {
+          this.$store.dispatch('objectModelClassify/loadModels').catch(() => {})
+        }
+        const [defsAsSource, defsAsTarget, types] = await Promise.all([
+          associationAPI.findObjectAssociation({ bk_obj_id: this.objId }),
+          associationAPI.findObjectAssociation({ bk_asst_obj_id: this.objId }),
+          associationAPI.findAssociationType()
+        ])
+        this.modelAssocDefs = [...(defsAsSource || []), ...(defsAsTarget || [])]
+        this.assocTypes = types || []
+        this.assocDefsLoaded = true
+      } catch (e) {
+        console.error('[InstanceAssociation] 加载模型关联定义失败:', e)
+        this.modelAssocDefs = []
+        this.assocTypes = []
+      }
     },
     getModelDisplayName(objId) {
       // 优先从全局模型 store 取中文名（data 来自 listModels，含主线 biz/set/module 与自定义模型，bk_obj_name 为标准中文名）
@@ -408,7 +595,7 @@ export default {
       }]
     },
     async getData(item) {
-      this.loading = true
+      this.$set(this.groupLoading, item.key, true)
       try {
         await Promise.all([
           this.getProperties(item.relatedObjId),
@@ -417,8 +604,34 @@ export default {
       } catch (err) {
         console.warn(`加载 ${item.relatedObjId} 数据失败:`, err)
       } finally {
-        this.loading = false
+        this.$set(this.groupLoading, item.key, false)
+        // 数据渲染后重算表格高度（行高可能随数据/主题变化），保证 page size 行完整可见
+        this.$nextTick(() => this.calcTableMaxHeight())
       }
+    },
+    // 计算关联表格 max-height：按 page size 动态得出「pageSize 行 + 表头」的目标高度，
+    // 并以抽屉/内容主区视口为上界（最高不超过视口、最低不低于 page size 行），对齐上游
+    // bk-cmdb association-list-table 固定 462（=10×42+42）与 create 弹窗 $APP.height-X 的抽屉思路。
+    calcTableMaxHeight() {
+      // 行高：优先测量实际渲染的首行，避免硬编码导致「恰好 page size 行差 1px 触发内部滚动」
+      let rowHeight = 43
+      const tables = this.$el ? this.$el.querySelectorAll('.association-table') : []
+      for (const t of tables) {
+        if (t.offsetParent === null) continue // 未展开（display:none）跳过
+        const row = t.querySelector('.bk-table-body-wrapper tr')
+        if (row) {
+          const h = row.getBoundingClientRect().height
+          if (h > 0) { rowHeight = h; break }
+        }
+      }
+      const HEADER_HEIGHT = 42
+      // 目标高度：恰好容纳 page size 行 + 表头；page size 变化时自动跟随
+      const pageSizeHeight = this.pageSize * rowHeight + HEADER_HEIGHT
+      // 视口上界：应用视口高度（抽屉/内容主区）减去顶部导航、面包屑、操作栏、分页等占用
+      const viewport = (this.$APP && this.$APP.height) || window.innerHeight || 900
+      const viewportCap = Math.max(200, viewport - 210)
+      // 最高不超过视口、最低为 page size 行：max-height = min(视口上界, page size 行高)
+      this.tableMaxHeight = Math.min(viewportCap, pageSizeHeight)
     },
     async getProperties(modelId) {
       if (this.cachedProperties[modelId]) {
@@ -494,7 +707,12 @@ export default {
       this.$nextTick(() => {
         const group = this.associationGroups.find(g => g.key === item.key)
         if (group && state && state.expanded) {
-          this.getInstances(group)
+          // 翻页加载态收敛到该分组 table body（tableBodyLoading 开启时仅 table 内显示 loading）
+          this.$set(this.groupLoading, item.key, true)
+          this.getInstances(group).finally(() => {
+            this.$set(this.groupLoading, item.key, false)
+            this.$nextTick(() => this.calcTableMaxHeight())
+          })
         }
       })
     },
@@ -567,6 +785,19 @@ export default {
           }
         }
       })
+    },
+    // 操作列「详情」：新建窗口打开所关联实例的资源详情页。
+    // 路由构造与 MENU_RESOURCE_INSTANCE_DETAILS 一致：#/resource/instance/{objId}/{instId}
+    // （objId 取分组关联目标模型 item.relatedObjId，instId 取行实例主键）。
+    handleOpenDetails(row, item) {
+      const objId = item.relatedObjId
+      const instId = this.getInstanceIdFromRow(row, objId)
+      if (!objId || instId === undefined || instId === null || instId === '') {
+        this.$bkMessage({ message: '无法获取关联实例信息', theme: 'warning' })
+        return
+      }
+      const { href } = this.$router.resolve({ path: `/resource/instance/${objId}/${instId}` })
+      window.open(href, '_blank')
     }
   }
 }
@@ -594,6 +825,11 @@ export default {
     .checkbox-label {
       padding-left: 4px;
       font-size: 14px;
+    }
+
+    /* 「显示空列表」与右侧「全部展开」并排时留出间距（两者样式保持一致） */
+    & + .options-checkbox {
+      margin-left: 20px;
     }
   }
 }
@@ -728,6 +964,11 @@ export default {
   &:hover {
     text-decoration: underline;
   }
+}
+
+/* 操作列「详情」链接与「取消关联」之间留出间距，避免文字拥挤 */
+.row-detail-link {
+  margin-left: 8px;
 }
 
 .clearfix::after {

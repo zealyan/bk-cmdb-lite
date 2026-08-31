@@ -145,6 +145,23 @@ def get_instance_associations(instance_id):
         logger.error(f"Error getting instance associations: {e}")
         return error_response(f'获取关联关系失败: {str(e)}')
 
+@association_bp.route('/api/v1/associations/candidates', methods=['POST'])
+def search_association_candidates():
+    """查询「新增关联」弹框的候选目标实例（支持 全部/已关联/未关联 筛选 + 条件 + 排序 + 分页组合查询）"""
+    try:
+        data = request.get_json() or {}
+        obj_id = data.get('obj_id')
+        inst_id = data.get('inst_id')
+        asst_obj_id = data.get('asst_obj_id')
+        bk_obj_asst_id = data.get('bk_obj_asst_id')
+        if not (obj_id and inst_id is not None and asst_obj_id and bk_obj_asst_id):
+            return error_response('缺少必要参数：obj_id / inst_id / asst_obj_id / bk_obj_asst_id', 1199006)
+        result = AssociationService.search_candidates(data)
+        return success_response(result)
+    except Exception as e:
+        logger.error(f"Error searching association candidates: {e}")
+        return error_response(f'查询候选关联实例失败: {str(e)}')
+
 @association_bp.route('/create/instassociation', methods=['POST'])
 def create_instassociation():
     """创建实例关联"""

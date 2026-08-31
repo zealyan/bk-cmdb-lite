@@ -20,6 +20,18 @@
             :name="option._label">
           </bk-option>
         </bk-select>
+        <bk-select class="select-wrapper status-select"
+          v-model="relationStatusFilter"
+          :clearable="false"
+          transfer
+          @selected="handleStatusFilterChange">
+          <bk-option
+            v-for="item in relationStatusOptions"
+            :key="item.value"
+            :id="item.value"
+            :name="item.label">
+          </bk-option>
+        </bk-select>
       </div>
       <div class="association-filter" v-if="currentOption.bk_obj_asst_id">
         <label class="filter-label">条件筛选</label>
@@ -43,13 +55,15 @@
         :pagination="table.pagination"
         :max-height="tableMaxHeight"
         @page-change="setCurrentPage"
-        @page-limit-change="setCurrentLimit">
+        @page-limit-change="setCurrentLimit"
+        @sort-change="handleSortChange">
         <bk-table-column type="selection" width="50"></bk-table-column>
         <bk-table-column
           v-for="column in table.header"
           :key="column.bk_property_id"
           :prop="column.bk_property_id"
-          :label="column.bk_property_name">
+          :label="column.bk_property_name"
+          :sortable="column.sortable ? 'custom' : false">
           <template slot-scope="{ row }">
             {{ formatValue(row[column.bk_property_id], column) }}
           </template>
@@ -58,9 +72,9 @@
           <template slot-scope="{ row }">
             <bk-link
               theme="primary"
-              :disabled="isAssociated(row)"
+              :disabled="rowActionType(row) === 'remove'"
               @click="beforeUpdate($event, getInstanceId(row), 'new')"
-              v-if="!isAssociated(row)">
+              v-if="rowActionType(row) === 'new'">
               关联
             </bk-link>
             <bk-link
@@ -125,6 +139,15 @@ export default {
       tempData: [],
       hasChange: false,
       loading: false,
+      // 新增关联弹框：关联状态筛选（全部/已关联/未关联），默认全部（行为同现状）
+      relationStatusFilter: 'all',
+      relationStatusOptions: [
+        { value: 'all', label: '全部关联' },
+        { value: 'associated', label: '已关联' },
+        { value: 'not_associated', label: '未关联' }
+      ],
+      // 后端候选查询返回的已关联实例ID集合（用于操作列判定，替代纯前端 isAssociated）
+      associatedIds: [],
       filter: {
         id: '',
         operator: '$eq',
@@ -145,6 +168,14 @@ export default {
         }
       },
       tableKey: 0, // 用于强制表格重新渲染的 key
+      // 关联创建弹框 table max-height：按 page size 动态计算（limit 行 + 表头），并以抽屉/内容区
+      // 视口为上界（最高不超过视口、最低为 page size 行）。初始化为 400（与原固定值一致），
+      // 真实值由 calcTableMaxHeight() 在数据重载后计算。
+      tableMaxHeight: 400,
+      // 新增关联弹框 table 排序状态：UI 列点击触发、API 联动排序。
+      // sortField 为空表示不排序（后端按 id 默认序）；order 取值 'asc' | 'desc'。
+      sortField: '',
+      sortOrder: '',
       useServerPagination: false,
       confirm: {
         instance: null,
@@ -173,10 +204,6 @@ export default {
     },
     sliderWidth() {
       return window.innerWidth < 640 ? '90%' : 640
-    },
-    tableMaxHeight() {
-      const baseHeight = window.innerWidth < 640 ? 300 : 400
-      return baseHeight
     }
   },
   watch: {
@@ -192,7 +219,17 @@ export default {
       immediate: true
     }
   },
+  mounted() {
+    // 关联创建弹框 table 高度随视口/page size 动态计算（与关联列表 table 逻辑一致）
+    this.resizeHandler = () => this.calcTableMaxHeight()
+    window.addEventListener('resize', this.resizeHandler)
+    this.$nextTick(() => this.calcTableMaxHeight())
+  },
   beforeDestroy() {
+    // 解绑窗口缩放监听
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+    }
     // 组件销毁时取消进行中的列表请求，释放大列表数据引用（GC）
     cancelRequest('assoc-list')
   },
@@ -382,6 +419,11 @@ export default {
         this.table.pagination.count = 0
         this.table.list = []
         this.resetFilter()
+        // 切换关联类型时列已变化，清空上一轮的排序/状态筛选状态
+        this.sortField = ''
+        this.sortOrder = ''
+        this.relationStatusFilter = 'all'
+        this.associatedIds = []
         
         console.log('[AssociationCreate] Starting to load data...')
         this.loading = true
@@ -438,17 +480,21 @@ export default {
       const selectedPropertyId = this.filter.id
       
       const header = [
-        { bk_property_id: idKey, bk_property_name: 'ID' },
-        { bk_property_id: nameKey, bk_property_name: this.getInstanceNameLabel() }
+        { bk_property_id: idKey, bk_property_name: 'ID', sortable: false },
+        { bk_property_id: nameKey, bk_property_name: this.getInstanceNameLabel(), sortable: true }
       ]
       
-      // 如果选择了属性且不是实例名，则添加到第三列
+      // 如果选择了属性且不是实例名，则添加到第三列（属性列同样支持排序）
       if (selectedPropertyId && selectedPropertyId !== nameKey) {
         const selectedProperty = this.allProperties.find(
           prop => prop.bk_property_id === selectedPropertyId
         )
         if (selectedProperty) {
-          header.push(selectedProperty)
+          header.push({
+            bk_property_id: selectedProperty.bk_property_id,
+            bk_property_name: selectedProperty.bk_property_name,
+            sortable: true
+          })
         }
       }
       
@@ -631,6 +677,27 @@ export default {
       
       return result
     },
+    // 根据当前关联状态筛选，决定某行的操作类型（仅用于操作列渲染）：
+    //  - 'new'     → 显示「关联」按钮
+    //  - 'remove'  → 显示「取消关联」按钮
+    // 全部关联(all)：沿用现有 isAssociated 判定（兼容临时关联/取消的 tempData 状态）；
+    // 已关联(associated)：恒为取消；
+    // 未关联(not_associated)：恒为关联。
+    rowActionType(inst) {
+      if (this.relationStatusFilter === 'associated') return 'remove'
+      if (this.relationStatusFilter === 'not_associated') return 'new'
+      // 全部：优先用后端候选查询返回的 associatedIds 判定，回退到原有 existInstAssociation 逻辑
+      const instId = this.getInstanceId(inst)
+      if (this.associatedIds.length > 0) {
+        return this.associatedIds.map(String).includes(String(instId)) ? 'remove' : 'new'
+      }
+      return this.isAssociated(inst) ? 'remove' : 'new'
+    },
+    // 关联状态筛选下拉切换：重置到首页并重新拉取候选数据（联动 table）
+    handleStatusFilterChange() {
+      this.table.pagination.current = 1
+      this.getInstance()
+    },
     handlePropertySelected(value, data) {
       this.filter.id = value
       // 选择属性后更新表头
@@ -722,87 +789,46 @@ export default {
         
         const hasFilter = conditions.length > 0
         
-        // 智能分页策略：
-        // 1. 如果有筛选条件，使用后端分页
-        // 2. 如果没有筛选条件且当前显示第一页，先查询总数
-        //    - 如果总数 <= 100，一次性加载所有数据，前端分页
-        //    - 如果总数 > 100，启用后端分页
-        // 3. 如果没有筛选条件但不是第一页，使用后端分页
-        const isFirstPage = this.table.pagination.current === 1
+        // 关联候选查询统一走后端 candidates 接口（支持 全部/已关联/未关联 筛选 + 条件 + 排序 + 分页 组合查询）。
+        // 后端按 LIMIT/OFFSET 返回当前页实例 + total，前端直接进入「后端分页」展示，无需前端二次切片。
         const pageSize = this.table.pagination.limit
-        
-        let params
-        let useServerPagination = hasFilter || !isFirstPage || this.useServerPagination
-        
-        if (useServerPagination) {
-          // 使用后端分页
-          params = {
-            page: this.table.pagination.current,
-            page_size: pageSize,
-            conditions: hasFilter ? {
-              condition: 'AND',
-              rules: conditions
-            } : undefined
-          }
-          console.log('[AssociationCreate] Using server pagination, page:', params.page, 'pageSize:', params.page_size)
-        } else {
-          // 先查询总数
-          params = {
-            page: 1,
-            page_size: 1,
-            conditions: hasFilter ? {
-              condition: 'AND',
-              rules: conditions
-            } : undefined
-          }
+        const params = {
+          obj_id: this.objId,
+          inst_id: this.instId,
+          asst_obj_id: this.currentAsstObj,
+          bk_obj_asst_id: this.currentOption.bk_obj_asst_id,
+          filter: this.relationStatusFilter,
+          page: this.table.pagination.current,
+          page_size: pageSize,
+          conditions: hasFilter ? {
+            condition: 'AND',
+            rules: conditions
+          } : undefined
         }
-        
-        const response = await modelAPI.searchInstances(this.currentAsstObj, params,
+        // 联动排序：UI 触发的排序列/方向传给后端（后端 search_candidates 已支持 sort/order）
+        if (this.sortField) {
+          params.sort = this.sortField
+          params.order = this.sortOrder || 'asc'
+        }
+        console.log('[AssociationCreate] candidates params:', params)
+
+        const response = await associationAPI.searchCandidates(params,
           { requestId: 'assoc-list', cancelPrevious: true })
         console.log('[AssociationCreate] getInstance response:', response)
-        
-        const totalCount = response.total || response.count || 0
-        
-        if (useServerPagination) {
-          // 后端分页
-          const instances = response.instances || response.data || response.info || response || []
-          // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（与上游/实例列表一致，
-          // 避免关联弹框内 >500 行数据在初始化/重载时产生大量响应式 getter 与内存开销）。
-          // 关联列表为纯展示场景，行对象无需运行时写回，冻结安全。
-          this.allInstances = freezeList(Array.isArray(instances) ? instances : [])
-          this.table.pagination.count = totalCount
-          console.log('[AssociationCreate] Loaded', this.allInstances.length, 'instances (server pagination), total:', totalCount)
-          this.displayInstances = this.allInstances
-        } else {
-          // 前端分页 - 检查总数决定策略
-          if (totalCount <= 100) {
-            // 数据量小，一次性加载所有数据
-            console.log('[AssociationCreate] Total count:', totalCount, '<= 100, loading all data for client-side pagination')
-            const allParams = {
-              page: 1,
-              page_size: 100,
-              conditions: hasFilter ? {
-                condition: 'AND',
-                rules: conditions
-              } : undefined
-            }
-            const allResponse = await modelAPI.searchInstances(this.currentAsstObj, allParams,
-              { requestId: 'assoc-list', cancelPrevious: true })
-            const allInstances = allResponse.instances || allResponse.data || allResponse.info || allResponse || []
-            // 冻结（同上）
-            this.allInstances = freezeList(Array.isArray(allInstances) ? allInstances : [])
-            this.table.pagination.count = this.allInstances.length
-            console.log('[AssociationCreate] Loaded all', this.allInstances.length, 'instances for client-side pagination')
-            this.updateDisplayInstances()
-          } else {
-            // 数据量大，启用后端分页
-            console.log('[AssociationCreate] Total count:', totalCount, '> 100, switching to server pagination')
-            this.useServerPagination = true
-            // 重新调用自己，这次会使用后端分页
-            this.getInstance()
-            return
-          }
-        }
+
+        const data = response.data || response
+        const instances = data.instances || []
+        const totalCount = data.total || 0
+        // 已关联实例ID集合（用于操作列判定，替代纯前端 isAssociated 依赖 existInstAssociation）
+        this.associatedIds = Array.isArray(data.associated_ids) ? data.associated_ids : []
+
+        // 冻结大列表数据，跳过 Vue 对每行每列的深度响应式代理（与上游/实例列表一致，
+        // 避免关联弹框内 >500 行数据在初始化/重载时产生大量响应式 getter 与内存开销）。
+        // 关联列表为纯展示场景，行对象无需运行时写回，冻结安全。
+        this.allInstances = freezeList(Array.isArray(instances) ? instances : [])
+        this.table.pagination.count = totalCount
+        console.log('[AssociationCreate] Loaded', this.allInstances.length, 'candidates (filter=', this.relationStatusFilter, '), total:', totalCount)
+        this.displayInstances = this.allInstances
       } catch (e) {
         // 请求被取消（筛选/翻页/切换关联类型时的 cancelPrevious）属预期行为，静默忽略，
         // 不弹错误、不清空数据：由取代它的新请求负责重新填充 displayInstances（卸载/替换/GC 更干净）
@@ -815,16 +841,43 @@ export default {
         this.displayInstances = []
       } finally {
         this.loading = false
+        // 数据重载（含 page size 调整/翻页/搜索/切换关联类型）后，按当前页大小重算 table 高度
+        this.$nextTick(() => this.calcTableMaxHeight())
       }
     },
     updateDisplayInstances() {
       let filtered = this.allInstances
-      
+      // 前端分页场景（≤100 全量加载）：按 UI 触发的排序列本地排序后再切片
+      if (this.sortField) {
+        filtered = this.sortInstances(filtered, this.sortField, this.sortOrder)
+      }
+
       this.table.pagination.count = filtered.length
-      
+
       const start = (this.table.pagination.current - 1) * this.table.pagination.limit
       const end = start + this.table.pagination.limit
       this.displayInstances = filtered.slice(start, end)
+    },
+    // 对实例数组按指定字段排序（用于前端分页的本地排序）。与后端 ORDER BY 语义对齐：
+    // 数字字段按数值比大小，其余按字符串（中文 localeCompare）；空值恒排末尾。
+    sortInstances(list, field, order) {
+      const dir = order === 'desc' ? -1 : 1
+      return [...list].sort((a, b) => {
+        const va = a[field]
+        const vb = b[field]
+        const aEmpty = va === null || va === undefined || va === ''
+        const bEmpty = vb === null || vb === undefined || vb === ''
+        if (aEmpty && bEmpty) return 0
+        if (aEmpty) return 1  // 空值恒排末尾
+        if (bEmpty) return -1
+        const na = Number(va)
+        const nb = Number(vb)
+        const bothNum = !Number.isNaN(na) && !Number.isNaN(nb) && va !== '' && vb !== ''
+        if (bothNum) {
+          return (na - nb) * dir
+        }
+        return String(va).localeCompare(String(vb), 'zh-CN') * dir
+      })
     },
     search() {
       this.table.pagination.current = 1
@@ -839,6 +892,20 @@ export default {
       this.table.pagination.current = 1
       this.getInstance()
     },
+    // 列排序触发（bk-table @sort-change 回调参数为 { column, prop, order }，
+    // order 取值 'ascending' | 'descending' | null）。prop 为空或 order 为 null 表示取消排序，
+    // 回到后端默认按 id 排序。排序后重置到首页并重新拉取数据（后端排序 / 前端分页本地排序）。
+    handleSortChange({ prop, order }) {
+      if (!prop || order === null) {
+        this.sortField = ''
+        this.sortOrder = ''
+      } else {
+        this.sortField = prop
+        this.sortOrder = order === 'descending' ? 'desc' : 'asc'
+      }
+      this.table.pagination.current = 1
+      this.getInstance()
+    },
     async updateAssociation(instId, updateType = 'new') {
       try {
         const instIdNum = Number(instId)
@@ -849,6 +916,9 @@ export default {
           this.$bkMessage({ message: '关联成功', theme: 'success' })
           this.hasChange = true
           await this.getExistInstAssociation()
+          // 操作成功后重载候选列表：操作列随关联状态翻转（关联 -> 取消关联），
+          // 并兼容当前 条件筛选 / 排序 / 分页 / 关联状态 上下文（getInstance 复用现有状态）
+          await this.getInstance()
           
         } else if (updateType === 'remove') {
           const existInst = this.existInstAssociation.find(inst => {
@@ -864,6 +934,8 @@ export default {
             this.$bkMessage({ message: '取消关联成功', theme: 'success' })
             this.hasChange = true
             await this.getExistInstAssociation()
+            // 重载候选列表：操作列翻转（取消关联 -> 关联）；not_associated 视图下该行会移出当前页
+            await this.getInstance()
           } else {
             this.$bkMessage({ message: '未找到关联记录', theme: 'warning' })
           }
@@ -880,6 +952,8 @@ export default {
           this.tempData = [instIdNum]
           this.$bkMessage({ message: '关联成功', theme: 'success' })
           await this.getExistInstAssociation()
+          // 重载候选列表：替换关联后操作列/筛选视图同步刷新
+          await this.getInstance()
         }
         
       } catch (e) {
@@ -921,6 +995,10 @@ export default {
       this.tempData = []
       this.hasChange = false
       this.useServerPagination = false
+      this.sortField = ''
+      this.sortOrder = ''
+      this.relationStatusFilter = 'all'
+      this.associatedIds = []
       this.resetFilter()
       this.allInstances = []
       this.displayInstances = []
@@ -972,6 +1050,31 @@ export default {
       // 复用全站 property-value.js 的 formatPropertyValue：枚举/多选/列表按 option 映射为显示名，
       // 避免直接用 column.option[value]（数组被当数字下标）导致返回对象并被渲染成 JSON 文本。
       return formatPropertyValue(value, column)
+    },
+    // 计算关联创建弹框 table 的 max-height：按 page size 动态得出「limit 行 + 表头」的目标高度，
+    // 并以抽屉/内容主区视口为上界（最高不超过视口、最低不低于 page size 行），对齐上游
+    // bk-cmdb association-list-table 固定 462（=10×42+42）与 create 弹窗 $APP.height-X 的抽屉思路，
+    // 与关联列表组件 calcTableMaxHeight 逻辑保持一致。
+    calcTableMaxHeight() {
+      // 行高：优先测量实际渲染的首行，避免硬编码导致「恰好 page size 行差 1px 触发内部滚动」
+      let rowHeight = 43
+      const tableEl = this.$el && this.$el.querySelector('.new-association-table')
+      if (tableEl) {
+        const row = tableEl.querySelector('.bk-table-body-wrapper tr')
+        if (row) {
+          const h = row.getBoundingClientRect().height
+          if (h > 0) { rowHeight = h }
+        }
+      }
+      const HEADER_HEIGHT = 43
+      // 目标高度：恰好容纳当前页 size 行 + 表头；page size 变化时自动跟随
+      const limit = this.table.pagination.limit || 20
+      const pageSizeHeight = limit * rowHeight + HEADER_HEIGHT
+      // 视口上界：应用视口高度（抽屉/内容主区）减去顶部导航、面包屑、操作栏、分页等占用
+      const viewport = (this.$APP && this.$APP.height) || window.innerHeight || 900
+      const viewportCap = Math.max(200, viewport - 210)
+      // 最高不超过视口、最低为 page size 行：max-height = min(视口上界, page size 行高)
+      this.tableMaxHeight = Math.min(viewportCap, pageSizeHeight)
     }
   }
 }
@@ -1000,6 +1103,13 @@ export default {
     .select-wrapper {
       flex: 1;
       min-width: 200px;
+    }
+
+    /* 新增的「全部关联/已关联/未关联」状态筛选下拉：固定宽度 120px */
+    .status-select {
+      flex: 0 0 120px;
+      width: 120px;
+      min-width: 120px;
     }
 
     .filter-group {
@@ -1060,6 +1170,15 @@ export default {
 
       .select-wrapper {
         width: 100%;
+      }
+
+      /* 竖屏移动端：状态筛选下拉与关联类型下拉保持一致的盒子高度/对齐，
+         清除桌面端遗留的 flex 收缩与固定宽度，避免 column 布局下被拉伸变形 */
+      .status-select {
+        flex: none;
+        width: 100%;
+        min-width: 0;
+        align-self: stretch;
       }
 
       .filter-group {

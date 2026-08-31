@@ -1,5 +1,10 @@
 from app.db.executor import query_all, query_one, execute
 from app.utils.tools import generate_id
+from app.definitions import (
+    PROPERTY_TYPE_INT,
+    PROPERTY_TYPE_BOOL,
+    NUMERIC_PROPERTY_TYPES
+)
 from datetime import datetime
 import uuid
 
@@ -526,6 +531,195 @@ class AssociationService:
         
         return results
     
+    @staticmethod
+    def search_candidates(params):
+        """
+        查询「新增关联」弹框的候选目标实例，并联动当前实例是否已关联。
+
+        入参 params:
+            obj_id:        当前实例所在模型（关联源/目标定义方）
+            inst_id:       当前实例ID
+            asst_obj_id:   候选目标模型
+            bk_obj_asst_id: 关联类型ID（cc_ObjAsst.bk_obj_asst_id）
+            filter:        'all' | 'associated' | 'not_associated'
+            page / page_size / conditions / sort / order: 与 advanced_search 一致
+        返回:
+            { instances, page, page_size, total, associated_ids }
+            - instances 的每行带 _is_associated(0/1)
+            - associated_ids: 当前实例在该目标模型下已关联实例ID集合
+        """
+        from app.service.instance_service import InstanceService
+
+        obj_id = params.get('obj_id')
+        inst_id = params.get('inst_id')
+        asst_obj_id = params.get('asst_obj_id')
+        bk_obj_asst_id = params.get('bk_obj_asst_id')
+        rel_filter = (params.get('filter') or 'all').strip().lower()
+
+        # 候选模型表与 ID 字段（复用实例表/ID 字段解析，兼容内置模型）
+        T = InstanceService._get_table_name(asst_obj_id)
+        T_ID = InstanceService._get_id_field(asst_obj_id)
+        # 当前实例的关联分表
+        A = get_inst_asst_table_name(obj_id)
+
+        # 分页
+        page = int(params.get('page') or 1) if params.get('page') else 1
+        page_size = int(params.get('page_size') or 20)
+        offset = (page - 1) * page_size
+
+        # 排序
+        sort = params.get('sort')
+        order = (params.get('order') or 'asc').strip()
+
+        # 当前实例关联分表的 JOIN 条件（全部参数化，防注入）
+        # 关联具有方向：当前实例 obj_id/inst_id 既可能是源（bk_obj_id/bk_inst_id），
+        # 也可能是目标（bk_asst_obj_id/bk_asst_inst_id）。候选实例 T 则对应另一端的
+        # bk_asst_obj_id/T_ID 或 bk_obj_id/T_ID。必须用 OR 覆盖两个方向，
+        # 否则当弹框从「目标端」打开（如 set 是关联的目标）时，已关联记录无法匹配，
+        # 导致「已关联」筛选结果为 0。
+        join_sql = f"""
+            FROM "{T}" T
+            LEFT JOIN "{A}" A
+              ON A.bk_obj_asst_id = :bk_obj_asst_id
+             AND (
+                  ( A.bk_obj_id = :obj_id
+                AND A.bk_inst_id = :inst_id
+                AND A.bk_asst_obj_id = :asst_obj_id
+                AND A.bk_asst_inst_id = T."{T_ID}" )
+               OR
+                  ( A.bk_asst_obj_id = :obj_id
+                AND A.bk_asst_inst_id = :inst_id
+                AND A.bk_obj_id = :asst_obj_id
+                AND A.bk_inst_id = T."{T_ID}" )
+             )
+        """
+        # 分表过滤条件（决定全部/已关联/未关联）
+        assoc_filter_sql = ''
+        if rel_filter == 'associated':
+            assoc_filter_sql = ' WHERE A.id IS NOT NULL'
+        elif rel_filter == 'not_associated':
+            assoc_filter_sql = ' WHERE A.id IS NULL'
+
+        pre_params = {
+            'obj_id': obj_id,
+            'inst_id': inst_id,
+            'asst_obj_id': asst_obj_id,
+            'bk_obj_asst_id': bk_obj_asst_id
+        }
+
+        # ---- 条件筛选（复用 advanced_search 的字段白名单 + 操作符映射）----
+        where_clauses = []
+        params_dict = dict(pre_params)
+        # 列名白名单：仅允许候选模型自身属性作为查询字段
+        from app.service.model_service import ModelService
+        attributes = ModelService.get_model_attributes(asst_obj_id)
+        attr_type_map = {}
+        for attr in attributes:
+            pid = attr.get('bk_property_id')
+            if pid:
+                attr_type_map[pid] = attr.get('bk_property_type', '')
+
+        conditions = params.get('conditions')
+        if conditions:
+            rule_list = conditions.get('rules', []) if isinstance(conditions, dict) else (conditions if isinstance(conditions, list) else [])
+            param_counter = 0
+            for cond in rule_list:
+                if not isinstance(cond, dict):
+                    continue
+                field = cond.get('field', '')
+                op = cond.get('operator', '$eq')
+                value = cond.get('value', '')
+                field_type = attr_type_map.get(field, '')
+                if field_type == PROPERTY_TYPE_BOOL:
+                    value = InstanceService._parse_bool_value_for_search(value)
+                op_mapping = {
+                    'contains': '$regex', 'equal': '$eq', 'not_equal': '$ne',
+                    'in': '$in', 'not_in': '$nin', 'greater_than': '$gt',
+                    'less_than': '$lt', 'greater_or_equal': '$gte',
+                    'less_or_equal': '$lte'
+                }
+                if op in op_mapping:
+                    op = op_mapping[op]
+                where_clause, param_counter = InstanceService._build_condition(
+                    field, op, value, params_dict, param_counter, field_type)
+                if where_clause:
+                    # 条件字段属于候选模型 T，需加表别名前缀
+                    where_clause = where_clause.replace(f'"{field}"', f'T."{field}"', 1)
+                    where_clauses.append(where_clause)
+
+        # 组合 WHERE（分表过滤 + 条件筛选）
+        if assoc_filter_sql:
+            combined_where = assoc_filter_sql
+            if where_clauses:
+                combined_where += ' AND ' + ' AND '.join(where_clauses)
+        elif where_clauses:
+            combined_where = ' WHERE ' + ' AND '.join(where_clauses)
+        else:
+            combined_where = ''
+
+        # 排序（字段名白名单，对齐 advanced_search）
+        sort_clause = ''
+        if sort:
+            sort_str = str(sort).strip()
+            if sort_str.startswith('-'):
+                sort_field = sort_str[1:]
+                sort_dir = 'DESC'
+            else:
+                sort_field = sort_str
+                sort_dir = order.upper() if order else 'ASC'
+            if sort_field.replace('_', '').replace('-', '').isalnum():
+                sort_clause = f' ORDER BY T."{sort_field}" {sort_dir}'
+
+        # ---- 主查询 ----
+        main_sql = (
+            'SELECT T.*, CASE WHEN A.id IS NOT NULL THEN 1 ELSE 0 END AS _is_associated'
+            + join_sql
+            + combined_where
+            + sort_clause
+            + ' LIMIT :page_size OFFSET :offset'
+        )
+        params_dict['page_size'] = page_size
+        params_dict['offset'] = offset
+
+        instances = query_all(main_sql, params_dict)
+
+        # 解析 JSON 字段（枚举等），与 advanced_search 一致
+        for i in range(len(instances)):
+            instances[i] = InstanceService._parse_json_fields(instances[i], asst_obj_id)
+
+        # ---- 总数查询（复用同一 WHERE，去掉 ORDER/LIMIT） ----
+        count_sql = (
+            'SELECT COUNT(*) as total'
+            + join_sql
+            + combined_where
+        )
+        count_result = query_one(count_sql, params_dict)
+        total = count_result.get('total', 0) if count_result else 0
+
+        # 已关联实例ID集合（用于前端操作列判定）。
+        # 必须基于「全量」查询（不受当前分页/排序影响），否则 all 模式翻页后关联ID集合会缺失。
+        # not_associated 场景下恒为空。
+        associated_ids = []
+        if rel_filter != 'not_associated':
+            # 复用同一 JOIN 与条件筛选，强制 A.id IS NOT NULL，仅取候选模型主键列（轻量、无分页）
+            cond_part = (' AND ' + ' AND '.join(where_clauses)) if where_clauses else ''
+            assoc_ids_sql = (
+                f'SELECT T."{T_ID}"'
+                + join_sql
+                + ' WHERE A.id IS NOT NULL'
+                + cond_part
+            )
+            assoc_rows = query_all(assoc_ids_sql, params_dict)
+            associated_ids = [r.get(T_ID) for r in assoc_rows]
+
+        return {
+            'instances': instances,
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'associated_ids': associated_ids
+        }
+
     @staticmethod
     def get_related_instances(instance_id, model_id=None):
         """获取实例的相关实例（从指定模型的分表查询）"""

@@ -68,6 +68,14 @@
             </div>
             <node-info v-else :node="selectedNode" @deleted="handleNodeDeleted" @updated="handleNodeUpdated"></node-info>
           </bk-tab-panel>
+
+          <bk-tab-panel name="association" label="关联" render-directive="if">
+            <div v-if="!selectedNode" class="empty-state">
+              <div class="placeholder-text">请选择拓扑节点</div>
+              <div class="placeholder-desc">点击左侧拓扑树节点查看关联</div>
+            </div>
+            <node-association v-else :node="selectedNode"></node-association>
+          </bk-tab-panel>
         </bk-tab>
       </div>
 
@@ -90,6 +98,7 @@
 import TopologyTree from './children/topology-tree.vue'
 import HostList from './host/host-list.vue'
 import NodeInfo from './children/node-info.vue'
+import NodeAssociation from './children/node-association.vue'
 import RouterQuery from '@/utils/router-query'
 import { MENU_BUSINESS_TOPOLOGY, MENU_BUSINESS_HOST_DETAILS } from '@/dictionary/menu-symbol'
 
@@ -98,7 +107,8 @@ export default {
   components: {
     TopologyTree,
     HostList,
-    NodeInfo
+    NodeInfo,
+    NodeAssociation
   },
   data() {
     return {

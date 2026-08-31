@@ -55,6 +55,7 @@
                 :inst-id="instId"
                 :associations="allAssociations"
                 :relations="modelRelations"
+                :table-body-loading="true"
                 @association-change="handleAssociationChange">
               </instance-association>
             </div>

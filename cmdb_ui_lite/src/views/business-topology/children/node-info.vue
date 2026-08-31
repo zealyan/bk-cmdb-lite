@@ -308,16 +308,11 @@ export default {
             const objId = this.node.data.bk_obj_id
             const instId = this.node.data.bk_inst_id
 
-            if (objId !== 'biz') {
-              // set/module 及自定义主线层（如 appsys）统一走拓扑删除接口，
-              // 复用后端 delete_node 的「含主机禁删 + 级联删下游 + 关联引用校验」
-              // （自定义层已由 _delete_custom_mainline_node 支持）
-              const bizId = this.node.data.bk_biz_id
-              await topoAPI.deleteNode(objId, instId, { bk_biz_id: bizId })
-            } else {
-              // biz 走通用删除接口
-              await modelAPI.deleteInstances(objId, [instId])
-            }
+            // biz/set/module 及自定义主线层统一走拓扑删除接口，
+            // 复用后端 delete_node 的「内置业务禁删 + 非空闲机池子节点禁删 +
+            // 含主机禁删 + 级联删下游 + 关联引用校验」
+            const bizId = this.node.data.bk_biz_id
+            await topoAPI.deleteNode(objId, instId, { bk_biz_id: bizId })
 
             this.$bkMessage({
               theme: 'success',

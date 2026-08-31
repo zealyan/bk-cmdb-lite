@@ -2432,6 +2432,68 @@ def _check_inst_associated(obj_id: str, inst_id: int) -> bool:
     return bool(row and row['count'] > 0)
 
 
+def _clean_instance_associations(bk_obj_id: str, bk_inst_id: int, executor) -> None:
+    """删除实例前清理实例关联分表，对齐 InstanceService.delete_instances：
+
+    1) 删除自身分表（cc_InstAsst_0_pub_{obj}）中作为源与作为目标的记录；
+    2) 扫描对端模型分表，清理其中指向本实例的冗余记录。
+
+    避免删除 set/module 后在 cc_InstAsst_* 中遗留悬挂关联（孤儿数据）。
+    """
+    from app.service.association_service import get_inst_asst_table_name
+
+    own_table = get_inst_asst_table_name(bk_obj_id)
+    params = {'model_id': bk_obj_id, 'inst_id': bk_inst_id}
+
+    # 先查出涉及的对端模型（用于清理对端分表冗余记录）
+    try:
+        related_dest = query_all(
+            f'SELECT DISTINCT bk_asst_obj_id FROM "{own_table}" '
+            f'WHERE bk_obj_id = :model_id AND bk_inst_id = :inst_id',
+            params) or []
+        related_src = query_all(
+            f'SELECT DISTINCT bk_obj_id FROM "{own_table}" '
+            f'WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id = :inst_id',
+            params) or []
+    except Exception:
+        related_dest = []
+        related_src = []
+
+    # 删除自身分表（源 + 目标）
+    executor.execute(
+        f'DELETE FROM "{own_table}" '
+        f'WHERE bk_obj_id = :model_id AND bk_inst_id = :inst_id',
+        params)
+    executor.execute(
+        f'DELETE FROM "{own_table}" '
+        f'WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id = :inst_id',
+        params)
+
+    # 从对端模型分表清理冗余记录
+    for item in related_dest:
+        dest_model = item.get('bk_asst_obj_id')
+        if dest_model and dest_model != bk_obj_id:
+            dest_table = get_inst_asst_table_name(dest_model)
+            try:
+                executor.execute(
+                    f'DELETE FROM "{dest_table}" '
+                    f'WHERE bk_obj_id = :model_id AND bk_inst_id = :inst_id',
+                    params)
+            except Exception:
+                pass
+    for item in related_src:
+        src_model = item.get('bk_obj_id')
+        if src_model and src_model != bk_obj_id:
+            src_table = get_inst_asst_table_name(src_model)
+            try:
+                executor.execute(
+                    f'DELETE FROM "{src_table}" '
+                    f'WHERE bk_asst_obj_id = :model_id AND bk_asst_inst_id = :inst_id',
+                    params)
+            except Exception:
+                pass
+
+
 def _mainline_descendant_module_ids(obj_id: str, inst_id: int,
                                     bk_biz_id: int, supplier_account: str) -> List[int]:
     """沿主线从当前节点向下，收集其下所有 module 实例 id（用于 hasHost 校验）。
@@ -2519,7 +2581,6 @@ def _delete_custom_mainline_node(bk_obj_id: str, bk_inst_id: int, bk_biz_id: int
     全部通过（下游子树为空）才删除自身并清理关联分表。对任意自定义层通用。
     """
     from app.service.instance_service import InstanceService
-    from app.service.association_service import get_inst_asst_table_name
     from app.utils.exceptions import APIException, CCErrorCode
 
     model_tree = get_mainline_model_top(supplier_account)
@@ -2570,10 +2631,10 @@ def _delete_custom_mainline_node(bk_obj_id: str, bk_inst_id: int, bk_biz_id: int
     executor.execute(
         f'DELETE FROM "{self_table}" WHERE "{self_id_field}" = :inst_id AND bk_biz_id = :biz_id',
         {'inst_id': bk_inst_id, 'biz_id': bk_biz_id})
-    asst_table = get_inst_asst_table_name(bk_obj_id)
-    executor.execute(
-        f'DELETE FROM "{asst_table}" WHERE bk_inst_id = :inst_id OR bk_asst_inst_id = :inst_id',
-        {'inst_id': bk_inst_id})
+    # 清理自定义层实例关联分表（源+目标 + 对端冗余），与 set/module 对齐：
+    # 关联记录双写于源/目标两张分表，必须一并清掉对端分表中的副本，
+    # 否则 app_sys→其它实例 的关联会在对方分表留下悬挂孤儿。
+    _clean_instance_associations(bk_obj_id, bk_inst_id, executor)
 
 
 def delete_node(bk_obj_id: str, bk_inst_id: int,
@@ -2581,7 +2642,7 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
     """
     删除业务拓扑节点（biz/set/module 及自定义层级），与原项目删除冲突校验一致：
 
-    - 业务(biz)：内置业务(default=1)禁删；业务下存在集群禁删；业务下存在主机禁删
+    - 业务(biz)：内置业务(default=1)禁删；业务下存在非空闲机池集群/模块(default!=1)禁删（空闲机池除外）
     - 集群(set)：集群下模块存在主机禁删；校验通过后级联删除集群下所有模块再删集群
     - 模块(module)：模块下存在主机禁删；模块被其它实例关联引用禁删
     - 自定义层级：沿主线递归下游模块查主机(有主机禁删)；被关联引用禁删；级联删下游再删自身
@@ -2607,21 +2668,49 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
             raise APIException('内置业务(资源池)不允许删除',
                                error_code=CCErrorCode.CCErrorTopoForbiddenDeleteBuiltInBiz)
 
-        # 2. 业务下存在集群禁止删除
-        set_count = query_one(
-            'SELECT COUNT(*) as count FROM cc_SetBase WHERE bk_biz_id = :biz_id',
+        # 2. 业务下存在「非空闲机池」的集群/模块（default != 1）禁止删除
+        #    空闲机池（default=1 的 set）视为业务内置骨架，不计入子节点校验，
+        #    校验通过后会随业务一并级联清理，避免孤儿数据。
+        child_set_count = query_one(
+            'SELECT COUNT(*) as count FROM cc_SetBase '
+            'WHERE bk_biz_id = :biz_id AND "default" != 1',
             {'biz_id': bk_inst_id})
-        if set_count and set_count['count'] > 0:
-            raise ValueError('业务下存在集群，无法删除')
+        if child_set_count and child_set_count['count'] > 0:
+            raise APIException(
+                '业务下存在未删除的集群/模块节点（空闲机池除外），无法删除',
+                error_code=CCErrorCode.CCErrTopoHasChildNode)
 
-        # 3. 业务下存在主机禁止删除 —— 对齐上游 checkHasHost
-        host_count = query_one(
-            'SELECT COUNT(*) as count FROM cc_ModuleHostConfig WHERE bk_biz_id = :biz_id',
+        # 3. 级联清理空闲机池（default set + 其内部模块 + 主机挂载），避免孤儿数据
+        idle_modules = query_all(
+            'SELECT bk_module_id FROM cc_ModuleBase '
+            'WHERE bk_biz_id = :biz_id AND "default" != 0',
             {'biz_id': bk_inst_id})
-        if host_count and host_count['count'] > 0:
-            raise APIException('业务下存在主机, 不允许删除',
-                               error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
+        if idle_modules:
+            idle_module_ids = ','.join(str(m['bk_module_id']) for m in idle_modules)
+            executor.execute(
+                f'DELETE FROM cc_ModuleHostConfig WHERE bk_module_id IN ({idle_module_ids})')
+            executor.execute(
+                f'DELETE FROM cc_ModuleBase WHERE bk_module_id IN ({idle_module_ids})')
+        executor.execute(
+            'DELETE FROM cc_SetBase WHERE bk_biz_id = :biz_id AND "default" = 1',
+            {'biz_id': bk_inst_id})
 
+        # 4. 清理业务自身的实例关联分表记录 —— 对齐 InstanceService.delete_instances
+        from app.service.association_service import get_inst_asst_table_name
+        biz_asst_table = get_inst_asst_table_name(MAINLINE_MODEL_BIZ)
+        try:
+            executor.execute(
+                f'DELETE FROM "{biz_asst_table}" '
+                f'WHERE bk_obj_id = :model AND bk_inst_id = :inst_id',
+                {'model': MAINLINE_MODEL_BIZ, 'inst_id': bk_inst_id})
+            executor.execute(
+                f'DELETE FROM "{biz_asst_table}" '
+                f'WHERE bk_asst_obj_id = :model AND bk_asst_inst_id = :inst_id',
+                {'model': MAINLINE_MODEL_BIZ, 'inst_id': bk_inst_id})
+        except Exception:
+            pass
+
+        # 5. 删除业务主表
         executor.execute(
             'DELETE FROM cc_ApplicationBase WHERE bk_biz_id = :biz_id',
             {'biz_id': bk_inst_id})
@@ -2639,6 +2728,11 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
         if not owned or owned['count'] == 0:
             raise NotFoundException(f'集群 {bk_inst_id} 不存在于业务 {bk_biz_id}')
 
+        # 关联引用校验：集群被其它实例关联引用禁删（与 module 对齐，避免悬挂引用）
+        if _check_inst_associated(MAINLINE_MODEL_SET, bk_inst_id):
+            raise APIException('集群被其它实例关联引用, 不允许删除',
+                               error_code=CCErrorCode.CCErrorTopoInstHasAssociation)
+
         # 复刻原项目 DeleteSet：先查集群下模块是否有关联主机
         module_ids = query_all(
             'SELECT bk_module_id FROM cc_ModuleBase '
@@ -2654,10 +2748,19 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
                 raise APIException('目标包含主机, 不允许删除',
                                    error_code=CCErrorCode.CCErrTopoHasHostCheckFailed)
 
-        # 对齐上游 DeleteSet：先级联删除集群下的所有模块，再删除集群本身，避免孤儿模块
-        executor.execute(
-            'DELETE FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
-            {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+        # 对齐上游 DeleteSet：先级联删除集群下的所有模块，再删除集群本身，避免孤儿模块。
+        # 级联删除的模块同样需清理其关联分表（模块可能作为源持有 module→其它实例 的关联）。
+        if module_ids:
+            for m in module_ids:
+                _clean_instance_associations(
+                    MAINLINE_MODEL_MODULE, m['bk_module_id'], executor)
+            executor.execute(
+                'DELETE FROM cc_ModuleBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
+                {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
+
+        # 清理集群自身的实例关联分表（源+目标 + 对端冗余），避免悬挂孤儿关联
+        _clean_instance_associations(MAINLINE_MODEL_SET, bk_inst_id, executor)
+
         executor.execute(
             'DELETE FROM cc_SetBase WHERE bk_set_id = :set_id AND bk_biz_id = :biz_id',
             {'set_id': bk_inst_id, 'biz_id': bk_biz_id})
@@ -2686,6 +2789,9 @@ def delete_node(bk_obj_id: str, bk_inst_id: int,
         if _check_inst_associated(MAINLINE_MODEL_MODULE, bk_inst_id):
             raise APIException('模块被其它实例关联引用, 不允许删除',
                                error_code=CCErrorCode.CCErrorTopoInstHasAssociation)
+
+        # 清理模块关联分表（源+目标 + 对端冗余），避免删除后留下 module→其它实例 的悬挂孤儿关联
+        _clean_instance_associations(MAINLINE_MODEL_MODULE, bk_inst_id, executor)
 
         executor.execute(
             'DELETE FROM cc_ModuleBase WHERE bk_module_id = :module_id AND bk_biz_id = :bk_biz_id',

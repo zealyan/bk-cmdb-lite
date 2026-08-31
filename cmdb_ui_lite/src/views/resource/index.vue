@@ -84,9 +84,9 @@ export default {
           if (model.bk_ishidden) return false
           // 隐藏已停用的模型（与原项目 resource-manage 一致）
           if (model.bk_ispaused) return false
-          // 集群/模块暂不允许在资源目录查看实例（与原项目 resource-manage 一致）
-          const isModuleOrSet = [BUILTIN_MODELS.SET, BUILTIN_MODELS.MODULE].includes(model.bk_obj_id)
-          if (isModuleOrSet) return false
+          // 资源目录展示由模型属性 bk_isresourcedir 控制（1=展示，0=不展示）。
+          // biz/set/module 经 migrate 显式标记为 1，默认初始化即可在资源目录看到其模型实例列表。
+          if (model.bk_isresourcedir === 0) return false
           const isMatched = this.matchedModels ? this.matchedModels.includes(model.bk_obj_id) : true
           return isMatched
         })

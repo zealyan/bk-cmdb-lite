@@ -9,6 +9,7 @@
     </bk-input>
     <bk-big-tree ref="tree" class="topology-tree"
       selectable
+      :expand-on-click="false"
       display-matched-node-descendants
       :height="treeHeight"
       :node-height="36"
@@ -18,6 +19,7 @@
         childrenKey: 'child'
       }"
       @select-change="handleSelectChange"
+      @node-click="handleNodeClick"
       @expand-change="handleExpandChange">
       <template #default="{ node, data }">
         <topology-tree-node
@@ -683,6 +685,50 @@ export default {
       }
 
       RouterQuery.set(query)
+    },
+
+    // 节点点击事件（每次点击都会触发，含「重选已选中节点」；
+    // 注意 select-change 在重选同一节点时不会触发，故收缩逻辑只能挂在这里）。
+    //
+    // 为什么禁用组件内置的 expandOnClick（模板已配 :expand-on-click="false"）：
+    //   bk-big-tree 的 handleNodeClick 顺序是 emit('node-click') → setSelected →
+    //   (expandOnClick 为真时) setExpanded(node, { expanded: !node.expanded })。
+    //   - 重选已选中节点：setSelected 因 nodeId===selected 直接 return，无变化；
+    //     而内置 expandOnClick 会用点击时快照 node.expanded 强制 toggle，把我们的
+    //     收缩又展开回去，表现为「动作丢失」。
+    //   - 首次选中未展开/已展开节点：内置 expandOnClick 会强制 toggle，导致「点击选中
+    //     已展开节点反而被收起」，违反需求1（已展开点击选中不得收缩）。
+    //   因此关闭内置行为，改由本方法按规则精确控制：
+    //  1) 点击「未选中」节点 → 仅选中；「已展开」保持原状、「未展开且非叶子」顺手展开
+    //     （满足需求1：已展开点击选中不得收缩；新需求：未展开首次点击即展开看子节点）；
+    //  2) 点击「已选中」节点 → 再次点击切换其展开/收缩态（toggle，满足需求2）。
+    // 直接以 bk-big-tree 内部的 selected 作为当前选中态权威来源（emit node-click 时
+    // selected 仍是点击前的选中值），避免额外状态同步。
+    handleNodeClick(node) {
+      if (!node || !this.$refs.tree) return
+      const tree = this.$refs.tree
+      const selectedId = tree.selected
+      if (node.id === selectedId) {
+        // 已选中节点再次点击 → toggle 展开/收缩
+        const willExpand = !node.expanded
+        tree.setExpanded(node.id, { expanded: willExpand, emitEvent: false })
+        // 展开时统计其下节点数量（对齐箭头展开 / handleExpandChange 展开分支）
+        if (willExpand) {
+          this.setNodeCount([node, ...(node.children || [])])
+        }
+        // emitEvent:false 不触发 handleExpandChange，手动同步展开态持久化
+        this.saveExpandedState()
+      } else {
+        // 首次选中其它节点：
+        //  - 「已展开」→ 保持展开态不变（满足需求1：不得收缩）；
+        //  - 「未展开且非叶子」→ 顺手展开并统计子节点（新需求：首次点击即展开看子节点）。
+        //  两种情形都不收缩任何节点。
+        if (!node.expanded && !node.isLeaf) {
+          tree.setExpanded(node.id, { expanded: true, emitEvent: false })
+          this.setNodeCount([node, ...(node.children || [])])
+          this.saveExpandedState()
+        }
+      }
     },
 
     handleExpandChange(node) {

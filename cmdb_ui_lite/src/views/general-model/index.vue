@@ -2,7 +2,8 @@
   <div class="models-layout general-model-layout">
     <div class="models-options clearfix">
       <div class="options-button clearfix fl">
-        <bk-button theme="primary" @click="handleCreate">新建</bk-button>
+        <bk-button theme="primary" :disabled="isSetOrModule" v-bk-tooltips.top-start="'集群/模块请在业务拓扑中创建'" @click="handleCreate">新建</bk-button>
+        <bk-button class="models-button" theme="default" :disabled="isSetOrModule" v-bk-tooltips.top-start="'集群/模块不支持复制'" @click="handleCopySelected">复制</bk-button>
         <!-- <bk-button class="models-button" theme="default" @click="handleImport">导入</bk-button> -->
         <!-- <bk-button class="models-button" theme="default" @click="handleExport">导出</bk-button> -->
         <bk-button class="models-button" theme="default" @click="handleBatchEdit">批量更新</bk-button>
@@ -334,6 +335,7 @@ export default {
       // 参考: /workspace/bk-cmdb/src/ui/src/views/general-model/index.vue customColumns computed
       customColumns: [],
       selectedIds: [],
+      selectedRows: [],
       hiddenUniqueProperties: [],
       createDialogVisible: false,
       createForm: {},
@@ -413,6 +415,11 @@ export default {
     // 禁用列：内置模型的 ID/名称字段为系统固定字段，不可移除
     disabledColumns() {
       return [this.instanceIdField, this.instanceNameField]
+    },
+    // 资源目录实例列表视图中,主线拓扑模型(set/module)不允许从通用入口新建/复制,
+    // 避免脱离业务归属形成孤儿节点(应走业务拓扑页建立)。
+    isSetOrModule() {
+      return ['set', 'module'].includes(this.objId)
     },
     searchableProperties() {
       // 与原项目保持一致: 排除 bk_isapi=true 的系统字段(如 id、bk_inst_id、bk_obj_id)
@@ -1932,6 +1939,7 @@ export default {
     },
     handleSelectionChange(selection) {
       this.selectedIds = selection.map(row => row[this.instanceIdField])
+      this.selectedRows = selection
     },
     handleDeleteSingle(row) {
       this.handleDelete([row[this.instanceIdField]])
@@ -2046,6 +2054,10 @@ export default {
       return operator === '$range' || operator === '$gte' || operator === '$lte'
     },
     handleCreate() {
+      if (this.isSetOrModule) {
+        this.$bkMessage({ message: '集群/模块请在业务拓扑中创建，不支持在资源目录新建', theme: 'warning' })
+        return
+      }
       console.log('[DEBUG] handleCreate called - 新建按钮被点击')
       console.log('[DEBUG] 当前对象ID:', this.objId)
       console.log('[DEBUG] 当前属性数量:', this.allProperties.length)
@@ -2084,6 +2096,84 @@ export default {
       this.createForm = formData
       this.createFormInitial = JSON.parse(JSON.stringify(formData))
       this.createDialogVisible = true
+    },
+    // 复制选中行（仅支持单行）：从表格选中项复制为新建副本。
+    // - 必须恰好选中 1 行，多选/零选均给出提示；
+    // - 剔除 bk_isapi=true 的系统字段（id / bk_inst_id / bk_obj_id 等）与只读字段；
+    // - 名称字段（bk_inst_name 或内置模型的 bk_*_name）自动加「_副本」后缀，
+    //   避免与源实例的 bk_inst_name 唯一约束冲突；
+    // - 其余唯一约束字段（如 bk_server_ip + bk_server_port 组合键）原样带入，
+    //   由用户在弹窗内手动调整，并异步拉取 unique 键集合做提示。
+    handleCopySelected() {
+      if (this.isSetOrModule) {
+        this.$bkMessage({ message: '集群/模块不支持在资源目录复制', theme: 'warning' })
+        return
+      }
+      if (this.selectedRows.length === 0) {
+        this.$bkMessage({ message: '请先勾选要复制的实例（仅支持单行）', theme: 'warning' })
+        return
+      }
+      if (this.selectedRows.length > 1) {
+        this.$bkMessage({ message: '复制仅支持单行，请只勾选 1 个实例', theme: 'warning' })
+        return
+      }
+      const row = this.selectedRows[0]
+      console.log('[DEBUG] handleCopySelected - 复制行:', row[this.instanceIdField])
+      const editableProps = this.searchableProperties
+      const nameField = this.instanceNameField
+      const formData = {}
+
+      editableProps.forEach(attr => {
+        const pid = attr.bk_property_id
+        // 跳过实例主键
+        if (pid === this.instanceIdField) return
+        const val = row[pid]
+        if (val === undefined || val === null) return
+        formData[pid] = val
+      })
+
+      // 名称字段加副本后缀，防止撞 bk_inst_name 唯一约束
+      if (formData[nameField] !== undefined && formData[nameField] !== null && formData[nameField] !== '') {
+        const suffix = '_副本'
+        formData[nameField] = String(formData[nameField]).endsWith(suffix)
+          ? formData[nameField] + suffix
+          : formData[nameField] + suffix
+      }
+
+      this.createForm = formData
+      this.createFormInitial = JSON.parse(JSON.stringify(formData))
+      this.createDialogVisible = true
+
+      // 异步提示受唯一约束影响的字段，引导用户调整组合键
+      this.fetchCopyUniqueHint()
+    },
+    async fetchCopyUniqueHint() {
+      try {
+        const result = await modelAPI.searchObjectUnique(this.objId)
+        const info = (result && result.info) || []
+        if (!info.length) return
+        const uniquePropIds = []
+        info.forEach(constraint => {
+          ;(constraint.keys || []).forEach(key => {
+            if (key.key_kind === 'property' && key.key_id) {
+              const prop = this.allProperties.find(p => p.id === key.key_id)
+              if (prop) uniquePropIds.push(prop.bk_property_id)
+            }
+          })
+        })
+        const names = uniquePropIds
+          .map(pid => (this.allProperties.find(p => p.bk_property_id === pid) || {}).bk_property_name || pid)
+          .filter(Boolean)
+        if (names.length) {
+          this.$bkMessage({
+            message: `已复制为副本，以下字段受唯一约束请勿重复：${names.join('、')}`,
+            theme: 'warning',
+            extCls: 'copy-unique-hint'
+          })
+        }
+      } catch (e) {
+        // 提示失败不影响复制主流程
+      }
     },
     handleCreateDialogBeforeClose() {
       const changed = !isEqual(this.createForm, this.createFormInitial)
@@ -3194,6 +3284,20 @@ export default {
 
   &:hover {
     text-decoration: underline;
+  }
+}
+
+// 复制副本唯一约束提示横幅：长文本自动换行，避免超出视口被截断
+// （$bkMessage 渲染在 body 悬浮层，故用非 scoped 全局样式 + extCls 精准定位）
+.bk-message.copy-unique-hint {
+  max-width: min(90vw, 640px);
+  align-items: flex-start;
+
+  .bk-message-content {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 20px;
   }
 }
 </style>

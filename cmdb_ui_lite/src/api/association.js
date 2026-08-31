@@ -50,5 +50,11 @@ export default {
       : `/api/v1/instances/${instanceId}/related`
     const res = await client.get(url)
     return res?.related || []
+  },
+
+  // 新增关联弹框：候选目标实例查询（全部/已关联/未关联 筛选 + 条件 + 排序 + 分页 组合查询）
+  async searchCandidates(params = {}) {
+    const res = await client.post('/api/v1/associations/candidates', params)
+    return res || {}
   }
 }

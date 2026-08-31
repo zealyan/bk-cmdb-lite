@@ -314,7 +314,9 @@ BUILTIN_MODELS = [
         "bk_obj_icon": "icon-cc-business",
         "bk_classification_id": "bk_biz_topo",
         "ispre": True,
-        "obj_sort_number": -3
+        "obj_sort_number": -3,
+        # 业务也纳入资源目录（与 set/module 一致），默认初始化即可看到业务模型实例列表
+        "bk_isresourcedir": 1
     },
     {
         "bk_obj_id": "set",
@@ -322,7 +324,9 @@ BUILTIN_MODELS = [
         "bk_obj_icon": "icon-cc-set",
         "bk_classification_id": "bk_biz_topo",
         "ispre": True,
-        "obj_sort_number": -2
+        "obj_sort_number": -2,
+        # 集群/模块需在资源目录展示其模型实例列表（见资源实例页 filteredClassifications）
+        "bk_isresourcedir": 1
     },
     {
         "bk_obj_id": "module",
@@ -330,7 +334,8 @@ BUILTIN_MODELS = [
         "bk_obj_icon": "icon-cc-module",
         "bk_classification_id": "bk_biz_topo",
         "ispre": True,
-        "obj_sort_number": -1
+        "obj_sort_number": -1,
+        "bk_isresourcedir": 1
     }
 ]
 
@@ -483,6 +488,7 @@ CLASSIFICATIONS = [
     {"id": 1, "bk_classification_id": "bk_network", "bk_classification_name": "网络", "bk_classification_icon": "icon-cc-network-segment", "ispre": True, "classification_index": 1},
     {"id": 2, "bk_classification_id": "bk_host_manage", "bk_classification_name": "主机管理", "bk_classification_icon": "icon-cc-host", "ispre": True, "classification_index": 2},
     {"id": 3, "bk_classification_id": "bk_loadbalance", "bk_classification_name": "负载均衡", "bk_classification_icon": "icon-cc-balance", "ispre": True, "classification_index": 3},
+    {"id": 4, "bk_classification_id": "bk_biz_topo", "bk_classification_name": "业务拓扑", "bk_classification_icon": "icon-cc-business", "ispre": True, "classification_index": 4},
 ]
 
 # 属性分组定义（对齐上游 bk-cmdb）
@@ -592,12 +598,24 @@ class DatabaseMigrator:
             conn.close()
     
     def migrate_classifications(self):
-        """迁移分类数据"""
+        """迁移分类数据
+
+        使用 ON CONFLICT(bk_classification_id) DO UPDATE 做幂等 Upsert：
+        - 首次初始化时直接插入；
+        - 重跑迁移时按分类 ID 合并（原位更新 name/icon/ispre/index），不会因主键 id 不同而重复插入；
+        - 可修正早期「模型注册时自动建占位分类」产生的脏数据
+          （bk_classification_name 被误写成分类 ID 字符串、icon 为默认图标）。
+        """
         for cls in CLASSIFICATIONS:
             self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ObjClassification
+                INSERT INTO cc_ObjClassification
                 (id, bk_classification_id, bk_classification_name, bk_classification_icon, ispre, classification_index, bk_supplier_account)
                 VALUES (:id, :bk_classification_id, :bk_classification_name, :bk_classification_icon, :ispre, :classification_index, '0')
+                ON CONFLICT(bk_classification_id) DO UPDATE SET
+                    bk_classification_name = excluded.bk_classification_name,
+                    bk_classification_icon = excluded.bk_classification_icon,
+                    ispre = excluded.ispre,
+                    classification_index = excluded.classification_index
             """, {
                 "id": cls["id"],
                 "bk_classification_id": cls["bk_classification_id"],
@@ -1054,6 +1072,7 @@ class DatabaseMigrator:
                     ispre BOOLEAN DEFAULT false,
                     bk_ishidden BOOLEAN DEFAULT false,
                     bk_ispaused BOOLEAN DEFAULT false,
+                    bk_isresourcedir BOOLEAN DEFAULT true,
                     obj_sort_number INTEGER DEFAULT 0,
                     creator VARCHAR DEFAULT 'admin',
                     modifier VARCHAR DEFAULT 'admin',
@@ -1194,6 +1213,25 @@ class DatabaseMigrator:
         for table_name, create_sql in core_tables_sql.items():
             self.execute_sql(create_sql)
             logger.info(f"初始化核心表: {table_name}")
+
+        # 兼容旧库：补齐资源目录标记列（已有 cc_ObjDes 无该列时补足，避免重跑 migrate 失败）
+        self._ensure_objdes_resdir_column()
+
+    def _ensure_objdes_resdir_column(self):
+        """幂等补齐 cc_ObjDes.bk_isresourcedir 列（老库重跑迁移时不报错）
+
+        bk_isresourcedir 控制模型是否出现在「资源目录」：1=展示，0=不展示。
+        业务 biz 默认在资源目录展示（与 BUILTIN_MODELS 中 biz.bk_isresourcedir=1 一致），
+        因此无论老库是否已存在该列，都确保 biz 该行收敛为 1。
+        """
+        columns = [row['name'] for row in self.execute_query("PRAGMA table_info(cc_ObjDes)")]
+        if 'bk_isresourcedir' not in columns:
+            self.execute_sql(
+                'ALTER TABLE cc_ObjDes ADD COLUMN bk_isresourcedir BOOLEAN DEFAULT 1'
+            )
+            logger.info("补齐 cc_ObjDes 列: bk_isresourcedir")
+        # 业务 biz 默认在资源目录展示（覆盖旧库历史值 0、新增列默认 1 均收敛为 1）
+        self.execute_sql("UPDATE cc_ObjDes SET bk_isresourcedir = 1 WHERE bk_obj_id = 'biz'")
     
     def migrate_models(self):
         """迁移模型数据"""
@@ -1210,13 +1248,13 @@ class DatabaseMigrator:
         for idx, model in enumerate(data.get("models", [])):
             model_id = model.get("bk_obj_id")
             classification_id = MODEL_CLASSIFICATION_MAP.get(model_id, "bk_uncategorized")
-            
+
             self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ObjDes 
+                INSERT OR REPLACE INTO cc_ObjDes
                 (_id, id, bk_obj_id, bk_obj_name, bk_obj_icon, bk_classification_id, ispre,
-                 bk_supplier_account, creator, modifier, obj_sort_number)
+                 bk_supplier_account, creator, modifier, obj_sort_number, bk_isresourcedir)
                 VALUES (:_id, :id, :bk_obj_id, :bk_obj_name, :bk_obj_icon, :bk_classification_id,
-                        :ispre, '0', 'admin', 'admin', :obj_sort_number)
+                        :ispre, '0', 'admin', 'admin', :obj_sort_number, 1)
             """, {
                 '_id': model_id,
                 'id': idx + 1,
@@ -1227,7 +1265,7 @@ class DatabaseMigrator:
                 'ispre': True,
                 'obj_sort_number': idx
             })
-        
+
         logger.info(f"迁移了 {len(data.get('models', []))} 个模型")
     
     def migrate_builtin_models(self):
@@ -1235,11 +1273,11 @@ class DatabaseMigrator:
         for model in BUILTIN_MODELS:
             model_id = model["bk_obj_id"]
             self.execute_sql("""
-                INSERT OR REPLACE INTO cc_ObjDes 
+                INSERT OR REPLACE INTO cc_ObjDes
                 (_id, id, bk_obj_id, bk_obj_name, bk_obj_icon, bk_classification_id, ispre,
-                 bk_supplier_account, creator, modifier, obj_sort_number)
+                 bk_supplier_account, creator, modifier, obj_sort_number, bk_isresourcedir)
                 VALUES (:_id, :id, :bk_obj_id, :bk_obj_name, :bk_obj_icon, :bk_classification_id,
-                        :ispre, '0', 'admin', 'admin', :obj_sort_number)
+                        :ispre, '0', 'admin', 'admin', :obj_sort_number, :bk_isresourcedir)
             """, {
                 '_id': model_id,
                 'id': model["obj_sort_number"] + 100,
@@ -1248,7 +1286,8 @@ class DatabaseMigrator:
                 'bk_obj_icon': model["bk_obj_icon"],
                 'bk_classification_id': model["bk_classification_id"],
                 'ispre': model["ispre"],
-                'obj_sort_number': model["obj_sort_number"]
+                'obj_sort_number': model["obj_sort_number"],
+                'bk_isresourcedir': model.get("bk_isresourcedir", 1)
             })
         logger.info(f"迁移了 {len(BUILTIN_MODELS)} 个内置模型")
     

@@ -441,6 +441,72 @@ def ensure_mainline_unique_core(c, obj_id):
             {"_id": f"{obj_id}_name_unique", "id": generate_id(),
              "bk_obj_id": obj_id, "keys": expect_json})
     return {'action': 'ensure_unique'}
+
+
+def model_unique_add_core(c, obj_id, prop_ids, *, name=None, replace=False):
+    """为模型新建（或替换）一条组合唯一约束。
+
+    - prop_ids: 参与唯一的 bk_property_id 列表（>=1，组合唯一传多个）。
+    - name: 约束业务名（仅展示用，写入 keys 注释），缺省由属性名拼接。
+    - replace: True 时先删除该模型下全部旧唯一约束再写入；
+               False（默认）时若已存在完全相同的键组合则幂等跳过，否则新增一条。
+    """
+    # 1) 解析属性 id（同时校验属性存在）
+    key_objs = []
+    missing = []
+    for pid in prop_ids:
+        row = c.query_one(
+            "SELECT id, bk_property_name FROM cc_ObjAttDes "
+            "WHERE bk_obj_id=:o AND bk_property_id=:p",
+            {"o": obj_id, "p": pid})
+        if row:
+            key_objs.append({"key_kind": "property", "key_id": row['id'],
+                             "bk_property_id": pid,
+                             "bk_property_name": row['bk_property_name']})
+        else:
+            missing.append(pid)
+    if missing:
+        return {'action': 'unique_add', 'ok': False,
+                'error': f"属性不存在: {missing}", 'obj_id': obj_id}
+
+    keys = json.dumps(
+        [{"key_kind": k["key_kind"], "key_id": k["key_id"]} for k in key_objs],
+        ensure_ascii=False)
+    human_keys = " + ".join(k["bk_property_name"] or k["bk_property_id"] for k in key_objs)
+    name = name or human_keys
+
+    if replace:
+        c.exec("DELETE FROM cc_ObjectUnique WHERE bk_obj_id=:o AND bk_supplier_account='0'",
+               {"o": obj_id})
+        existing = []
+    else:
+        existing = c.query_all(
+            "SELECT id, keys FROM cc_ObjectUnique "
+            "WHERE bk_obj_id=:o AND bk_supplier_account='0'",
+            {"o": obj_id})
+    # 幂等：若已存在完全相同的键组合则跳过
+    for r in existing:
+        try:
+            parsed = json.loads(r['keys']) if r.get('keys') else []
+        except (json.JSONDecodeError, TypeError):
+            parsed = []
+        norm = sorted(parsed, key=lambda x: x.get('key_id')) if parsed else []
+        if norm == sorted(json.loads(keys), key=lambda x: x.get('key_id')):
+            return {'action': 'unique_add', 'ok': True, 'created': False,
+                    'obj_id': obj_id, 'keys': human_keys,
+                    'human': f"模型 {obj_id} 已存在相同组合唯一约束（{human_keys}），跳过"}
+
+    _uid = generate_id()
+    c.exec(
+        "INSERT INTO cc_ObjectUnique "
+        "(_id, id, bk_obj_id, keys, ispre, bk_supplier_account) VALUES "
+        "(:_id, :id, :bk_obj_id, :keys, '0', '0')",
+        {"_id": f"{obj_id}_unique_{_uid}", "id": _uid,
+         "bk_obj_id": obj_id, "keys": keys})
+    return {'action': 'unique_add', 'ok': True, 'created': True,
+            'obj_id': obj_id, 'keys': human_keys, 'name': name,
+            'human': f"已为模型 {obj_id} 新建组合唯一约束：{human_keys}"}
+
 MAINLINE_ASST = 'bk_mainline'
 MAINLINE_MODEL_BIZ = 'biz'
 MAINLINE_MODEL_SET = 'set'
@@ -1635,6 +1701,28 @@ def cmd_model_delete(args):
     return EXIT_OK
 
 
+def cmd_model_unique_add(args):
+    oid = args.bk_obj_id
+    validate_identifier(oid)
+    prop_ids = [p.strip() for p in args.props.split(',') if p.strip()]
+    if not prop_ids:
+        raise CliError(EXIT_PARAM, "--props 不能为空", "params")
+    with dbmod.cli_conn() as c:
+        if args.dry_run:
+            print(f"[dry-run] 模型 {oid} 组合唯一约束: {prop_ids}"
+                  f"{'（replace）' if args.replace else ''}")
+            return EXIT_OK
+        with c.conn.begin():
+            if not c.query_one("SELECT 1 FROM cc_ObjDes WHERE bk_obj_id=:o", {"o": oid}):
+                raise CliError(EXIT_DEP, f"模型不存在: {oid}", "check_model")
+            res = model_unique_add_core(c, oid, prop_ids,
+                                        name=args.name, replace=args.replace)
+    if not res.get('ok'):
+        raise CliError(EXIT_DEP, res.get('error', '未知错误'), 'unique_add')
+    emit_result(res, args.json)
+    return EXIT_OK
+
+
 def _run_import(conn, kind, csv_path, opts, dry_run, skip_empty, json_out):
     if kind == 'classification':
         return do_classification_import(conn, csv_path, opts, dry_run, skip_empty)
@@ -2529,6 +2617,17 @@ def build_parser():
     x = ms.add_parser('delete')
     x.add_argument('--bk_obj_id', required=True)
     x.set_defaults(func=cmd_model_delete)
+    x = ms.add_parser('unique', help='模型唯一约束（支持组合唯一）')
+    us = x.add_subparsers(dest='sub', required=True,
+                   parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+    x = us.add_parser('add', help='新建组合唯一约束（多属性组合校验）')
+    x.add_argument('--bk_obj_id', required=True, help='模型ID')
+    x.add_argument('--props', required=True,
+                   help='参与唯一的 bk_property_id 列表，逗号分隔（如 bk_server_ip,bk_server_port）')
+    x.add_argument('--name', default=None, help='可选：约束业务名（展示用）')
+    x.add_argument('--replace', action='store_true',
+                   help='先删除该模型下全部旧唯一约束再写入')
+    x.set_defaults(func=cmd_model_unique_add)
 
     # mainline：自定义业务拓扑模型（多模型多层级主线注册）
     sp = sub.add_parser('mainline', help='自定义业务拓扑模型（主线 mainline）')
