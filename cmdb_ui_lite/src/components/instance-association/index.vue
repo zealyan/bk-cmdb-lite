@@ -120,6 +120,7 @@ import associationAPI from '@/api/association'
 import { modelAPI } from '@/api/client'
 import showInstanceDetails from '@/components/instance/details/index.js'
 import { formatPropertyValue } from '@/utils/property-value'
+import { associationGroupKey } from '@/utils/instance-association'
 
 export default {
   name: 'InstanceAssociation',
@@ -228,16 +229,18 @@ export default {
         let relationTypeName
 
         if (isSource) {
-          groupKey = `to_${asst.bk_asst_obj_id}`
           relatedObjId = asst.bk_asst_obj_id
           const desc = relation.src_des || relation.bk_relation_type_name
           relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         } else {
-          groupKey = `from_${asst.bk_obj_id}`
           relatedObjId = asst.bk_obj_id
           const desc = relation.dest_des || `被${this.getModelDisplayName(asst.bk_obj_id)}关联`
           relationTypeName = `${desc}-${this.getModelDisplayName(relatedObjId)}`
         }
+        // 分组唯一性 = 关联定义(bk_obj_asst_id) + 指向(源/目标)，统一走共享工具
+        // associationGroupKey（@/utils/instance-association.js），与 emptyGroupDefs /
+        // initGroupStates 保持一致，避免 key 规则再次漂移。
+        groupKey = associationGroupKey(isSource, asst.bk_obj_asst_id, relatedObjId)
 
         if (!groupedMap.has(groupKey)) {
           groupedMap.set(groupKey, {
@@ -322,9 +325,10 @@ export default {
         const isTarget = String(dstObjId) === String(this.objId)
         if (!isSource && !isTarget) return
 
-        // 自关联（源=目标=当前模型）时按「源」方向处理，避免同 key 重复
         const relatedObjId = isSource ? dstObjId : srcObjId
-        const key = isSource ? `to_${relatedObjId}` : `from_${relatedObjId}`
+        // 与 associationGroups / initGroupStates 统一走共享工具 associationGroupKey，
+        // 保持三处 key 规则一致（关联定义 + 指向）。
+        const key = associationGroupKey(isSource, def.bk_obj_asst_id, relatedObjId)
         if (seen.has(key)) return
         seen.add(key)
 
@@ -427,12 +431,13 @@ export default {
         const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
         if (!isSource && !isTarget) return
 
-        let groupKey
-        if (isSource) {
-          groupKey = `to_${asst.bk_asst_obj_id}`
-        } else {
-          groupKey = `from_${asst.bk_obj_id}`
-        }
+        // 与 associationGroups / emptyGroupDefs 统一走共享工具 associationGroupKey，
+        // 否则 groupStates（展开/分页）与分组 key 错位，分页与展开态会异常。
+        const groupKey = associationGroupKey(
+          isSource,
+          asst.bk_obj_asst_id,
+          isSource ? asst.bk_asst_obj_id : asst.bk_obj_id
+        )
         
         if (!groupedMap.has(groupKey)) {
           groupedMap.set(groupKey, true)
@@ -504,7 +509,13 @@ export default {
         const isSource = String(asst.bk_obj_id) === String(this.objId) && String(asst.bk_inst_id) === String(this.instId)
         const isTarget = String(asst.bk_asst_obj_id) === String(this.objId) && String(asst.bk_asst_inst_id) === String(this.instId)
         if (!isSource && !isTarget) return false
-        const k = isSource ? `to_${asst.bk_asst_obj_id}` : `from_${asst.bk_obj_id}`
+        // 与 associationGroups 等保持一致，统一走共享工具 associationGroupKey，
+        // 否则空分组「有数据后移除」的判断会对不上分组 key。
+        const k = associationGroupKey(
+          isSource,
+          asst.bk_obj_asst_id,
+          isSource ? asst.bk_asst_obj_id : asst.bk_obj_id
+        )
         return k === key
       })
     },
@@ -521,7 +532,12 @@ export default {
           associationAPI.findObjectAssociation({ bk_asst_obj_id: this.objId }),
           associationAPI.findAssociationType()
         ])
-        this.modelAssocDefs = [...(defsAsSource || []), ...(defsAsTarget || [])]
+        // 主线关联（bk_asst_id='bk_mainline'）不参与通用关联列表的「空分组」渲染，
+        // 对齐原项目规则（create-relation.vue / relation-detail.vue 均 filter 掉 bk_mainline，
+        // 且 relation.vue 把 bk_mainline 与 ispre 并列为不可编辑项）。
+        // 不过滤时，开启「显示空列表」会把 module→set 主线边渲染成「组成-集群」空分组。
+        const isNonMainline = item => item && item.bk_asst_id !== 'bk_mainline'
+        this.modelAssocDefs = [...(defsAsSource || []), ...(defsAsTarget || [])].filter(isNonMainline)
         this.assocTypes = types || []
         this.assocDefsLoaded = true
       } catch (e) {
@@ -613,9 +629,14 @@ export default {
     // 并以抽屉/内容主区视口为上界（最高不超过视口、最低不低于 page size 行），对齐上游
     // bk-cmdb association-list-table 固定 462（=10×42+42）与 create 弹窗 $APP.height-X 的抽屉思路。
     calcTableMaxHeight() {
+      // 防御：组件已销毁（$el 被 Vue 回收 / 退化为非 DOM 对象）或 $el 非标准元素时直接返回，
+      // 避免 tab 切换 / 节点刷新导致 instance-association 被 v-if 卸载后，其异步 finally 中
+      // 的 $nextTick(calcTableMaxHeight) 在卸载后才回调，此时 this.$el 失效并抛
+      // "this.$el.querySelector is not a function"。
+      if (this._isDestroyed || !this.$el || typeof this.$el.querySelectorAll !== 'function') return
       // 行高：优先测量实际渲染的首行，避免硬编码导致「恰好 page size 行差 1px 触发内部滚动」
       let rowHeight = 43
-      const tables = this.$el ? this.$el.querySelectorAll('.association-table') : []
+      const tables = this.$el.querySelectorAll('.association-table')
       for (const t of tables) {
         if (t.offsetParent === null) continue // 未展开（display:none）跳过
         const row = t.querySelector('.bk-table-body-wrapper tr')

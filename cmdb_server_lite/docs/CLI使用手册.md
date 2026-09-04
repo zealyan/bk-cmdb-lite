@@ -476,6 +476,67 @@ cmdb mainline remove --obj-id zone --delete-instances
 
 ---
 
+### 2.8 asst-type（关联类型：方向 + 双向描述）
+
+管理 `cc_AsstDes`（上游 `AssociationKind`）：关联类型的**方向**与**两端关系描述**。
+与 HTTP API（`/create|update|delete/associationtype`）**共用同一套服务层校验**，规则不会漂移。
+
+| 字段 | 含义 | 约束 |
+| --- | --- | --- |
+| `bk_asst_id` | 关联类型唯一标识 | 以字母开头，仅含字母/数字/下划线，≤128；全局唯一 |
+| `bk_asst_name` | 显示名 | 必填，≤128 |
+| `src_des` | **源 → 目标** 的关系描述（如「访问」） | 选填，≤128 |
+| `dest_des` | **目标 → 源** 的关系描述（如「被访问」） | 选填，≤128 |
+| `direction` | 方向 | 严格值域，见下表；缺省 `src_to_dest` |
+| `ispre` | 是否预置 | **接口不可写**，仅 migrate 种子可置 true |
+
+方向值域（严格对齐上游 `metadata.AssociationDirection`）：
+
+| 取值 | 含义 | 语义 |
+| --- | --- | --- |
+| `none` | 无方向 | 关联不区分主从，两端对等 |
+| `src_to_dest` | 有方向（源→目标） | 默认值；6 个预置类型 + `bk_mainline` 均为此值 |
+| `dest_to_src` | 有方向（目标→源） | 反向 |
+| `bidirectional` | 双向 | 两端都可作为发起侧 |
+
+```bash
+# 列举（含方向与双向描述），可按方向过滤
+python3 -m app.cli.cmdb asst-type list
+python3 -m app.cli.cmdb asst-type list --direction bidirectional --json
+
+# 创建：双向 + 两端描述
+python3 -m app.cli.cmdb asst-type create \
+    --asst-id peer_link --name '对等互联' \
+    --src-des '互联' --dest-des '互联' \
+    --direction bidirectional
+
+# 创建：无方向
+python3 -m app.cli.cmdb asst-type create --asst-id ref --name '引用' --direction none
+
+# 更新（未传字段保留原值；仅 name/src_des/dest_des/direction 可改）
+python3 -m app.cli.cmdb asst-type update --asst-id peer_link --direction dest_to_src
+python3 -m app.cli.cmdb asst-type update --id 150894 --dest-des '被互联'
+
+# 删除（预置类型 / 已被模型关联引用者禁删）
+python3 -m app.cli.cmdb asst-type delete --asst-id peer_link
+python3 -m app.cli.cmdb asst-type delete --asst-id peer_link --dry-run   # 先看是否会被拦
+```
+
+> `--id` 与 `--asst-id` 二选一定位（`--id` 优先）；所有子命令支持 `--supplier`（多租户，默认 `0`）、
+> `--dry-run`（只跑校验不落库）、`--json`。
+
+#### 常见错误
+
+| 现象 | 原因 / 处理 |
+| --- | --- |
+| `invalid choice: 'forward'` | 方向值域只允许 `none/src_to_dest/dest_to_src/bidirectional`；`forward/backward/both` 为历史脏值，已由 migrate 归一 |
+| 退 2「关联类型 ID 不合法」 | `bk_asst_id` 必须以字母开头，仅含字母/数字/下划线 |
+| 退 4「已存在」 | `bk_asst_id` 全局唯一；改用 `asst-type update` |
+| 退 2「预置关联类型不可删除」 | `ispre=true` 的类型（default/belong/connect/group/run/install/bk_mainline）禁删 |
+| 退 2「已被 N 个模型关联使用」 | 先删掉引用它的模型关联（`cmdb association delete`） |
+
+---
+
 ## 3. CSV 文件格式汇总
 
 | 导入 | 表头（必填加粗） | 说明 |

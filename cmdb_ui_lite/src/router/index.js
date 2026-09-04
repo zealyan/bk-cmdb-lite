@@ -6,6 +6,7 @@ import {
   MENU_BUSINESS,
   MENU_BUSINESS_TOPOLOGY,
   MENU_BUSINESS_HOST_DETAILS,
+  MENU_BUSINESS_SERVICE_CATEGORY,
   MENU_RESOURCE,
   MENU_RESOURCE_MANAGEMENT,
   MENU_RESOURCE_INSTANCE,
@@ -91,6 +92,22 @@ const routes = [
             }
           }
         ]
+      },
+      {
+        // 所属服务分类：对齐原项目 bk-cmdb 的独立路由
+        // （原项目 owner=MENU_BUSINESS、path=service/cagetory，即 #/business/:bizId/service/cagetory）。
+        // 与「业务拓扑」同为 /business/:bizId 下的兄弟路由，共享业务上下文（bizId）。
+        name: MENU_BUSINESS_SERVICE_CATEGORY,
+        path: ':bizId/service/cagetory',
+        component: () => import('@/views/service-category/index.vue'),
+        meta: {
+          menu: {
+            i18n: '服务分类'
+          },
+          layout: {
+            breadcrumbs: true
+          }
+        }
       }
     ]
   },
@@ -237,7 +254,7 @@ const router = new VueRouter({
 //   2. 每次进入有效业务即「保存选中业务（写当前用户专属键）+ 数据绑定（store.commit objectBiz/setBizId）」
 //   3. 若 URL 中 bizId 为 0/缺失，纠正为缓存/选中的 id（replace 重定向）
 //   4. 首次进入且无任何来源时，回退 DEFAULT_BIZ_ID（蓝鲸平台=2）并写入当前用户缓存 + store
-const BUSINESS_ROUTES = [MENU_BUSINESS_TOPOLOGY, MENU_BUSINESS_HOST_DETAILS]
+const BUSINESS_ROUTES = [MENU_BUSINESS_TOPOLOGY, MENU_BUSINESS_HOST_DETAILS, MENU_BUSINESS_SERVICE_CATEGORY]
 
 router.beforeEach(async (to, from, next) => {
   // ── 最小内置鉴权守卫 ──

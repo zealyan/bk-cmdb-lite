@@ -324,23 +324,25 @@ export const modelAPI = {
   },
 
   // 查询模型的唯一约束
+  // 注：unique_bp 在后端已双注册，无前缀的上游 bk-cmdb 路径仍兼容可用，
+  // 此处统一走 /api/v1 镜像，与本文件其余调用前缀保持一致。
   searchObjectUnique (modelId) {
-    return http.post(`/find/objectunique/object/${modelId}`, [])
+    return http.post(`/api/v1/find/objectunique/object/${modelId}`, [])
   },
 
   // 创建模型的唯一约束
   createObjectUnique (modelId, keys) {
-    return http.post(`/create/objectunique/object/${modelId}`, { keys })
+    return http.post(`/api/v1/create/objectunique/object/${modelId}`, { keys })
   },
 
   // 更新模型的唯一约束
   updateObjectUnique (modelId, uniqueId, keys) {
-    return http.put(`/update/objectunique/object/${modelId}/unique/${uniqueId}`, { keys })
+    return http.put(`/api/v1/update/objectunique/object/${modelId}/unique/${uniqueId}`, { keys })
   },
 
   // 删除模型的唯一约束
   deleteObjectUnique (modelId, uniqueId) {
-    return http.post(`/delete/objectunique/object/${modelId}/unique/${uniqueId}`)
+    return http.post(`/api/v1/delete/objectunique/object/${modelId}/unique/${uniqueId}`)
   }
 }
 

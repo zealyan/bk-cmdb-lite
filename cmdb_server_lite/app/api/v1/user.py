@@ -26,7 +26,7 @@ def success_response(data=None, message=''):
         'data': data
     }), 200
 
-@user_bp.route('/api/usercustom/user/search', methods=['POST'])
+@user_bp.route('/usercustom/user/search', methods=['POST'])
 def search_user_custom():
     """获取用户配置"""
     try:
@@ -41,7 +41,7 @@ def search_user_custom():
         logger.error(f"Error getting user custom: {e}")
         return error_response(f'获取用户配置失败: {str(e)}')
 
-@user_bp.route('/api/usercustom', methods=['POST'])
+@user_bp.route('/usercustom', methods=['POST'])
 def save_user_custom():
     """保存用户配置"""
     try:
@@ -57,7 +57,7 @@ def save_user_custom():
         logger.error(f"Error saving user custom: {e}")
         return error_response(f'保存用户配置失败: {str(e)}')
 
-@user_bp.route('/api/users', methods=['GET'])
+@user_bp.route('/users', methods=['GET'])
 def get_users():
     """获取用户列表"""
     try:
@@ -67,7 +67,7 @@ def get_users():
         logger.error(f"Error getting users: {e}")
         return error_response(f'获取用户列表失败: {str(e)}')
 
-@user_bp.route('/api/users', methods=['POST'])
+@user_bp.route('/users', methods=['POST'])
 def create_user():
     """创建用户（暂无 UI，供 CLI / 运维 / 后续前端调用）"""
     try:
@@ -93,7 +93,7 @@ def create_user():
         logger.error(f"Error creating user: {e}")
         return error_response(f'创建用户失败: {str(e)}')
 
-@user_bp.route('/api/usercustom/model/<obj_id>', methods=['GET'])
+@user_bp.route('/usercustom/model/<obj_id>', methods=['GET'])
 def get_model_columns(obj_id):
     """获取模型的列配置"""
     try:
@@ -108,7 +108,7 @@ def get_model_columns(obj_id):
         logger.error(f"Error getting model columns: {e}")
         return error_response(f'获取模型列配置失败: {str(e)}')
 
-@user_bp.route('/api/usercustom/model/<obj_id>', methods=['POST'])
+@user_bp.route('/usercustom/model/<obj_id>', methods=['POST'])
 def save_model_columns(obj_id):
     """保存模型的列配置"""
     try:

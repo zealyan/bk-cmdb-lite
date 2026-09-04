@@ -29,6 +29,12 @@ const ACTION_LABEL = {
   find: '查看'
 }
 
+// 系统级资源的 type/obj_id → 中文展示名（模型实例的 obj_id 是具体模型，不在此表，仍按「xx 模型」展示）。
+// serviceCategory 无模型维度，对应 app/auth/resource.py ResourceType.SERVICE_CATEGORY。
+const RESOURCE_LABEL = {
+  serviceCategory: '服务分类'
+}
+
 let _magic = null
 
 export function bindMagic(instance) {
@@ -48,6 +54,10 @@ function describePermission(permission) {
     .map(p => {
       const act = ACTION_LABEL[p.action] || p.action || ''
       const obj = p.obj_id || ''
+      const resLabel = RESOURCE_LABEL[p.type] || RESOURCE_LABEL[obj]
+      if (resLabel) {
+        return `「${resLabel}」的「${act}」操作`
+      }
       return `「${obj}」模型的「${act}」操作`
     })
     .join('；')

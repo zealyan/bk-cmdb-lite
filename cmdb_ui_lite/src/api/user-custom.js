@@ -1,5 +1,9 @@
 import api from './client'
 
+// 统一 API 前缀。后端 user_bp 已双注册：旧 /api/usercustom、/api/users（缺 /v1 一层）
+// 仍保留兼容，新调用统一走 /api/v1 镜像。
+const API_BASE = '/api/v1'
+
 export default {
   /**
    * 获取用户配置
@@ -8,7 +12,7 @@ export default {
    * @returns {Promise} 返回用户配置对象
    */
   searchUserCustom(config = {}) {
-    return api.post('/api/usercustom/user/search', {}, config)
+    return api.post(`${API_BASE}/usercustom/user/search`, {}, config)
   },
 
   /**
@@ -19,7 +23,7 @@ export default {
    * @returns {Promise} 返回保存结果
    */
   saveUsercustom(usercustom, config = {}) {
-    return api.post('/api/usercustom', usercustom, config)
+    return api.post(`${API_BASE}/usercustom`, usercustom, config)
   },
 
   /**
@@ -30,7 +34,7 @@ export default {
    * @returns {Promise} 返回列配置数组
    */
   getModelCustomColumns(objId, config = {}) {
-    return api.get(`/api/usercustom/model/${objId}`, config)
+    return api.get(`${API_BASE}/usercustom/model/${objId}`, config)
   },
 
   /**
@@ -42,7 +46,7 @@ export default {
    * @returns {Promise} 返回保存结果
    */
   saveModelCustomColumns(objId, columns, config = {}) {
-    return api.post(`/api/usercustom/model/${objId}`, { columns }, config)
+    return api.post(`${API_BASE}/usercustom/model/${objId}`, { columns }, config)
   },
 
   /**
@@ -50,6 +54,6 @@ export default {
    * @returns {Promise} 返回用户列表
    */
   listUsers() {
-    return api.get('/api/users')
+    return api.get(`${API_BASE}/users`)
   }
 }

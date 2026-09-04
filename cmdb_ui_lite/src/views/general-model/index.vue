@@ -2,8 +2,16 @@
   <div class="models-layout general-model-layout">
     <div class="models-options clearfix">
       <div class="options-button clearfix fl">
-        <bk-button theme="primary" :disabled="isSetOrModule" v-bk-tooltips.top-start="'集群/模块请在业务拓扑中创建'" @click="handleCreate">新建</bk-button>
-        <bk-button class="models-button" theme="default" :disabled="isSetOrModule" v-bk-tooltips.top-start="'集群/模块不支持复制'" @click="handleCopySelected">复制</bk-button>
+        <span
+          class="btn-tip"
+          v-bk-tooltips="{ content: '集群/模块请在业务拓扑中创建', placement: 'top-start', disabled: !isSetOrModule }">
+          <bk-button theme="primary" :disabled="isSetOrModule" @click="handleCreate">新建</bk-button>
+        </span>
+        <span
+          class="btn-tip"
+          v-bk-tooltips="{ content: '集群/模块不支持复制', placement: 'top-start', disabled: !isSetOrModule }">
+          <bk-button theme="default" :disabled="isSetOrModule" @click="handleCopySelected">复制</bk-button>
+        </span>
         <!-- <bk-button class="models-button" theme="default" @click="handleImport">导入</bk-button> -->
         <!-- <bk-button class="models-button" theme="default" @click="handleExport">导出</bk-button> -->
         <bk-button class="models-button" theme="default" @click="handleBatchEdit">批量更新</bk-button>
@@ -2593,6 +2601,22 @@ export default {
     &:hover {
       z-index: 1;
     }
+  }
+
+  .btn-tip {
+    display: inline-block;
+    vertical-align: middle;
+
+    // 禁用态按钮原生不触发 hover，令事件穿透到外层 span 以正常显示 tooltip
+    .bk-button.is-disabled,
+    .bk-button[disabled] {
+      pointer-events: none;
+    }
+  }
+
+  // 相邻按钮间距：新建/复制 由外层 span 控制，与批量更新/删除(10px)保持一致
+  .btn-tip + .btn-tip {
+    margin-left: 10px;
   }
 
   .models-button {

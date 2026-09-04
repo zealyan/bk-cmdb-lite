@@ -79,7 +79,8 @@ import {
   MENU_MODEL,
   MENU_RESOURCE_INSTANCE,
   MENU_RESOURCE_HOST,
-  MENU_BUSINESS_TOPOLOGY
+  MENU_BUSINESS_TOPOLOGY,
+  MENU_BUSINESS_SERVICE_CATEGORY
 } from '@/dictionary/menu-symbol'
 import { BUILTIN_MODEL_RESOURCE_MENUS } from '@/dictionary/model-constants'
 import { modelAPI } from '@/api/client'
@@ -139,7 +140,7 @@ export default {
       let menus = [...((target && target.menu) || [])]
       if (this.owner === MENU_BUSINESS) {
         menus = menus.map(menu => {
-          if (menu.id === MENU_BUSINESS_TOPOLOGY) {
+          if (menu.id === MENU_BUSINESS_TOPOLOGY || menu.id === MENU_BUSINESS_SERVICE_CATEGORY) {
             // 对齐原项目 getMenuLink：菜单链接的 bizId 取自 store 的 objectBiz/bizId
             // （由路由守卫在进入业务时绑定），缺失时回退到全局默认缓存的业务 ID，
             // 保证菜单链接本身指向一个合法业务，而非 /business/0/index
@@ -150,7 +151,9 @@ export default {
             return {
               ...menu,
               route: {
-                name: MENU_BUSINESS_TOPOLOGY,
+                name: menu.id === MENU_BUSINESS_SERVICE_CATEGORY
+                  ? MENU_BUSINESS_SERVICE_CATEGORY
+                  : MENU_BUSINESS_TOPOLOGY,
                 params: {
                   bizId: effectiveBizId
                 }

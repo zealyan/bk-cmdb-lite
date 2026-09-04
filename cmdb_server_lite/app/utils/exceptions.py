@@ -24,6 +24,15 @@ class CCErrorCode:
     CCErrorTopoForbiddenDeleteBuiltInBiz = 1101031
     CCErrorTopoInstHasAssociation = 1101032
     CCErrTopoHasChildNode = 1101033
+    # ── 服务分类（ServiceCategory）专用错误码 ──
+    CCErrServiceCategoryHasChildNode = 1199020      # 一级分类下存在二级分类，禁止删除
+    CCErrServiceCategoryBuiltInForbidden = 1199021  # 内置分类禁止修改/删除
+    # ── 关联类型（AssociationKind / cc_AsstDes）专用错误码 ──
+    # 对齐上游语义（上游为 CCErrorTopoDeletePredefinedAssociationKind /
+    # CCErrorTopoAssociationKindHasBeenUsed，见 src/common/errInfo.go），
+    # lite 沿用自有 1199xxx 号段，与服务分类的自定义码风格一致。
+    CCErrAssociationKindPreForbidden = 1199022      # 预置关联类型（ispre）禁止修改/删除
+    CCErrAssociationKindHasBeenUsed = 1199023       # 关联类型已被模型关联引用，禁止删除
     # ── HTTP 状态 → 业务错误码（HTTPException 兜底统一映射，公共层引用）──
     CCErrCommHTTPError = 1199000         # 通用 HTTP 异常兜底（未单列状态码）
     CCErrCommUnauthorized = 1199001      # 401 未认证

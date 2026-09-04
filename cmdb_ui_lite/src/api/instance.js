@@ -1,14 +1,18 @@
 import client from './client'
 
+// 统一 API 前缀。后端 association_bp 已双注册，无前缀的 /find/<objId> 仍兼容可用，
+// 新调用统一走 /api/v1 镜像。
+const API_BASE = '/api/v1'
+
 export default {
   async find(objId, params = {}) {
-    const res = await client.post(`/find/${objId}`, params)
+    const res = await client.post(`${API_BASE}/find/${objId}`, params)
     return res || {}
   },
 
   async findOne(objId, instId) {
     try {
-      const res = await client.post(`/find/${objId}`, {
+      const res = await client.post(`${API_BASE}/find/${objId}`, {
         condition: {
           bk_obj_id: objId,
           id: Number(instId)
@@ -39,7 +43,7 @@ export default {
 
   async getInstanceDetails(objId, instId) {
     try {
-      const res = await client.post(`/find/${objId}`, {
+      const res = await client.post(`${API_BASE}/find/${objId}`, {
         condition: {
           bk_obj_id: objId,
           id: Number(instId)

@@ -1978,7 +1978,8 @@ def create_set(bk_biz_id: int, names: List[str],
 
 
 def create_module(bk_set_id: int, names: List[str],
-                  bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER) -> Dict[str, Any]:
+                  bk_biz_id: int = None, supplier_account: str = DEFAULT_SUPPLIER,
+                  attrs: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     创建模块（批量）
 
@@ -1991,6 +1992,7 @@ def create_module(bk_set_id: int, names: List[str],
         names: 模块名称列表
         bk_biz_id: 业务ID（可选，不传则从父实例继承）
         supplier_account: 供应商账号
+        attrs: 模块额外属性（如 service_category_id / bk_module_type），对齐上游 CreateModule
 
     Returns:
         { 'created': [...], 'error_names': [...] }
@@ -2003,7 +2005,8 @@ def create_module(bk_set_id: int, names: List[str],
         model_id=MAINLINE_MODEL_MODULE,
         names=names,
         bk_biz_id=bk_biz_id,
-        supplier_account=supplier_account)
+        supplier_account=supplier_account,
+        attrs=attrs)
 
 
 def ensure_idle_pool(bk_biz_id: int,
@@ -2170,6 +2173,56 @@ def _resolve_set_ancestor(parent_obj_id: str, parent_inst_id: int,
     return cur_inst if cur_model == MAINLINE_MODEL_SET else 0
 
 
+def resolve_module_service_category(bk_biz_id: int,
+                                    supplier_account: str,
+                                    raw_sc_id) -> int:
+    """解析并校验模块的服务分类ID（对齐上游 CreateModule.checkServiceTemplateParam）。
+
+    上游语义（scene_server/topo_server/logics/inst/module.go）：
+      - 未传（0/None）：回退到内置默认分类（bk_biz_id=0 且 is_built_in=1）；
+        上游在无默认分类时报 CCErrProcGetDefaultServiceCategoryFailed，lite 宽容落 0 以兼容
+        空闲机池等内部模块（不要求必须选分类）。
+      - 已传（>0）：必须存在于 cc_ServiceCategory 且同租户；
+        业务隔离：分类 bk_biz_id==0（全局内置/系统内置）允许任意业务使用；
+        否则必须等于模块所属业务 bk_biz_id，否则视为非法（CCErrCommParamsInvalid）。
+
+    Args:
+        bk_biz_id: 模块所属业务ID
+        supplier_account: 供应商账号
+        raw_sc_id: 前端传入的 service_category_id（可能为空串 / 'default' / int）
+    Returns:
+        校验通过后的 service_category_id（int）
+    """
+    try:
+        sc_id = int(raw_sc_id) if raw_sc_id not in (None, '', 'default') else 0
+    except (TypeError, ValueError):
+        sc_id = 0
+
+    if sc_id <= 0:
+        # 回退到内置默认分类（两级内置 Default 的【二级】分类 id，
+        # 对齐上游 addDefaultCategory 返回值 / GetDefaultServiceCategory）。
+        # 未初始化（无内置分类）时宽容落 0，不阻塞空闲机池等内部模块创建。
+        from app.service.service_category_service import get_default_category_id
+        default_id = get_default_category_id(supplier_account)
+        return int(default_id) if default_id else 0
+
+    cat = query_one(
+        "SELECT id, bk_biz_id FROM cc_ServiceCategory "
+        "WHERE id = :cid AND bk_supplier_account = :s",
+        {'cid': sc_id, 's': supplier_account})
+    if not cat:
+        raise APIException(
+            f'服务分类不存在: service_category_id={sc_id}',
+            error_code=CCErrorCode.CCErrCommParamsInvalid)
+    cat_biz = int(cat['bk_biz_id'])
+    # 业务隔离：全局内置(bk_biz_id=0)任意业务可用；否则须与本模块业务一致
+    if cat_biz != 0 and cat_biz != int(bk_biz_id or 0):
+        raise APIException(
+            '服务分类不属于当前业务',
+            error_code=CCErrorCode.CCErrCommParamsInvalid)
+    return sc_id
+
+
 def create_mainline_instance(parent_obj_id: str, parent_inst_id: int,
                              model_id: str, names: List[str],
                              bk_biz_id: int = None,
@@ -2255,6 +2308,14 @@ def create_mainline_instance(parent_obj_id: str, parent_inst_id: int,
         if model_id == MAINLINE_MODEL_MODULE:
             data['bk_set_id'] = _resolve_set_ancestor(
                 parent_obj_id, parent_inst_id, supplier_account)
+            # 服务分类（对齐上游 CreateModule）：校验存在性 + 业务隔离，
+            # 未传则回退内置默认分类。最终落库到 cc_ModuleBase.service_category_id。
+            raw_sc = (attrs or {}).get('service_category_id')
+            data['service_category_id'] = resolve_module_service_category(
+                resolved_biz, supplier_account, raw_sc)
+            # 模块类型（对齐上游 bk_module_type / DefaultModuleType="1"）：
+            # 缺省兜底为「普通」(1)，允许通过 attrs 显式指定（如 2=数据库）。
+            data['bk_module_type'] = str((attrs or {}).get('bk_module_type') or '1')
         try:
             inst = InstanceService.create_instance(model_id, data)
             inst_id = inst.get(model_id_field(model_id)) or inst.get('bk_inst_id')
@@ -2310,7 +2371,8 @@ def get_node_detail(bk_obj_id: str, bk_inst_id: int,
             raise ValueError('获取模块详情需要 bk_biz_id')
         result = query_one("""
             SELECT bk_module_id, bk_module_name, bk_parent_id, bk_set_id, bk_biz_id,
-                   "default", bk_supplier_account, create_time, last_time, creator, modifier
+                   service_category_id, bk_module_type, "default", bk_supplier_account,
+                   create_time, last_time, creator, modifier
             FROM cc_ModuleBase
             WHERE bk_module_id = :module_id AND bk_biz_id = :biz_id AND bk_supplier_account = :supplier
         """, {'module_id': bk_inst_id, 'biz_id': bk_biz_id, 'supplier': supplier_account})

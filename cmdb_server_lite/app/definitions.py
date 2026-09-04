@@ -198,6 +198,17 @@ __all__ = [
     # 主线模型「名称字段」解析（详见下方 BUILTIN_NAME_FIELD / model_name_property）
     "BUILTIN_NAME_FIELD",
     "model_name_property",
+    # 关联类型方向 direction 值域（详见下方 AssociationDirection 对齐说明）
+    "ASST_DIRECTION_NONE",
+    "ASST_DIRECTION_SRC_TO_DEST",
+    "ASST_DIRECTION_DEST_TO_SRC",
+    "ASST_DIRECTION_BIDIRECTIONAL",
+    "VALID_ASST_DIRECTIONS",
+    "DEFAULT_ASST_DIRECTION",
+    "ASST_DIRECTION_LABELS",
+    "LEGACY_ASST_DIRECTION_ALIAS",
+    "is_valid_asst_direction",
+    "normalize_asst_direction",
 ]
 
 
@@ -226,3 +237,84 @@ def model_name_property(model_id, has_inst_name):
     if has_inst_name:
         return 'bk_inst_name'
     return BUILTIN_NAME_FIELD.get(model_id)
+
+
+# ---------------------------------------------------------------------------
+# 关联类型（cc_AsstDes）方向 direction 的值域
+# ---------------------------------------------------------------------------
+# 严格对齐上游 src/common/metadata/association.go:388-400 AssociationDirection：
+#     NoneDirection       AssociationDirection = "none"
+#     DestinationToSource AssociationDirection = "src_to_dest"
+#     SourceToDestination AssociationDirection = "dest_to_src"
+#     Bidirectional       AssociationDirection = "bidirectional"
+#
+# ⚠️ 上游这四个常量中，中间两个的【命名与取值是错位的】——
+#   `DestinationToSource`（字面"目标到源"）的取值却是 "src_to_dest"（源到目标）。
+#   这是上游的历史命名缺陷。数据库落库值、HTTP 接口取值、前端下拉值一律以
+#   【取值】为准，因此 lite 按取值语义命名常量（SRC_TO_DEST / DEST_TO_SRC），
+#   不继承该错位，避免后续维护者被常量名误导。
+ASST_DIRECTION_NONE = "none"                      # 无方向（关联不区分主从）
+ASST_DIRECTION_SRC_TO_DEST = "src_to_dest"        # 有方向：源 → 目标
+ASST_DIRECTION_DEST_TO_SRC = "dest_to_src"        # 有方向：目标 → 源
+ASST_DIRECTION_BIDIRECTIONAL = "bidirectional"    # 双向
+
+# 全量合法方向集合（上游值域的 Python 镜像，顺序与 association.go 一致）
+VALID_ASST_DIRECTIONS = (
+    ASST_DIRECTION_NONE,
+    ASST_DIRECTION_SRC_TO_DEST,
+    ASST_DIRECTION_DEST_TO_SRC,
+    ASST_DIRECTION_BIDIRECTIONAL,
+)
+
+# 默认方向：与上游 6 个预置关联类型保持一致。
+# 上游 addPresetAssociationType（x18.10.30.01/association.go:88-155）中
+# belong / group / bk_mainline / run / connect / default 全部使用
+# metadata.DestinationToSource —— 即取值 "src_to_dest"。
+DEFAULT_ASST_DIRECTION = ASST_DIRECTION_SRC_TO_DEST
+
+# 方向 -> 中文显示名（CLI 输出与 UI 下拉共用，单一来源避免漂移）
+ASST_DIRECTION_LABELS = {
+    ASST_DIRECTION_NONE: "无方向",
+    ASST_DIRECTION_SRC_TO_DEST: "源到目标",
+    ASST_DIRECTION_DEST_TO_SRC: "目标到源",
+    ASST_DIRECTION_BIDIRECTIONAL: "双向",
+}
+
+# lite 历史遗留的非法方向值 -> 合法值归一映射。
+# lite 早期 migrate 种子把 direction 写成 'forward'（不属上游值域，前端与上游
+# 接口都无法识别），此处归一为 "src_to_dest"（语义等价于上游预置类型的方向）。
+LEGACY_ASST_DIRECTION_ALIAS = {
+    "forward": ASST_DIRECTION_SRC_TO_DEST,
+    "backward": ASST_DIRECTION_DEST_TO_SRC,
+    "both": ASST_DIRECTION_BIDIRECTIONAL,
+}
+
+
+def is_valid_asst_direction(direction):
+    """判断 direction 是否落在上游合法值域内。"""
+    return direction in VALID_ASST_DIRECTIONS
+
+
+def normalize_asst_direction(direction, default=DEFAULT_ASST_DIRECTION):
+    """把任意 direction 输入归一为合法值域内的取值。
+
+    归一顺序：
+      1. 已是合法值 → 原样返回；
+      2. 命中历史别名（forward / backward / both）→ 映射为对应合法值；
+      3. 空值（None / '' / 空白）或无法识别 → 返回 ``default``。
+
+    用于存量数据迁移与宽松入参场景；**API 创建/更新走严格校验**
+    （见 association_type_service.validate_direction），不静默纠正用户输入。
+
+    :param direction: 待归一的方向值
+    :param default: 兜底方向，缺省为 DEFAULT_ASST_DIRECTION
+    :return: 合法值域内的方向字符串
+    """
+    if direction is None:
+        return default
+    value = str(direction).strip()
+    if not value:
+        return default
+    if value in VALID_ASST_DIRECTIONS:
+        return value
+    return LEGACY_ASST_DIRECTION_ALIAS.get(value.lower(), default)

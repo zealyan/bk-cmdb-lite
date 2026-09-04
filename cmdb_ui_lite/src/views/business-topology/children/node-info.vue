@@ -20,10 +20,39 @@
       :show-delete="canDelete"
       @on-edit="handleEdit"
       @on-delete="handleDelete">
+      <!-- prepend：在基础信息（default 属性组）之上展示模块所属服务分类 -->
+      <template slot="prepend" v-if="isModuleNode">
+        <div class="service-category-extra">
+          <span class="sc-label">服务分类</span>
+          <span class="sc-value" v-if="loadingCategory">加载中...</span>
+          <span class="sc-value" v-else>{{ categoryDisplayName }}</span>
+        </div>
+      </template>
     </cmdb-details>
 
     <!-- 编辑态：内联表单（无弹出框，与原项目详情行内编辑一致） -->
     <div v-else class="inline-edit-panel">
+      <!-- 模块节点：服务分类（一级 / 二级）专用选择器，置于通用字段之上 -->
+      <div class="service-category-edit" v-if="isModuleNode">
+        <label class="sc-edit-label">服务分类</label>
+        <div class="sc-edit-selects">
+          <bk-select class="sc-edit-select" v-model="editFirstClass" :clearable="false" placeholder="请选择一级分类"
+            @change="handleFirstClassChange">
+            <bk-option v-for="item in editCategoryTree"
+              :key="item.id"
+              :id="item.id"
+              :name="item.name">
+            </bk-option>
+          </bk-select>
+          <bk-select class="sc-edit-select" v-model="editSecondClass" :clearable="false" placeholder="请选择二级分类">
+            <bk-option v-for="item in editSecondClassOptions"
+              :key="item.id"
+              :id="item.id"
+              :name="item.name">
+            </bk-option>
+          </bk-select>
+        </div>
+      </div>
       <bk-form :model="editForm" :rules="editRules" ref="editForm">
         <bk-form-item
           v-for="property in editableProperties"
@@ -52,6 +81,7 @@ import { modelAPI } from '@/api/client'
 import { topoAPI } from '@/api/topo'
 import instanceAPI from '@/api/instance'
 import modelAttributeAPI from '@/api/modelAttribute'
+import { serviceAPI } from '@/api/service'
 
 // 简化的表单组件
 import FormBool from '@/components/ui/form/bool.vue'
@@ -96,11 +126,18 @@ export default {
       properties: [],
       propertyGroups: [],
       invisibleProperties: [],
+      // 模块节点服务分类（两级路径）：一级 / 二级名称，展示在基础信息属性组之上
+      serviceCategoryPath: null,
+      loadingCategory: false,
       // 内联编辑态（替代原 bk-dialog 弹出框，与原项目详情行内编辑一致）
       isEditing: false,
       editForm: {},
       editRules: {},
-      editLoading: false
+      editLoading: false,
+      // 编辑态服务分类选择器（两级：一级分类 -> 二级分类；二级 id 作为 service_category_id）
+      editCategoryTree: [],
+      editFirstClass: '',
+      editSecondClass: ''
     }
   },
   computed: {
@@ -132,8 +169,24 @@ export default {
         if (['id', 'bk_inst_id'].includes(p.bk_property_id)) return false
         // 编辑时不显示模板ID等关联字段
         if (p.bk_property_id === 'service_template_id') return false
+        // 服务分类由专用两级选择器编辑，不进入通用编辑表单（避免渲染成裸 int 字段）
+        if (p.bk_property_id === 'service_category_id') return false
         return true
       })
+    },
+    categoryDisplayName() {
+      // 模块节点「服务分类：一级 / 二级」展示文案
+      if (!this.serviceCategoryPath) return '--'
+      const first = this.serviceCategoryPath.first_level && this.serviceCategoryPath.first_level.name
+      const second = this.serviceCategoryPath.second_level && this.serviceCategoryPath.second_level.name
+      if (first && second) return `${first} / ${second}`
+      if (first) return first
+      return '--'
+    },
+    editSecondClassOptions() {
+      // 编辑态：当前一级分类下的二级分类选项
+      const matched = this.editCategoryTree.find(c => c.id === this.editFirstClass)
+      return matched ? (matched.children || []) : []
     }
   },
   watch: {
@@ -163,6 +216,15 @@ export default {
           this.loadProperties(objId),
           this.loadInstanceData(objId, instId)
         ])
+        // 模块节点：加载所属服务分类两级路径，展示在基础信息之上
+        if (this.isModuleNode) {
+          const catId = this.instanceData.service_category_id
+          if (catId) {
+            await this.loadServiceCategory(catId)
+          } else {
+            this.serviceCategoryPath = null
+          }
+        }
       } catch (err) {
         console.error('[NodeInfo] 加载数据失败:', err)
         this.error = err.message || '加载数据失败'
@@ -215,8 +277,44 @@ export default {
       this.instanceData = {}
       this.properties = []
       this.propertyGroups = []
+      this.serviceCategoryPath = null
       this.isEditing = false
       this.editForm = {}
+      this.editCategoryTree = []
+      this.editFirstClass = ''
+      this.editSecondClass = ''
+    },
+
+    async loadServiceCategory(catId) {
+      // 加载模块所属服务分类的两级路径（一级 / 二级名称），展示用
+      this.loadingCategory = true
+      try {
+        const res = await serviceAPI.getServiceCategory(catId)
+        const data = res && (res.data || res) ? (res.data || res) : null
+        this.serviceCategoryPath = data
+      } catch (err) {
+        console.error('[NodeInfo] 加载服务分类失败:', err)
+        this.serviceCategoryPath = null
+      } finally {
+        this.loadingCategory = false
+      }
+    },
+
+    async loadCategoryTree() {
+      // 编辑态：拉取业务的全量服务分类，组装为两级选择树
+      const bizId = this.node.data.bk_biz_id
+      try {
+        const res = await serviceAPI.getServiceCategories(bizId)
+        const info = (res && (res.info || res.data && res.data.info)) || []
+        const firstList = info.filter(c => !c.bk_parent_id)
+        firstList.forEach(fc => {
+          fc.children = info.filter(c => c.bk_parent_id === fc.id)
+        })
+        this.editCategoryTree = firstList
+      } catch (err) {
+        console.error('[NodeInfo] 加载服务分类树失败:', err)
+        this.editCategoryTree = []
+      }
     },
 
     getFormComponent(propertyType) {
@@ -240,13 +338,31 @@ export default {
     },
 
     // 进入内联编辑态（替代原弹出框）
-    handleEdit() {
+    async handleEdit() {
       this.editForm = { ...this.instanceData }
       this.editLoading = false
       this.isEditing = true
+      // 模块节点：初始化服务分类选择器（预置当前一级/二级）
+      if (this.isModuleNode) {
+        this.editFirstClass = this.serviceCategoryPath && this.serviceCategoryPath.first_level
+          ? this.serviceCategoryPath.first_level.id : ''
+        this.editSecondClass = this.serviceCategoryPath && this.serviceCategoryPath.second_level
+          ? this.serviceCategoryPath.second_level.id : ''
+        await this.loadCategoryTree()
+        // 树加载后，若当前一级无二级选项则回退到首个一级的首个二级
+        if (this.editFirstClass && !this.editSecondClassOptions.length) {
+          this.editFirstClass = this.editCategoryTree.length ? this.editCategoryTree[0].id : ''
+          this.editSecondClass = this.editSecondClassOptions.length ? this.editSecondClassOptions[0].id : ''
+        }
+      }
       this.$nextTick(() => {
         this.$refs.editForm && this.$refs.editForm.clearValidate()
       })
+    },
+
+    handleFirstClassChange() {
+      // 切换一级分类后，二级分类列表与默认选中同步刷新
+      this.editSecondClass = this.editSecondClassOptions.length ? this.editSecondClassOptions[0].id : ''
     },
 
     handleEditCancel() {
@@ -270,6 +386,13 @@ export default {
           const value = this.editForm[field]
           // 简化处理：始终提交可编辑字段
           data[field] = value
+        }
+
+        // 模块节点：服务分类（二级分类 id 作为 service_category_id）单独计入更新。
+        // 注意：null/空（用户清空但未选）时**不提交该字段**，由后端沿用原值，
+        // 避免把分类误覆盖为 0（悬空引用）。仅当用户实际选中了某个二级分类才写入。
+        if (this.isModuleNode && this.editSecondClass) {
+          data.service_category_id = Number(this.editSecondClass)
         }
 
         await modelAPI.updateInstance(objId, instId, data)
@@ -356,6 +479,79 @@ export default {
   height: 200px;
   color: #c4c6cc;
   font-size: 14px;
+}
+
+/* 模块节点服务分类展示块（基础信息属性组之上，对齐原项目 node-extra-info） */
+.service-category-extra {
+  display: flex;
+  align-items: center;
+  padding: 16px 0 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 26px;
+  border-bottom: 1px solid #f0f1f5;
+
+  .sc-label {
+    /* 与下方基础信息 .property-name 完全一致：140px 列宽 + 文字右贴冒号，
+       使「服务分类 → 冒号 → 值」间距与基础信息各属性一致（标签宽度收窄、无多余空隙）；
+       值文本从 140px 起，垂直对齐基础信息属性值文本，而非分组折叠 icon */
+    position: relative;
+    flex: none;
+    width: 140px;
+    padding: 0 16px 0 0;
+    color: #63656e;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:after {
+      content: ":";
+      position: absolute;
+      right: 10px;
+    }
+  }
+
+  .sc-value {
+    color: #313238;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* 编辑态服务分类选择器（置于通用字段之上）
+   结构与模块名称属性一致：标签在上、控件在下（原项目 form-service-category .title 独占一行） */
+.service-category-edit {
+  padding: 0 24px 12px;
+
+  .sc-edit-label {
+    /* 与 .bk-form-item .bk-label 完全一致：标签在上、左对齐、无多余间距 */
+    display: block;
+    font-size: 14px;
+    color: #63656e;
+    text-align: left;
+    line-height: 24px;
+    margin: 2px 0 6px;
+  }
+
+  .sc-edit-selects {
+    /* 两个选择器合并宽度 = 模块名称 input 宽度（单列宽），与原项目 form-service-category 一致 */
+    display: flex;
+    align-items: center;
+    width: calc(50% - 27px);
+    max-width: 554px;
+  }
+
+  .sc-edit-select {
+    flex: 1;
+    min-width: 0;
+
+    & + .sc-edit-select {
+      /* 两个选择器间距，与原项目 .category-selector + .category-selector 一致 */
+      margin-left: 10px;
+    }
+  }
 }
 
 .placeholder-text {

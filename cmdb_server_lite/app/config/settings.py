@@ -66,6 +66,54 @@ def _resolve_secret_key():
             f'[WARN] SECRET_KEY 密钥文件不可用({e})，回退开发默认值（生产请注入 SECRET_KEY env）\n')
     return 'dev-secret-key-change-in-production'
 
+# ── 数据源解析：一份代码切换 SQLite / MySQL / PostgreSQL ──
+# 类型别名归一化：mysql8 / mariadb / pg / postgres 等近义写法统一收敛到标准类型，
+# 避免手误值一路带到 engine.py 才抛「Unsupported database type」才暴露。
+_DB_TYPE_ALIASES = {
+    'sqlite': DatabaseType.SQLITE.value,
+    'sqlite3': DatabaseType.SQLITE.value,
+    'postgresql': DatabaseType.POSTGRESQL.value,
+    'postgres': DatabaseType.POSTGRESQL.value,
+    'pg': DatabaseType.POSTGRESQL.value,
+    'pgsql': DatabaseType.POSTGRESQL.value,
+    'mysql': DatabaseType.MYSQL.value,
+    'mysql5': DatabaseType.MYSQL.value,
+    'mysql8': DatabaseType.MYSQL.value,
+    'mariadb': DatabaseType.MYSQL.value,
+    'duckdb': DatabaseType.DUCKDB.value,
+}
+
+# 各类型默认端口：未显式设 CMDB_DB_PORT 时按类型推导，
+# 避免「切到 MySQL 却仍连 5432（PG 端口）」这类静默连错。
+_DEFAULT_DB_PORTS = {
+    DatabaseType.SQLITE.value: 0,
+    DatabaseType.POSTGRESQL.value: 5432,
+    DatabaseType.MYSQL.value: 3306,
+    DatabaseType.DUCKDB.value: 0,
+}
+
+
+def _resolve_database_type(default=DatabaseType.SQLITE.value):
+    """解析并校验数据库类型：env CMDB_DATABASE_TYPE 优先，缺省用 default。
+
+    传入无法识别的值时立即抛错并列出可选值，而非等到建引擎时才失败。
+    """
+    raw = (os.environ.get('CMDB_DATABASE_TYPE') or '').strip().lower()
+    if not raw:
+        return default
+    normalized = _DB_TYPE_ALIASES.get(raw)
+    if normalized is None:
+        valid = ', '.join(sorted(set(_DB_TYPE_ALIASES.values())))
+        raise ValueError(
+            f'不支持的 CMDB_DATABASE_TYPE={raw!r}，可选值: {valid}')
+    return normalized
+
+
+def _resolve_database_name(default):
+    """数据库名：env CMDB_DB_NAME 优先（MySQL/PG 为库名，SQLite 为库文件名）。"""
+    return os.environ.get('CMDB_DB_NAME') or default
+
+
 # 全局基础配置
 class BaseConfig:
     """基础配置类"""
@@ -79,23 +127,28 @@ class BaseConfig:
     SECRET_KEY = _resolve_secret_key()
     
     # 数据库配置
-    # DATABASE_TYPE 可由环境变量 CMDB_DATABASE_TYPE 覆盖（sqlite/postgresql/mysql），
-    # 使同一份代码可指向 SQLite / PostgreSQL / MySQL 三库。
-    DATABASE_TYPE = os.environ.get('CMDB_DATABASE_TYPE', DatabaseType.SQLITE.value)
-    DATABASE_NAME = 'cmdb.db'
+    # 全部连接参数可由 env 覆盖，使同一份代码指向 SQLite / MySQL / PostgreSQL：
+    #   CMDB_DATABASE_TYPE            库类型（sqlite/postgresql/mysql，支持 pg/mysql8 等别名）
+    #   CMDB_DB_NAME                  库名（MySQL/PG 为库名，SQLite 为库文件名）
+    #   CMDB_DB_HOST / PORT / USER / PASSWORD   服务端连接参数（SQLite 不使用）
+    DATABASE_TYPE = _resolve_database_type()
+    DATABASE_NAME = _resolve_database_name('cmdb.db')
     DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), DATABASE_NAME)
     # 服务端数据库连接参数（SQLite 不使用；MySQL/PostgreSQL 由 engine.py 拼 URL）
     DATABASE_HOST = os.environ.get('CMDB_DB_HOST', '127.0.0.1')
-    DATABASE_PORT = int(os.environ.get('CMDB_DB_PORT', '5432'))
+    # 端口：env 优先，未设时按库类型推导（mysql=3306 / postgresql=5432 / sqlite=0），
+    # 避免切库后仍沿用上一个库的默认端口。
+    DATABASE_PORT = int(os.environ.get('CMDB_DB_PORT') or _DEFAULT_DB_PORTS[DATABASE_TYPE])
     DATABASE_USER = os.environ.get('CMDB_DB_USER', 'cmdb')
     DATABASE_PASSWORD = os.environ.get('CMDB_DB_PASSWORD', 'cmdb')
     
     # SQLAlchemy 配置 (仅用于连接池)
     SQLALCHEMY_DATABASE_URI = None  # 由 db 模块动态构建
-    SQLALCHEMY_POOL_SIZE = 5
-    SQLALCHEMY_MAX_OVERFLOW = 10
-    SQLALCHEMY_POOL_RECYCLE = 3600
-    SQLALCHEMY_ECHO = False
+    # 连接池参数亦可由 env 覆盖（服务端库长连接场景常需按并发调整）
+    SQLALCHEMY_POOL_SIZE = int(os.environ.get('CMDB_DB_POOL_SIZE', '5'))
+    SQLALCHEMY_MAX_OVERFLOW = int(os.environ.get('CMDB_DB_MAX_OVERFLOW', '10'))
+    SQLALCHEMY_POOL_RECYCLE = int(os.environ.get('CMDB_DB_POOL_RECYCLE', '3600'))
+    SQLALCHEMY_ECHO = os.environ.get('CMDB_DB_ECHO', 'false').lower() == 'true'
     
     # 日志配置
     LOG_LEVEL = 'INFO'
@@ -172,24 +225,34 @@ class DevelopmentConfig(BaseConfig):
     ENV = 'development'
     DEBUG = True
     # 开发默认 SQLite；可用 CMDB_DATABASE_TYPE 切换到 postgresql/mysql 做本地三库验证
-    DATABASE_TYPE = os.environ.get('CMDB_DATABASE_TYPE', DatabaseType.SQLITE.value)
-    DATABASE_NAME = 'cmdb_dev.db'
+    DATABASE_TYPE = _resolve_database_type()
+    DATABASE_NAME = _resolve_database_name('cmdb_dev.db')
+    # 同 ProductionConfig：覆盖类型后重算端口，保证切库时端口与类型始终一致
+    DATABASE_PORT = int(os.environ.get('CMDB_DB_PORT') or _DEFAULT_DB_PORTS[DATABASE_TYPE])
     LOG_LEVEL = 'DEBUG'
-    SQLALCHEMY_ECHO = True
+    # 开发环境默认打印每条 SQL（与历史行为一致）；长驻服务会导致日志急剧膨胀，
+    # 可用 CMDB_DB_ECHO=false 关闭，无需改代码。
+    SQLALCHEMY_ECHO = os.environ.get('CMDB_DB_ECHO', 'true').lower() == 'true'
 
 # 测试环境配置
 class TestingConfig(BaseConfig):
     ENV = 'testing'
     TESTING = True
+    # 测试固定 SQLite（单测不应依赖外部数据库实例）；库名仍允许 env 覆盖
     DATABASE_TYPE = DatabaseType.SQLITE.value
-    DATABASE_NAME = 'cmdb_test.db'
+    DATABASE_NAME = _resolve_database_name('cmdb_test.db')
     SQLALCHEMY_DATABASE_URI = f"sqlite:///{DATABASE_NAME}"
 
 # 生产环境配置
 class ProductionConfig(BaseConfig):
     ENV = 'production'
     DEBUG = False
-    DATABASE_TYPE = DatabaseType.POSTGRESQL.value
+    # 生产默认 PostgreSQL，允许 env 覆盖为 mysql/sqlite（原实现硬编码 PG，会完全无视 env）
+    DATABASE_TYPE = _resolve_database_type(DatabaseType.POSTGRESQL.value)
+    DATABASE_NAME = _resolve_database_name('cmdb')
+    # 端口必须按「本类最终类型」重新推导：BaseConfig 的端口是按它自身的默认类型
+    # （sqlite）算出的 0，本类覆盖了类型就必须重算，否则生产默认 PG 会连到端口 0。
+    DATABASE_PORT = int(os.environ.get('CMDB_DB_PORT') or _DEFAULT_DB_PORTS[DATABASE_TYPE])
     LOG_LEVEL = 'WARNING'
     SQLALCHEMY_ECHO = False
 

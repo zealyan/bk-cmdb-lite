@@ -60,6 +60,8 @@ _RES_TYPE_ACTIONS = {
     'hostInstance':  ['transfer'],
     'business':      [],   # reserved：解析器暂未产出
     'model':         [],   # reserved：解析器暂未产出
+    'serviceCategory':  ['create', 'update', 'delete'],  # 读(GET)放行，写按 business_id 隔离
+    'associationType':  ['create', 'update', 'delete'],  # find/associationtype 放行，系统级无 business 维度
 }
 
 

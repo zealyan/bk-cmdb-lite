@@ -11,7 +11,75 @@ from app.utils.exceptions import APIException
 from app.api.v1 import register_v1_routes
 from app.auth import init_user_table, bootstrap_admin, init_policy_table, ensure_creator_columns, auth_filter
 from app.service.favourite_service import init_favourite_table
+from app.service.service_category_service import init_service_category_table
 from app.db.user import ensure_user_custom_supplier_column
+
+import decimal
+import uuid
+from datetime import date, time as _dtime, datetime as _dt, timedelta
+from flask.json.provider import DefaultJSONProvider
+
+
+class CMDBJSONProvider(DefaultJSONProvider):
+    """扩展默认 JSON 序列化，跨方言兼容各数据库驱动返回的特殊类型。
+
+    同一逻辑列在不同方言驱动下返回不同的 Python 类型，本项目（Flask 默认
+    DefaultJSONProvider）不原生支持其中部分类型，会在搜索/详情接口整包
+    ``jsonify`` 时抛出 ``Object of type X is not JSON serializable``。本 Provider
+    在序列化层统一兜底，**与底层方言无关**，覆盖三库实际返回：
+
+    =========  ============================  =============================  =============================
+    逻辑列      MySQL (pymysql)               SQLite (SQLAlchemy)           PostgreSQL (psycopg2)
+    =========  ============================  =============================  =============================
+    TIME        ``datetime.timedelta``        ``str``（文本，天然无 T）      ``datetime.time``
+    DATE        ``datetime.date``            ``str``                        ``datetime.date``
+    TIMESTAMP   ``datetime.datetime``         ``str``（无 T）                ``datetime.datetime``
+    NUMERIC     ``decimal.Decimal``          ``str`` / ``Decimal``          ``decimal.Decimal``
+    bytea/BLOB  ``bytes``                     ``bytes``                      ``memoryview``  ← PG 特有
+    =========  ============================  =============================  =============================
+
+    兜底规则：
+    - ``timedelta``（MySQL 的 TIME 列）→ ``HH:MM:SS[.ffffff]`` 字符串；
+    - ``datetime`` → ``%Y-%m-%d %H:%M:%S``（去掉 isoformat 自带的 T，与用户输入/
+      SQLite 文本格式统一）；``date``/``time`` → ``isoformat()``（本身无 T）；
+    - ``Decimal`` → ``float``；``bytes``/``memoryview`` → utf-8/hex；
+      ``UUID``/``set``/``frozenset`` → 可序列化形式。
+    """
+
+    def default(self, o):
+        if isinstance(o, timedelta):
+            total = o.total_seconds()
+            sign = '-' if total < 0 else ''
+            total = abs(total)
+            hours, rem = divmod(int(total), 3600)
+            minutes, seconds = divmod(rem, 60)
+            if o.microseconds:
+                return f"{sign}{hours:02d}:{minutes:02d}:{seconds:02d}.{o.microseconds:06d}"
+            return f"{sign}{hours:02d}:{minutes:02d}:{seconds:02d}"
+        if isinstance(o, _dt):
+            # 去掉 isoformat() 自带的 'T' 分隔符，统一为 MySQL 风格
+            # "YYYY-MM-DD HH:MM:SS"，与用户输入的时间文本（多为
+            # datetime-local/文本输入，无 'T'）保持一致，避免前后端展示差异。
+            return o.strftime('%Y-%m-%d %H:%M:%S')
+        if isinstance(o, (date, _dtime)):
+            return o.isoformat()
+        if isinstance(o, decimal.Decimal):
+            return float(o)
+        if isinstance(o, (bytes, memoryview)):
+            # PostgreSQL 的 bytea 经 psycopg2 返回 memoryview（非 bytes），
+            # 先归一为 bytes 再按 utf-8/hex 处理，否则会触发
+            # "Object of type memoryview is not JSON serializable"。
+            b = bytes(o)
+            try:
+                return b.decode('utf-8')
+            except UnicodeDecodeError:
+                return b.hex()
+        if isinstance(o, (set, frozenset)):
+            return list(o)
+        if isinstance(o, uuid.UUID):
+            return str(o)
+        return super().default(o)
+
 
 def create_app(config=None):
     """
@@ -51,6 +119,9 @@ def create_app(config=None):
     # 初始化 Host Favorite（业务拓扑-主机列表已收藏条件）表：三层隔离
     # user + bk_supplier_account + bk_biz_id，与上游 FavouriteMeta 一致。
     init_favourite_table()
+
+    # 初始化服务分类表（业务拓扑-服务分类管理，cc_ServiceCategory），幂等建表。
+    init_service_category_table()
 
     # 幂等为 user_custom 表补 bk_supplier_account 列（多租户隔离维度，对齐上游
     # cc_UserCustom 的 user + supplier 隔离）。已有库经 ALTER 加列兜底，可重复执行。
@@ -119,4 +190,10 @@ def create_app(config=None):
             }
         })
     
+    # 注册自定义 JSON 序列化器（跨方言兜底）：MySQL TIME→timedelta、PG/SQLite
+    # TIME→datetime.time、PG bytea→memoryview、Decimal/UUID/set 等类型，避免任意
+    # 方言驱动返回的特殊类型在接口序列化时崩溃（如原 MySQL 的
+    # "timedelta is not JSON serializable"）。
+    app.json = CMDBJSONProvider(app)
+
     return app

@@ -851,13 +851,15 @@ def create_module(bk_set_id):
 
     bk_biz_id = data.get('bk_biz_id')
     supplier_account = data.get('bk_supplier_account', '0')
+    attrs = data.get('attrs')
 
     try:
         result = topo_service.create_module(
             bk_set_id=bk_set_id,
             names=names,
             bk_biz_id=bk_biz_id,
-            supplier_account=supplier_account
+            supplier_account=supplier_account,
+            attrs=attrs
         )
         return jsonify({
             'result': True,

@@ -21,7 +21,10 @@ from typing import Optional
 
 from sqlalchemy.exc import OperationalError
 
-from app.definitions import get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES, model_name_property
+from app.definitions import (
+    get_sql_type, VALID_PROPERTY_TYPES, KNOWN_GROUP_NAMES, model_name_property,
+    DEFAULT_ASST_DIRECTION, VALID_ASST_DIRECTIONS,
+)
 from app.migrate.migrate import (
     SYSTEM_PROPERTIES, BUILTIN_TIME_PROPERTIES, convert_enum_option)
 from app.utils.tools import generate_id, parse_json, generate_group_id
@@ -1836,6 +1839,16 @@ def association_create_core(c, src, dst, asst_id, mapping='1:n', on_delete='none
     if not dst_row:
         raise CliError(EXIT_DEP, f"目标模型不存在: {dst}", "check_dst")
 
+    # 软约束（仅警告，不阻断）：自关联 + 1:n / n:1 是反模式。
+    # 参考上游 UI：bk-cmdb src/ui/src/views/model-topology/children/create-relation.vue
+    # 在 isSelfRelation（src==dst）时从下拉移除 1:n 选项，仅留 n:n / 1:1。
+    # 上游后端本身不硬拦，lite 保持一致，仅作软警告提示。
+    if src == dst and mapping in ('1:n', 'n:1'):
+        print(f"[警告] 自关联({src} -> {dst}) 使用 {mapping} 映射："
+              f"1:n/n:1 语义下目标实例只能被一个源关联，会导致同模型多实例无法指向同一对端"
+              f"（如多个模块访问同一 db 被拒）。建议改用 n:n（多对多）或 1:1。"
+              f"上游 UI 在自关联时也会移除 1:n 选项。")
+
     bk_obj_asst_id = make_obj_asst_id(src, asst_id, dst)
     exist = c.query_one(
         "SELECT * FROM cc_ObjAsst WHERE bk_obj_asst_id=:aid AND bk_supplier_account='0'",
@@ -1975,6 +1988,139 @@ def cmd_association_list(args):
         rows = association_list_core(c, src=args.src, asst_id=args.asst_id)
     emit_result({'count': len(rows), 'associations': rows,
                  'human': f"模型关联 {len(rows)} 条"}, args.json)
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
+# asst-type：关联类型（cc_AsstDes）方向与双向描述管理
+# 直接复用 app.service.association_type_service（与 HTTP API 同一套校验与
+# 方言转译逻辑），避免 CLI 与 API 校验规则漂移。
+# ---------------------------------------------------------------------------
+def _asst_type_human(t):
+    """单条关联类型的人读一行摘要。"""
+    return (f"{t['bk_asst_id']}\t{t.get('bk_asst_name', '')}\t"
+            f"方向={t.get('direction')}({t.get('direction_label')})\t"
+            f"源→目标={t.get('src_des') or '-'}\t目标→源={t.get('dest_des') or '-'}\t"
+            f"{'预置' if t.get('ispre') else '自定义'}\tid={t.get('id')}")
+
+
+def _asst_type_call(step, fn, *a, **kw):
+    """把服务层 APIException 转成 CLI 退出码（重复→EXISTS，其余→PARAM）。"""
+    from app.utils.exceptions import APIException, CCErrorCode
+    try:
+        return fn(*a, **kw)
+    except APIException as e:
+        code = EXIT_EXISTS if e.error_code == CCErrorCode.CCErrCommDuplicateItem else EXIT_PARAM
+        raise CliError(code, e.message, step)
+
+
+def cmd_asst_type_list(args):
+    from app.service import association_type_service as kind_svc
+    rows = kind_svc.list_association_types(args.supplier)
+    if args.direction:
+        rows = [r for r in rows if r.get('direction') == args.direction]
+    lines = [_asst_type_human(r) for r in rows]
+    emit_result({'count': len(rows), 'association_types': rows,
+                 'human': f"关联类型 {len(rows)} 条\n" + "\n".join(lines)}, args.json)
+    return EXIT_OK
+
+
+def cmd_asst_type_create(args):
+    from app.service import association_type_service as kind_svc
+    payload = {
+        'bk_asst_id': args.asst_id,
+        'bk_asst_name': args.name,
+        'src_des': args.src_des,
+        'dest_des': args.dest_des,
+        'direction': args.direction,
+    }
+    if args.icon:
+        payload['bk_asst_icon'] = args.icon
+    if args.dry_run:
+        # 只跑校验（方向值域 / ID 规则 / 名称长度 / 唯一性），不落库
+        kind_svc.validate_direction(args.direction)
+        exist = kind_svc.get_association_type_by_asst_id(args.asst_id, args.supplier)
+        action = 'skip(exists)' if exist else 'create'
+        emit_result({'action': action, **payload,
+                     'human': f"[dry-run] ASSOCIATION TYPE {args.asst_id} "
+                              f"(direction={args.direction}) -> {action}"}, args.json)
+        return EXIT_OK
+    created = _asst_type_call('create_asst_type', kind_svc.create_association_type,
+                              payload, supplier=args.supplier, operator=args.operator)
+    emit_result({**created,
+                 'human': f"关联类型已创建: {_asst_type_human(created)}"}, args.json)
+    return EXIT_OK
+
+
+def cmd_asst_type_update(args):
+    from app.service import association_type_service as kind_svc
+    # 只把显式传入的参数放进 payload，未传的字段保留原值
+    payload = {}
+    if args.name is not None:
+        payload['bk_asst_name'] = args.name
+    if args.src_des is not None:
+        payload['src_des'] = args.src_des
+    if args.dest_des is not None:
+        payload['dest_des'] = args.dest_des
+    if args.direction is not None:
+        payload['direction'] = args.direction
+    if not payload:
+        raise CliError(EXIT_PARAM,
+                       '至少需指定一个可更新字段：--name / --src-des / --dest-des / --direction',
+                       'update_asst_type')
+    kind_id = args.id
+    if kind_id is None:
+        if not args.asst_id:
+            raise CliError(EXIT_PARAM, '需提供 --id，或 --asst-id（按 bk_asst_id 定位）',
+                           'update_asst_type')
+        origin = kind_svc.get_association_type_by_asst_id(args.asst_id, args.supplier)
+        if not origin:
+            raise CliError(EXIT_DEP, f"关联类型不存在: {args.asst_id}", 'update_asst_type')
+        kind_id = origin['id']
+    if args.dry_run:
+        emit_result({'action': 'update', 'id': kind_id, 'changes': payload,
+                     'human': f"[dry-run] ASSOCIATION TYPE id={kind_id} -> update {payload}"},
+                    args.json)
+        return EXIT_OK
+    updated = _asst_type_call('update_asst_type', kind_svc.update_association_type,
+                              kind_id, payload, supplier=args.supplier, operator=args.operator)
+    emit_result({**updated, 'changes': payload,
+                 'human': f"关联类型已更新: {_asst_type_human(updated)}"}, args.json)
+    return EXIT_OK
+
+
+def cmd_asst_type_delete(args):
+    from app.service import association_type_service as kind_svc
+    kind_id = args.id
+    origin = None
+    if kind_id is None:
+        if not args.asst_id:
+            raise CliError(EXIT_PARAM, '需提供 --id，或 --asst-id（按 bk_asst_id 定位）',
+                           'delete_asst_type')
+        origin = kind_svc.get_association_type_by_asst_id(args.asst_id, args.supplier)
+        if not origin:
+            emit_result({'found': False, 'bk_asst_id': args.asst_id,
+                         'human': f"关联类型不存在: {args.asst_id}"}, args.json)
+            return EXIT_OK
+        kind_id = origin['id']
+    if args.dry_run:
+        origin = origin or kind_svc.get_association_type(kind_id, args.supplier)
+        if not origin:
+            emit_result({'found': False, 'id': kind_id,
+                         'human': f"关联类型不存在: id={kind_id}"}, args.json)
+            return EXIT_OK
+        used = kind_svc.count_object_associations(origin['bk_asst_id'], args.supplier)
+        blocked = '预置类型禁删' if origin['ispre'] else (f'被 {used} 个模型关联引用禁删' if used else None)
+        emit_result({'action': 'skip(blocked)' if blocked else 'delete',
+                     'id': kind_id, 'bk_asst_id': origin['bk_asst_id'],
+                     'ispre': origin['ispre'], 'used_by': used,
+                     'human': f"[dry-run] ASSOCIATION TYPE {origin['bk_asst_id']} -> "
+                              f"{blocked or 'delete'}"}, args.json)
+        return EXIT_OK
+    r = _asst_type_call('delete_asst_type', kind_svc.delete_association_type,
+                        kind_id, supplier=args.supplier)
+    emit_result({**r, 'found': True,
+                 'human': f"关联类型已删除: {r['bk_asst_id']}（id={r['id']}）"}, args.json)
     return EXIT_OK
 
 
@@ -2684,6 +2830,56 @@ def build_parser():
     x.add_argument('--src', default=None, help='可选：按源模型ID过滤')
     x.add_argument('--asst-id', default=None, help='可选：按关联类型ID过滤')
     x.set_defaults(func=cmd_association_list)
+
+    # asst-type：关联类型（cc_AsstDes）—— 方向 + 源→目标/目标→源 描述
+    sp = sub.add_parser('asst-type',
+                        help='关联类型（方向 / 源→目标描述 / 目标→源描述，对应 cc_AsstDes）')
+    ats = sp.add_subparsers(dest='sub', required=True,
+                     parser_class=lambda **a: argparse.ArgumentParser(parents=[common], **a))
+
+    _DIR_HELP = ('方向：none=无方向 / src_to_dest=有方向(源→目标) / '
+                 'dest_to_src=有方向(目标→源) / bidirectional=双向')
+    _DIR_CHOICES = list(VALID_ASST_DIRECTIONS)
+
+    x = ats.add_parser('list', help='列举关联类型（含方向与双向描述）')
+    x.add_argument('--supplier', default='0', help='供应商账户（多租户隔离，默认 0）')
+    x.add_argument('--direction', default=None, choices=_DIR_CHOICES,
+                   help='可选：按方向过滤。' + _DIR_HELP)
+    x.set_defaults(func=cmd_asst_type_list)
+
+    x = ats.add_parser('create', help='创建关联类型（指定方向与双向描述）')
+    x.add_argument('--asst-id', required=True,
+                   help='关联类型ID bk_asst_id（须以字母开头，仅含字母/数字/下划线，≤128）')
+    x.add_argument('--name', required=True, help='关联类型显示名 bk_asst_name')
+    x.add_argument('--src-des', dest='src_des', default='',
+                   help='源→目标 的关系描述 src_des（如「访问」）')
+    x.add_argument('--dest-des', dest='dest_des', default='',
+                   help='目标→源 的关系描述 dest_des（如「被访问」）')
+    x.add_argument('--direction', default=DEFAULT_ASST_DIRECTION, choices=_DIR_CHOICES,
+                   help=f'{_DIR_HELP}（默认 {DEFAULT_ASST_DIRECTION}）')
+    x.add_argument('--icon', default=None, help='可选：图标 bk_asst_icon')
+    x.add_argument('--supplier', default='0', help='供应商账户（默认 0）')
+    x.add_argument('--operator', default='admin', help='操作人（写入 creator/modifier，默认 admin）')
+    x.set_defaults(func=cmd_asst_type_create)
+
+    x = ats.add_parser('update',
+                       help='更新关联类型的名称/方向/双向描述（未传字段保留原值）')
+    x.add_argument('--id', type=int, default=None, help='关联类型自增 id（优先）')
+    x.add_argument('--asst-id', default=None, help='或按 bk_asst_id 定位')
+    x.add_argument('--name', default=None, help='新显示名 bk_asst_name')
+    x.add_argument('--src-des', dest='src_des', default=None, help='新的 源→目标 描述')
+    x.add_argument('--dest-des', dest='dest_des', default=None, help='新的 目标→源 描述')
+    x.add_argument('--direction', default=None, choices=_DIR_CHOICES, help=_DIR_HELP)
+    x.add_argument('--supplier', default='0', help='供应商账户（默认 0）')
+    x.add_argument('--operator', default='admin', help='操作人（写入 modifier，默认 admin）')
+    x.set_defaults(func=cmd_asst_type_update)
+
+    x = ats.add_parser('delete',
+                       help='删除关联类型（预置类型 / 已被模型关联引用者禁止删除）')
+    x.add_argument('--id', type=int, default=None, help='关联类型自增 id（优先）')
+    x.add_argument('--asst-id', default=None, help='或按 bk_asst_id 定位')
+    x.add_argument('--supplier', default='0', help='供应商账户（默认 0）')
+    x.set_defaults(func=cmd_asst_type_delete)
 
     # attribute
     sp = sub.add_parser('attribute', help='属性')

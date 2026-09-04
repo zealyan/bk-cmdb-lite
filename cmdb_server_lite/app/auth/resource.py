@@ -40,6 +40,10 @@ class ResourceType:
     BUSINESS = "business"
     BIZ_TOPOLOGY = "biz_topology"   # 集群/模块/主线实例（上游 IAM 侧统一为 biz_topology）
     MODEL = "model"
+    SERVICE_CATEGORY = "serviceCategory"  # 服务分类（业务级两级树：create/edit/delete 按 business_id 隔离）
+    # 关联类型（cc_AsstDes）。对齐上游 ac/meta.AssociationType="associationType"：
+    # 系统级资源，不带 business 维度（关联类型全局共享，仅按 supplier 隔离）。
+    ASSOCIATION_TYPE = "associationType"
 
 
 class ResourceAttribute:

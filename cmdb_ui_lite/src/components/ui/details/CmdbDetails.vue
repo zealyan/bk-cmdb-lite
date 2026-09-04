@@ -1,6 +1,9 @@
 <template>
   <div class="cmdb-details" ref="detailsWrapper">
     <slot name="details-header"></slot>
+    <!-- prepend：在基础信息（default 属性组）之上渲染额外信息，对齐原项目 cmdb-details 的
+         slot="prepend"（node-extra-info），此处用于模块节点展示服务分类：一级 / 二级 -->
+    <slot name="prepend"></slot>
     <template v-for="(group, groupIndex) in sortedGroups">
       <div class="property-group" :key="groupIndex" v-if="groupedProperties[groupIndex]?.length">
         <cmdb-collapse

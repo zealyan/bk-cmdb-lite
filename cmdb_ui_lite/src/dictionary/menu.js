@@ -2,6 +2,7 @@ import {
   MENU_INDEX,
   MENU_BUSINESS,
   MENU_BUSINESS_TOPOLOGY,
+  MENU_BUSINESS_SERVICE_CATEGORY,
   MENU_RESOURCE,
   MENU_MODEL,
   MENU_RESOURCE_MANAGEMENT,
@@ -26,6 +27,19 @@ const menus = [{
     icon: 'icon-cc-host',
     route: {
       name: MENU_BUSINESS_TOPOLOGY,
+      params: {
+        bizId: DEFAULT_BIZ_ID
+      }
+    }
+  }, {
+    // 所属服务分类：对齐原项目 bk-cmdb 的「业务 → 服务分类」独立入口
+    // （原项目路由 owner=MENU_BUSINESS、path=service/cagetory，即 /business/:bizId/service/cagetory）。
+    // 在 lite 中作为「业务」左侧导航的同级菜单项，与业务拓扑并列。
+    id: MENU_BUSINESS_SERVICE_CATEGORY,
+    i18n: '服务分类',
+    icon: 'icon-cc-nav-service-topo',
+    route: {
+      name: MENU_BUSINESS_SERVICE_CATEGORY,
       params: {
         bizId: DEFAULT_BIZ_ID
       }

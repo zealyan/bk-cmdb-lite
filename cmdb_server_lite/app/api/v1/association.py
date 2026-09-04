@@ -1,8 +1,10 @@
 from flask import Blueprint, jsonify, request
+from app.auth.identity import current_supplier, current_user
+from app.service import association_type_service as kind_svc
 from app.service.association_service import AssociationService
 from app.service.instance_service import InstanceService
 from app.utils.logger import get_logger
-from app.utils.exceptions import ValidationException, APIException
+from app.utils.exceptions import ValidationException, APIException, CCErrorCode
 
 logger = get_logger('api.association')
 association_bp = Blueprint('association', __name__)
@@ -46,16 +48,94 @@ def find_instances(obj_id):
         logger.error(f"Error finding instances for {obj_id}: {e}")
         return error_response(f'查询实例失败: {str(e)}')
 
+def _kind_supplier():
+    """本次请求的供应商账户：请求体/查询串优先，其次当前身份（默认 '0'）。"""
+    payload = request.get_json(silent=True) or {}
+    return (payload.get('bk_supplier_account')
+            or request.args.get('bk_supplier_account')
+            or current_supplier() or '0')
+
+
 @association_bp.route('/find/associationtype', methods=['POST'])
 def find_association_type():
-    """查询关联类型"""
+    """查询关联类型（含 direction / src_des / dest_des / direction_label）。
+
+    对齐上游 topo_server POST /find/associationtype。
+    出参 data.info[*]：
+      bk_asst_id / bk_asst_name / src_des（源→目标描述）/ dest_des（目标→源描述）
+      / direction（none|src_to_dest|dest_to_src|bidirectional）/ direction_label（中文）
+      / ispre(bool) / id(int)
+    """
     try:
-        data = request.get_json() or {}
-        types = AssociationService.get_association_types()
-        return success_response({'info': types})
+        types = AssociationService.get_association_types(_kind_supplier())
+        return success_response({'info': types, 'count': len(types)})
+    except APIException:
+        raise
     except Exception as e:
         logger.error(f"Error finding association types: {e}")
         return error_response(f'查询关联类型失败: {str(e)}')
+
+
+@association_bp.route('/create/associationtype', methods=['POST'])
+def create_association_type():
+    """创建关联类型（对齐上游 POST /create/associationtype）。
+
+    请求体：
+      - bk_asst_id    必填，唯一标识（^[a-zA-Z]\\w*$，≤128）
+      - bk_asst_name  必填，显示名
+      - src_des       选填，源→目标 描述（如「访问」）
+      - dest_des      选填，目标→源 描述（如「被访问」）
+      - direction     选填，方向；缺省 src_to_dest
+                      none=无方向 / src_to_dest=源到目标 / dest_to_src=目标到源
+                      / bidirectional=双向
+      - bk_asst_icon  选填，图标
+    ispre 由服务层恒置 False（预置标记仅 migrate 可写）。
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        created = kind_svc.create_association_type(
+            data, supplier=_kind_supplier(), operator=current_user())
+        return success_response(created, '关联类型创建成功')
+    except APIException as e:
+        return error_response(e.message, e.error_code)
+    except Exception as e:
+        logger.error(f"Error creating association type: {e}")
+        return error_response(f'创建关联类型失败: {str(e)}')
+
+
+@association_bp.route('/update/associationtype/<int:kind_id>', methods=['PUT'])
+def update_association_type(kind_id):
+    """更新关联类型（对齐上游 PUT /update/associationtype/{id}）。
+
+    仅 bk_asst_name / src_des / dest_des / direction 可改；
+    未传的字段保留原值；id / bk_asst_id / ispre 传了也会被忽略。
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        updated = kind_svc.update_association_type(
+            kind_id, data, supplier=_kind_supplier(), operator=current_user())
+        return success_response(updated, '关联类型更新成功')
+    except APIException as e:
+        return error_response(e.message, e.error_code)
+    except Exception as e:
+        logger.error(f"Error updating association type {kind_id}: {e}")
+        return error_response(f'更新关联类型失败: {str(e)}')
+
+
+@association_bp.route('/delete/associationtype/<int:kind_id>', methods=['DELETE'])
+def delete_association_type(kind_id):
+    """删除关联类型（对齐上游 DELETE /delete/associationtype/{id}）。
+
+    双重保护：预置类型（ispre）禁删；已被模型关联（cc_ObjAsst）引用的类型禁删。
+    """
+    try:
+        result = kind_svc.delete_association_type(kind_id, supplier=_kind_supplier())
+        return success_response(result, '关联类型删除成功')
+    except APIException as e:
+        return error_response(e.message, e.error_code)
+    except Exception as e:
+        logger.error(f"Error deleting association type {kind_id}: {e}")
+        return error_response(f'删除关联类型失败: {str(e)}')
 
 @association_bp.route('/find/objectassociation', methods=['POST'])
 def find_object_association():
@@ -134,18 +214,12 @@ def delete_object_association():
         logger.error(f"Error deleting object association: {e}")
         return error_response(f'删除模型关联失败: {str(e)}')
 
-@association_bp.route('/api/instances/<instance_id>/associations', methods=['GET'])
-def get_instance_associations(instance_id):
-    """获取实例的关联关系"""
-    try:
-        obj_id = request.args.get('obj_id')
-        associations = AssociationService.get_instance_associations(instance_id, obj_id)
-        return success_response({'associations': associations})
-    except Exception as e:
-        logger.error(f"Error getting instance associations: {e}")
-        return error_response(f'获取关联关系失败: {str(e)}')
-
-@association_bp.route('/api/v1/associations/candidates', methods=['POST'])
+# 说明：实例关联查询（GET /api/v1/instances/<id>/associations）与关联实例详情
+# （GET /api/v1/instances/<id>/related）统一由 model.py 的 instance_bp 提供，
+# 此处原有的 /api/instances/... 两个同名路由属重复实现且从未被前端调用（前端一直
+# 走 /api/v1/instances/...），已在 API 前缀对齐时移除，避免加 /api/v1 前缀后与
+# instance_bp 产生同 URL 双 endpoint 的隐蔽冲突。
+@association_bp.route('/associations/candidates', methods=['POST'])
 def search_association_candidates():
     """查询「新增关联」弹框的候选目标实例（支持 全部/已关联/未关联 筛选 + 条件 + 排序 + 分页组合查询）"""
     try:
@@ -201,14 +275,3 @@ def find_instassociation():
         logger.error(f"Error finding instance associations: {e}")
         return error_response(f'查询实例关联失败: {str(e)}')
 
-@association_bp.route('/api/instances/<instance_id>/related', methods=['GET'])
-def get_related_instances(instance_id):
-    """获取实例的相关实例"""
-    try:
-        model_id = request.args.get('model_id')
-        
-        related = AssociationService.get_related_instances(instance_id, model_id)
-        return success_response({'related': related})
-    except Exception as e:
-        logger.error(f"Error getting related instances: {e}")
-        return error_response(f'获取关联实例失败: {str(e)}')

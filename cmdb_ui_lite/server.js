@@ -125,10 +125,18 @@ const server = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0].split('#')[0];
 
   // API 请求代理到后端
+  //
+  // 前端自身的调用已统一为 /api/v1 前缀，仅靠 '/api' 一条即可覆盖。
+  // 下面 /find /create /update /delete 四条是为后端保留的「上游 bk-cmdb 风格
+  // 兼容路径」（无前缀，如 POST /find/associationtype）留的通道，供外部调用方
+  // 经本端口访问。四个动词必须齐全：此处原先漏了 '/update'，导致兼容路径中的
+  // PUT /update/objectunique/... 无法被代理（前端旧代码正是走该路径更新唯一
+  // 约束，在生产模式下静默失效），已补齐。
   if (urlPath.startsWith('/api') ||
       urlPath.startsWith('/health') ||
       urlPath.startsWith('/find') ||
       urlPath.startsWith('/create') ||
+      urlPath.startsWith('/update') ||
       urlPath.startsWith('/delete')) {
     proxyToBackend(req, res);
     return;

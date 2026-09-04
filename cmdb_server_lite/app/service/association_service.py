@@ -21,43 +21,53 @@ def get_inst_asst_table_name(obj_id):
 class AssociationService:
     
     @staticmethod
-    def get_association_types():
-        """获取所有关联类型"""
-        types = query_all('association/select_association_types.sql', {})
-        # 补充缺失的字段，避免前端显示 undefined
+    def get_association_types(supplier: str = '0'):
+        """获取所有关联类型（委托给关联类型数据层，保证方向值域与出参类型一致）。
+
+        委托到 app.service.association_type_service.list_association_types：
+          - SQL 经方言转译（select_association_types.sql 已带 :bk_supplier_account
+            租户过滤参数，不可再用空参调用）；
+          - direction 统一归一到 none / src_to_dest / dest_to_src / bidirectional，
+            并附 direction_label（中文方向名）；
+          - ispre → bool、id → int。
+        src_des / dest_des 为空时沿用历史兜底（回退 bk_asst_name），
+        避免前端分组标题出现空文案。
+        """
+        from app.service import association_type_service as kind_svc
+
+        types = kind_svc.list_association_types(supplier)
         for t in types:
-            # 给每个类型补充合理的默认值
-            if 'src_des' not in t or t.get('src_des') is None:
-                t['src_des'] = t.get('bk_asst_name', '指向')
-            if 'dest_des' not in t or t.get('dest_des') is None:
-                t['dest_des'] = t.get('bk_asst_name', '指向')
+            if not t.get('src_des'):
+                t['src_des'] = t.get('bk_asst_name') or '指向'
+            if not t.get('dest_des'):
+                t['dest_des'] = t.get('bk_asst_name') or '指向'
         return types
     
     @staticmethod
     def get_object_associations(conditions=None):
-        """查询对象关联"""
+        """查询对象关联（模型间关联定义，cc_ObjAsst × cc_AsstDes）
+
+        主句外置到 app/sql/association/select_object_associations.sql（含 JOIN 出的
+        src_des / dest_des / direction 等关联类型属性列），此处仅按调用方条件做
+        白名单校验 + 动态 WHERE 拼接；SQL 方言转译由执行层统一负责。
+        """
+        from app.db.sql_loader import load_sql
         # 有效的字段列表
         valid_fields = [
-            '_id', 'id', 'bk_obj_id', 'target_obj_id', 
-            'target_obj_name', 'bk_asst_id', 'bk_obj_asst_id', 
-            'bk_obj_asst_name', 'mapping', 'on_delete', 
-            'creator', 'modifier', 'create_time', 'last_time', 
+            '_id', 'id', 'bk_obj_id', 'target_obj_id',
+            'target_obj_name', 'bk_asst_id', 'bk_obj_asst_id',
+            'bk_obj_asst_name', 'mapping', 'on_delete',
+            'creator', 'modifier', 'create_time', 'last_time',
             'bk_supplier_account', 'bk_asst_obj_id'
         ]
-        
+
         # 字段别名映射（前端使用的字段名 -> 数据库实际字段名）
         field_aliases = {
             'bk_asst_obj_id': 'target_obj_id'  # 前端字段名 -> 数据库字段名
         }
-        
-        base_sql = """
-            SELECT 
-                oa.*,
-                ad.bk_asst_name
-            FROM cc_ObjAsst oa
-            JOIN cc_AsstDes ad ON oa.bk_asst_id = ad.bk_asst_id
-        """
-        
+
+        base_sql = load_sql('association', 'select_object_associations.sql')
+
         if conditions and isinstance(conditions, dict):
             where_clauses = []
             params = {}
@@ -74,7 +84,7 @@ class AssociationService:
         else:
             sql = base_sql
             params = {}
-        
+
         return query_all(sql, params)
     
     @staticmethod
@@ -327,38 +337,43 @@ class AssociationService:
         
         mapping = result.get('mapping', '')
         object_id = result.get('bk_obj_id', '')
-        asst_object_id = result.get('target_obj_id', '')
-        
+
+        # 关联记录在「定义源模型」分表中；这里只统计该分表即可反映整体关联状态。
+        # 唯一性校验必须「排除当前这对本身」，否则取消关联后再重新关联同一对端实例
+        # 会被误判为「目标/源实例已有关联」而遭到拒绝（bk-cmdb 的 1:1/1:n/n:1 仅约束
+        # 对端实例不可再指向「其它」实例，而非禁止重建同一对）。
+        table = get_inst_asst_table_name(object_id)
+
+        def _count_other(extra_where: str, **params):
+            sql = (f'SELECT COUNT(*) as count FROM "{table}" '
+                   f'WHERE bk_obj_asst_id = :oa {extra_where}')
+            params['oa'] = obj_asst_id
+            res = query_one(sql, params)
+            return res.get('count', 0) if res else 0
+
         if mapping == '1:1':
-            inst_count = AssociationService._count_instance_association(
-                obj_asst_id, object_id, bk_inst_id=inst_id
-            )
-            asst_inst_count = AssociationService._count_instance_association(
-                obj_asst_id, object_id, bk_asst_inst_id=asst_inst_id
-            )
-            
-            if inst_count > 0:
-                raise ValueError("1:1 关联不允许创建多个关联实例（源实例已有关联）")
-            if asst_inst_count > 0:
-                raise ValueError("1:1 关联不允许创建多个关联实例（目标实例已有关联）")
-        
+            # 源、目标各自仅允许一个对端（排除当前这对本身）
+            if _count_other("AND bk_inst_id = :inst AND bk_asst_inst_id != :asst",
+                            inst=inst_id, asst=asst_inst_id) > 0:
+                raise ValueError("1:1 关联不允许：源实例已关联其它目标实例")
+            if _count_other("AND bk_asst_inst_id = :asst AND bk_inst_id != :inst",
+                            inst=inst_id, asst=asst_inst_id) > 0:
+                raise ValueError("1:1 关联不允许：目标实例已关联其它源实例")
+
         elif mapping == '1:n':
-            asst_inst_count = AssociationService._count_instance_association(
-                obj_asst_id, object_id, bk_asst_inst_id=asst_inst_id
-            )
-            
-            if asst_inst_count > 0:
-                raise ValueError("1:n 关联的目标实例已有关联，不能重复关联")
-        
+            # 目标实例（n 侧）只能被一个源实例关联，排除当前这对本身
+            if _count_other("AND bk_asst_inst_id = :asst AND bk_inst_id != :inst",
+                            inst=inst_id, asst=asst_inst_id) > 0:
+                raise ValueError("1:n 关联：目标实例已关联其它源实例，不能重复关联")
+
         elif mapping == 'n:1':
-            inst_count = AssociationService._count_instance_association(
-                obj_asst_id, object_id, bk_inst_id=inst_id
-            )
-            
-            if inst_count > 0:
-                raise ValueError("n:1 关联的源实例已有关联，不能重复关联")
-        
+            # 源实例（n 侧）只能关联一个目标，排除当前这对本身
+            if _count_other("AND bk_inst_id = :inst AND bk_asst_inst_id != :asst",
+                            inst=inst_id, asst=asst_inst_id) > 0:
+                raise ValueError("n:1 关联：源实例已关联其它目标实例，不能重复关联")
+
         elif mapping == 'n:n':
+            # 多对多：不限制
             pass
     
     @staticmethod
@@ -387,7 +402,23 @@ class AssociationService:
 
         if obj_asst_id and inst_id and asst_inst_id:
             AssociationService.check_association_mapping(obj_asst_id, inst_id, asst_inst_id)
-        
+
+        # 幂等保护：同一对端实例已存在相同关联类型时，直接返回已有记录，
+        # 避免（尤其 n:n 场景下）重复点击「关联」产生重复记录。
+        src_table = get_inst_asst_table_name(bk_obj_id)
+        dup_sql = (
+            f'SELECT id FROM "{src_table}" '
+            f'WHERE bk_obj_asst_id = :oa AND bk_obj_id = :bk_obj_id '
+            f'AND bk_inst_id = :bk_inst_id AND bk_asst_obj_id = :bk_asst_obj_id '
+            f'AND bk_asst_inst_id = :bk_asst_inst_id LIMIT 1'
+        )
+        dup = query_one(dup_sql, {
+            'oa': obj_asst_id, 'bk_obj_id': bk_obj_id, 'bk_inst_id': inst_id,
+            'bk_asst_obj_id': bk_asst_obj_id, 'bk_asst_inst_id': asst_inst_id,
+        })
+        if dup:
+            return {'id': dup.get('id'), 'result': True, 'duplicated': True}
+
         data['id'] = generate_id()
         # _id 为 MongoDB 风格文档主键，前端不传，后端兜底生成 UUID，
         # 否则 sqlalchemy 因 INSERT 引用了 :_id 命名参数却无对应值而抛

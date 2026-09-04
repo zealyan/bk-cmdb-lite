@@ -1009,6 +1009,27 @@ class InstanceService:
         # 不允许修改系统字段
         system_fields_to_exclude = ['id', '_id', 'bk_supplier_account', 'create_time']
 
+        # 跨表引用校验（对齐上游 CreateModule / UpdateModule 的业务隔离约束）：
+        # service_category_id / bk_module_type 是模块实例的「外键型」字段，但 cc_ModuleBase
+        # 未建物理外键（上游同此设计）。此处对 service_category_id 做与创建路径
+        # resolve_module_service_category 一致的存在性 + 业务隔离校验，避免：
+        #   ① 跨业务越权引用（业务A的模块指向业务B的服务分类）；
+        #   ② 悬空引用（service_category_id 指向不存在的分类）。
+        # 仅当该字段出现在待更新集合中才校验（未改分类则跳过，避免无谓查询）。
+        # 通用实例表（非 module 模型）不含该列，valid_fields 已天然排除，不影响自定义模型。
+        if 'service_category_id' in data and 'service_category_id' in valid_fields:
+            from app.service.topo_service import resolve_module_service_category
+            
+            # 模块所属业务：优先取请求体 bk_biz_id，否则按实例 ID 反查 cc_ModuleBase.bk_biz_id
+            _biz = int(data.get('bk_biz_id') or 0)
+            if not _biz:
+                _row = query_one(
+                    'SELECT bk_biz_id FROM cc_ModuleBase WHERE bk_module_id = :i',
+                    {'i': instance_id})
+                _biz = int((_row or {}).get('bk_biz_id') or 0)
+            data['service_category_id'] = resolve_module_service_category(
+                _biz, '0', data.get('service_category_id'))
+
         update_fields = []
         params = {'instance_id': instance_id}
 
@@ -1112,6 +1133,16 @@ class InstanceService:
         valid_fields.update(SYSTEM_FIELDS)
         # 不允许修改系统字段
         system_fields_to_exclude = ['id', '_id', 'bk_supplier_account', 'create_time']
+
+        # 跨表引用校验：service_category_id 的存在性 + 业务隔离（对齐 update_instance，
+        # 与创建路径 resolve_module_service_category 语义一致；批量更新同样禁止跨业务/悬空引用）。
+        # 批量更新一般不携带 bk_biz_id，退化为 0：全局内置分类(0)仍可用，业务专属分类按校验拦截。
+        if 'service_category_id' in data and 'service_category_id' in valid_fields:
+            from app.service.topo_service import resolve_module_service_category
+            
+            _biz = int(data.get('bk_biz_id') or 0)
+            data['service_category_id'] = resolve_module_service_category(
+                _biz, '0', data.get('service_category_id'))
 
         update_fields = []
         params = {}

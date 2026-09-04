@@ -63,6 +63,14 @@ check_instances / pre_authorize_update 的逐实例语义保持一致。
         对齐上游：新增关联=实例编辑，同样受 Edit 权限管控（与取消关联对称，
         任一侧无权即整体拒绝，避免从对端侧绕过受保护模型的限制）。
 
+  # 关联类型（associationType / cc_AsstDes：方向 direction + src_des/dest_des）
+  # 对齐上游 ac/meta.AssociationType="associationType"：系统级资源，
+  # 无 business 维度（关联类型全局共享，仅按 supplier 隔离）。
+  POST   /find/associationtype        → None（读放行，对齐上游 find → SkipAction）
+  POST   /create/associationtype      → (associationType, create)
+  PUT    /update/associationtype/<id> → (associationType, update, instance_id=<id>)
+  DELETE /delete/associationtype/<id> → (associationType, delete, instance_id=<id>)
+
 其余路由（auth/login、health、模型元数据、关联分表等）返回 None，
 before_request 不拦截——保证非实例端点零回归。
 """
@@ -114,12 +122,51 @@ TRANSFER_RE = re.compile(r'^/api/v1/host/transfer/modules$')
 # 跨业务转移（写）：POST /api/v1/host/transfer/modules/across/biz
 TRANSFER_ACROSS_RE = re.compile(r'^/api/v1/host/transfer/modules/across/biz$')
 
+# ───────────────────────────────────────────────────────────
+# 服务分类（serviceCategory）路由
+# 资源类型 serviceCategory，动作复用 create/edit/delete，business_id 维度隔离
+# （与 biz_topology 一致：以 business 为父级作用域）。
+# 读类端点（GET 列表 / GET 单条）method=GET → 返回 FIND → 读默认放行。
+# ───────────────────────────────────────────────────────────
+# GET/POST 列表 + 单条（写）编辑/删除：/api/v1/service/category[/<id>]
+SERVICE_CATEGORY_RE = re.compile(r'^/api/v1/service/category(?:/(\d+))?$')
+
+# ───────────────────────────────────────────────────────────
+# 关联类型（associationType / cc_AsstDes）路由
+# 对齐上游 ac/meta.AssociationType：系统级资源，无 business 维度
+#   find   → SkipAction（读放行，上游 topo_server 对 find/associationtype 不鉴权）
+#   create → Create、update → Edit(UPDATE)、delete → Delete
+# POST /find/associationtype 是【读】操作，不能被下方 create 正则误伤，
+# 故三条写路由用独立正则精确匹配（find 不匹配 → 返回 None → before_request 放行）。
+# ───────────────────────────────────────────────────────────
+ASST_TYPE_CREATE_RE = re.compile(r'^/create/associationtype$')
+ASST_TYPE_UPDATE_RE = re.compile(r'^/update/associationtype/(\d+)$')
+ASST_TYPE_DELETE_RE = re.compile(r'^/delete/associationtype/(\d+)$')
+
 
 def _to_int(v):
     try:
         return int(v)
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_service_category_biz(cat_id):
+    """反推服务分类所属业务 ID（用于 per-biz 授权，对齐上游 serviceCategory 以 business 为作用域）。
+
+    按分类 id 查 cc_ServiceCategory.bk_biz_id；查不到 / 非法 → 返回 None（fail-safe，
+    退化为类级，仅 business_id=NULL 的策略可放行）。返回统一为字符串，与策略存储类型一致。
+    """
+    cid = _to_int(cat_id)
+    if cid is None:
+        return None
+    row = query_one(
+        'SELECT bk_biz_id FROM cc_ServiceCategory WHERE id = :cid',
+        {'cid': cid})
+    if not row:
+        return None
+    biz = row.get('bk_biz_id')
+    return str(biz) if biz is not None else None
 
 
 def _resolve_topo_biz(obj_id, inst_id):
@@ -439,5 +486,45 @@ def parse_route(request):
     cmr = CREATE_ASSOC_RE.match(path)
     if cmr and method == 'POST':
         return _parse_associate(request)
+
+    # ── 关联类型（associationType）：系统级资源，无 business 维度 ──
+    # 必须放在 INSTANCE / 服务分类分支之外；/find/associationtype 不在此匹配，
+    # 返回 None 由 before_request 放行（对齐上游 find → SkipAction）。
+    if ASST_TYPE_CREATE_RE.match(path) and method == 'POST':
+        return [ResourceAttribute(ResourceType.ASSOCIATION_TYPE, Action.CREATE,
+                                  obj_id=ResourceType.ASSOCIATION_TYPE)]
+    atu = ASST_TYPE_UPDATE_RE.match(path)
+    if atu and method == 'PUT':
+        return [ResourceAttribute(ResourceType.ASSOCIATION_TYPE, Action.UPDATE,
+                                  obj_id=ResourceType.ASSOCIATION_TYPE,
+                                  instance_id=_to_int(atu.group(1)))]
+    atd = ASST_TYPE_DELETE_RE.match(path)
+    if atd and method == 'DELETE':
+        return [ResourceAttribute(ResourceType.ASSOCIATION_TYPE, Action.DELETE,
+                                  obj_id=ResourceType.ASSOCIATION_TYPE,
+                                  instance_id=_to_int(atd.group(1)))]
+
+    # ── 服务分类（serviceCategory）：读放行，写按 business_id 隔离 ──
+    # GET 列表/单条 → FIND（读默认放行）；POST 创建 / PUT 改名 / DELETE 删除
+    # → 按 business_id 维度授权（create 从 body 取 bk_biz_id；edit/delete 由分类 id 反推）。
+    sc = SERVICE_CATEGORY_RE.match(path)
+    if sc:
+        cat_id = sc.group(1)
+        if method == 'GET':
+            return [ResourceAttribute(ResourceType.SERVICE_CATEGORY, Action.FIND,
+                                      obj_id=ResourceType.SERVICE_CATEGORY)]
+        if method == 'POST':
+            body = _json_body(request)
+            biz_id = _to_int(body.get('bk_biz_id'))
+            return [ResourceAttribute(ResourceType.SERVICE_CATEGORY, Action.CREATE,
+                                      obj_id=ResourceType.SERVICE_CATEGORY,
+                                      business_id=str(biz_id) if biz_id is not None else None)]
+        if method in ('PUT', 'DELETE') and cat_id:
+            biz_id = _resolve_service_category_biz(cat_id)
+            action = Action.UPDATE if method == 'PUT' else Action.DELETE
+            return [ResourceAttribute(ResourceType.SERVICE_CATEGORY, action,
+                                      obj_id=ResourceType.SERVICE_CATEGORY,
+                                      business_id=biz_id)]
+        return None
 
     return None

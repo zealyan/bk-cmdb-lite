@@ -6,6 +6,7 @@ export const MENU_MODEL = 'menu_model'
 
 export const MENU_BUSINESS_TOPOLOGY = 'menu_business_topology'
 export const MENU_BUSINESS_LIST = 'menu_business_list'
+export const MENU_BUSINESS_SERVICE_CATEGORY = 'menu_business_service_category'
 
 export const MENU_RESOURCE_MANAGEMENT = 'menu_resource_management'
 export const MENU_RESOURCE_COLLECTION = 'menu_resource_collection'

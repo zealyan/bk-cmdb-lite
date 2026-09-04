@@ -100,6 +100,8 @@
 </template>
 
 <script>
+import { serviceAPI } from '@/api/service'
+
 export default {
   name: 'CreateModule',
   props: {
@@ -110,22 +112,17 @@ export default {
   },
   data() {
     return {
-      withTemplate: 0, // 默认直接新建
+      withTemplate: 0, // 默认直接新建（从模板新建暂不支持）
       template: '',
       templateList: [],
       moduleName: '',
       moduleNameMulti: '',
       rows: 1,
-      // 服务分类 - 默认值
-      firstClass: 'default',
-      secondClass: 'default',
-      // 服务分类列表 - 写死为 default
-      firstClassList: [
-        { id: 'default', name: '默认分类' }
-      ],
-      secondClassList: [
-        { id: 'default', name: '默认分类' }
-      ]
+      // 服务分类（两级：一级分类 -> 二级分类）；二级分类的 id 作为模块 service_category_id
+      firstClass: '',
+      secondClass: '',
+      firstClassList: [],
+      secondClassList: []
     }
   },
   computed: {
@@ -142,6 +139,10 @@ export default {
     },
     currentTemplate() {
       return this.templateList.find(item => item.id === this.template) || {}
+    },
+    business() {
+      // 模块归属业务 = 父节点（集群/自定义层）所携带的业务ID，与提交侧保持一致
+      return this.parentNode?.data?.bk_biz_id || 0
     }
   },
   watch: {
@@ -150,19 +151,24 @@ export default {
         // 从模板新建 - 暂不支持
         this.moduleName = ''
       } else {
-        // 直接新建
+        // 直接新建：重新拉取服务分类
         this.moduleNameMulti = ''
-        // 重置服务分类为默认值
-        this.firstClass = 'default'
-        this.secondClass = 'default'
+        this.firstClass = ''
+        this.secondClass = ''
+        this.getServiceCategories()
       }
     },
-    template(template) {
-      if (template) {
-        this.moduleName = this.currentTemplate.name || ''
-      } else {
-        this.moduleName = ''
-      }
+    firstClass(val) {
+      // 切换一级分类后，二级分类列表与默认选中同步刷新
+      const matched = this.firstClassList.find(c => c.id === val)
+      this.secondClassList = matched ? (matched.children || []) : []
+      this.secondClass = this.secondClassList.length ? this.secondClassList[0].id : ''
+    }
+  },
+  created() {
+    // 弹框打开（v-if 渲染）即拉取当前业务的服务分类
+    if (this.withTemplate === 0) {
+      this.getServiceCategories()
     }
   },
   methods: {
@@ -182,6 +188,34 @@ export default {
     handlePaste() {
       this.setRows()
     },
+    async getServiceCategories() {
+      try {
+        // 后端返回 { info: [...], count }，每个分类含 id / name / bk_parent_id / bk_root_id
+        // 对齐上游 coreservice ListServiceCategories：过滤条件 bk_biz_id IN [bizID, 0]，
+        // 因此返回值同时包含「本业务自有分类」与「全局内置 Default 两级分类」。
+        const res = await serviceAPI.getServiceCategories(this.business)
+        const info = (res && res.info) || []
+        // 扁平分组为两级：一级(bk_parent_id==0) + 其子二级（对齐上游 searchServiceCategory 结构）
+        const firstList = info.filter(c => !c.bk_parent_id)
+        firstList.forEach(fc => {
+          fc.children = info.filter(c => c.bk_parent_id === fc.id)
+        })
+        this.firstClassList = firstList
+        // 默认选中内置 Default 一级（对齐原项目 create-module.vue 的 updateCategory(1)：
+        // 硬编码选中内置 Default 一级分类），其二级由 firstClass watcher 取首个（即 Default 二级）；
+        // 无内置 Default 时退化为首个一级分类，保证下拉始终有默认值。
+        const defaultFirst = firstList.find(fc => fc.is_built_in && fc.name === 'Default')
+        const target = defaultFirst || firstList[0]
+        this.firstClass = target ? target.id : ''
+      } catch (e) {
+        // 拉取失败不阻塞建模块弹框，仅置空分类列表（提交会被 canSubmit 拦截）
+        console.error('[CreateModule] 加载服务分类失败:', e)
+        this.firstClassList = []
+        this.secondClassList = []
+        this.firstClass = ''
+        this.secondClass = ''
+      }
+    },
     handleCreateModule() {
       const data = {
         service_category_id: this.secondClass,
@@ -197,7 +231,6 @@ export default {
         data.bk_module_name = nameList
       }
 
-      console.log('[CreateModule] 提交数据:', data)
       this.$emit('submit', data)
     },
     handleCancel() {
@@ -206,6 +239,7 @@ export default {
   }
 }
 </script>
+
 
 <style lang="scss" scoped>
 .node-create-layout {

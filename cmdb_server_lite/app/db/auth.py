@@ -39,6 +39,8 @@ RES_TYPE_HOST_INSTANCE = 'hostInstance'   # 主机实例（含主机转移 trans
 RES_TYPE_BUSINESS = 'business'            # 业务（reserved：解析器暂未产出，网关不拦截）
 RES_TYPE_BIZ_TOPOLOGY = 'biz_topology'    # 集群/模块/主线实例（解析器产出，受网关拦截）
 RES_TYPE_MODEL = 'model'                  # 模型（reserved：解析器暂未产出，网关不拦截）
+RES_TYPE_SERVICE_CATEGORY = 'serviceCategory'   # 服务分类（解析器产出，受网关拦截，按 business_id 隔离）
+RES_TYPE_ASSOCIATION_TYPE = 'associationType'   # 关联类型（解析器产出，受网关拦截，系统级无 business 维度）
 EFFECT_ALLOW = 'allow'
 
 # SQL 文件书写所用的规范方言（DialectType.POSTGRESQL = 'postgres'）
@@ -61,6 +63,8 @@ VALID_RES_TYPES = (
     RES_TYPE_BUSINESS,
     RES_TYPE_BIZ_TOPOLOGY,
     RES_TYPE_MODEL,
+    RES_TYPE_SERVICE_CATEGORY,
+    RES_TYPE_ASSOCIATION_TYPE,
 )
 
 # 资源类型 → 说明（CLI `res-type list` 单一来源；含"当前是否受网关拦截"状态）
@@ -70,6 +74,8 @@ RES_TYPE_DESCRIPTIONS = {
     RES_TYPE_BUSINESS:       '业务（reserved：当前路由未暴露业务级写，网关暂不拦截）',
     RES_TYPE_BIZ_TOPOLOGY:   '集群/模块/主线实例：create/update/delete（上游 IAM 统一映射，受网关拦截）',
     RES_TYPE_MODEL:          '模型（reserved：模型元数据管理，解析器未产出该类型，网关暂不拦截）',
+    RES_TYPE_SERVICE_CATEGORY: '服务分类：create/update/delete（业务级两级树，按 business_id 隔离，受网关拦截）',
+    RES_TYPE_ASSOCIATION_TYPE: '关联类型：create/update/delete（cc_AsstDes，系统级无 business 维度，受网关拦截；find 放行）',
 }
 
 
@@ -312,7 +318,8 @@ def grant_batch(items: List[Dict[str, Any]],
 #   model-owner  全写（create/update/delete），res_type=modelInstance，作用于单模型（需 --model）
 #   topo-admin   拓扑全写（create/update/delete），res_type=biz_topology，业务无关（obj_id 固定）
 #   host-transfer主机转移（transfer），    res_type=hostInstance，业务无关（obj_id 固定 'host'）
-# 场景 dict 字段：actions（动作列表）、res_type（资源类型）、scope（all/model/topo/host）
+#   service-category 服务分类全写（create/update/delete），res_type=serviceCategory，按业务隔离（obj_id 固定）
+# 场景 dict 字段：actions（动作列表）、res_type（资源类型）、scope（all/model/topo/host/service）
 SCENARIOS = {
     'readonly':     {'actions': ['find'],                  'res_type': RES_TYPE_MODEL_INSTANCE, 'scope': 'all'},
     'readwrite':    {'actions': ['create', 'update', 'delete'], 'res_type': RES_TYPE_MODEL_INSTANCE, 'scope': 'all'},
@@ -320,6 +327,7 @@ SCENARIOS = {
     'model-owner':  {'actions': ['create', 'update', 'delete'], 'res_type': RES_TYPE_MODEL_INSTANCE, 'scope': 'model'},
     'topo-admin':   {'actions': ['create', 'update', 'delete'], 'res_type': RES_TYPE_BIZ_TOPOLOGY, 'scope': 'topo'},
     'host-transfer':{'actions': ['transfer'],              'res_type': RES_TYPE_HOST_INSTANCE, 'scope': 'host'},
+    'service-category': {'actions': ['create', 'update', 'delete'], 'res_type': RES_TYPE_SERVICE_CATEGORY, 'scope': 'service'},
 }
 
 
@@ -342,9 +350,9 @@ def resolve_scenario(name: str, principal: str,
 
     说明：
         - 模型场景（all/model）按 targets 逐个展开动作；obj_id=None 即类级（全部模型）。
-        - topo/host 场景 obj_id 固定（见 app/auth/parser.py 网关产出），business_id 透传：
+        - topo/host/service 场景 obj_id 固定（见 app/auth/parser.py 网关产出），business_id 透传：
             business_id=None → 覆盖全部业务（类级）；business_id='2' → 仅业务 2。
-          topo/host 场景忽略 --model/--models。
+          topo/host/service 场景忽略 --model/--models。
     """
     sup = supplier or default_supplier()
     if name not in SCENARIOS:
@@ -362,6 +370,13 @@ def resolve_scenario(name: str, principal: str,
                 for a in scen['actions']]
     if scope == 'host':
         obj_id = 'host'  # 主机转移门禁 obj_id 固定为 'host'（见 app/auth/parser.py）
+        return [{'supplier': sup, 'principal': principal, 'res_type': res_type,
+                 'obj_id': obj_id, 'action': a, 'effect': EFFECT_ALLOW,
+                 'business_id': business_id}
+                for a in scen['actions']]
+    if scope == 'service':
+        # 服务分类：obj_id 固定 'serviceCategory'（见 app/auth/parser.py），business_id 透传（None=全部业务）
+        obj_id = RES_TYPE_SERVICE_CATEGORY
         return [{'supplier': sup, 'principal': principal, 'res_type': res_type,
                  'obj_id': obj_id, 'action': a, 'effect': EFFECT_ALLOW,
                  'business_id': business_id}

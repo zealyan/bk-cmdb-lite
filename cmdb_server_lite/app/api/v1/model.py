@@ -395,9 +395,16 @@ def check_associations(model_id):
 # 实例相关路由 - /api/v1/instances/...
 @instance_bp.route('/<instance_id>/associations', methods=['GET'])
 def get_instance_associations(instance_id):
-    """获取单个实例的关联关系"""
+    """获取单个实例的关联关系
+
+    obj_id 为可选的性能参数：传入时直接定位该模型的 cc_InstAsst_* 分表，
+    不传则退化为遍历所有模型分表（慢路径）。该参数原由 association.py 中
+    重复的 /api/instances/<id>/associations 路由提供，API 前缀对齐时移除了
+    那条从未被调用的路由，故在此处补齐能力，避免丢失分表直查优化。
+    """
     try:
-        associations = AssociationService.get_instance_associations(instance_id)
+        obj_id = request.args.get('obj_id')
+        associations = AssociationService.get_instance_associations(instance_id, obj_id)
         return success_response({'associations': associations})
     except Exception as e:
         logger.error(f"Error getting instance associations: {e}")

@@ -280,7 +280,16 @@ export default {
         console.log('[AssociationCreate] findObjectAssociation results:')
         console.log('[AssociationCreate]   As source:', dataAsSource?.length || 0, 'items')
         console.log('[AssociationCreate]   As target:', dataAsTarget?.length || 0, 'items')
-        this.associationObject = [...(dataAsSource || []), ...(dataAsTarget || [])]
+        // 主线关联（bk_asst_id='bk_mainline'）由拓扑主线机制维护，不能出现在通用
+        // 「新增关联」的选择项里 —— 对齐原项目规则：
+        //   bk-cmdb/src/ui/src/views/model-topology/children/create-relation.vue
+        //       }).filter(relation => relation.id !== 'bk_mainline')
+        //   bk-cmdb/src/ui/src/views/model-manage/children/model-details/relation-detail.vue
+        //       return this.relationList.filter(relation => relation.id !== 'bk_mainline')
+        // 不过滤时，module→set 的主线边会被拼成「组成-集群」这类误导性选项
+        // （src_des='组成' + set 的模型名='集群'）。
+        const isNonMainline = item => item && item.bk_asst_id !== 'bk_mainline'
+        this.associationObject = [...(dataAsSource || []), ...(dataAsTarget || [])].filter(isNonMainline)
         console.log('[AssociationCreate]   Combined:', this.associationObject.length, 'items')
       } catch (e) {
         console.error('[AssociationCreate] getObjAssociation error:', e)
@@ -490,9 +499,14 @@ export default {
           prop => prop.bk_property_id === selectedPropertyId
         )
         if (selectedProperty) {
+          // 必须携带 bk_property_type 与 option，否则 formatPropertyValue 无法将枚举/列表类型
+          // 的存储值（key）映射为显示名（name）。此前仅复制了 id/name/sortable，导致「模块类型」
+          // 等枚举列直接渲染原始 key（如 "1"）而非「普通」。
           header.push({
             bk_property_id: selectedProperty.bk_property_id,
             bk_property_name: selectedProperty.bk_property_name,
+            bk_property_type: selectedProperty.bk_property_type,
+            option: selectedProperty.option,
             sortable: true
           })
         }
@@ -1056,9 +1070,13 @@ export default {
     // bk-cmdb association-list-table 固定 462（=10×42+42）与 create 弹窗 $APP.height-X 的抽屉思路，
     // 与关联列表组件 calcTableMaxHeight 逻辑保持一致。
     calcTableMaxHeight() {
+      // 防御：关联创建弹框以 v-if 挂载/卸载，关闭弹框后其内部异步加载的 finally 仍可能
+      // 触发 $nextTick(calcTableMaxHeight)；此时 this.$el 已失效（被销毁 / 退化为非 DOM
+      // 对象），若不守卫会抛 "this.$el.querySelector is not a function"。
+      if (this._isDestroyed || !this.$el || typeof this.$el.querySelector !== 'function') return
       // 行高：优先测量实际渲染的首行，避免硬编码导致「恰好 page size 行差 1px 触发内部滚动」
       let rowHeight = 43
-      const tableEl = this.$el && this.$el.querySelector('.new-association-table')
+      const tableEl = this.$el.querySelector('.new-association-table')
       if (tableEl) {
         const row = tableEl.querySelector('.bk-table-body-wrapper tr')
         if (row) {

@@ -158,7 +158,10 @@ def adapt_sql(sql: str) -> str:
       AUTOINCREMENT -> AUTO_INCREMENT / SERIAL、CAST AS TEXT -> CHAR、类型映射等。
     - 已含 upsert 标记的 SQL（ON DUPLICATE KEY UPDATE / ON CONFLICT）视为最终方言
       SQL，跳过二次转译。
-    - 转译失败（sqlglot 无法解析）时回退原 SQL，不影响执行。
+    - 转译失败（sqlglot 无法解析含 :占位符 / LIMIT 占位符的手工拼接查询）时，
+      降级为 ``_fallback_adapt`` 正则改写：仅 mysql/mariadb 需要把双引号标识符
+      转反引号、``CAST AS TEXT`` 转 ``CHAR`` 并补齐缺失空格；PostgreSQL 直接
+      返回原 SQL（原生支持双引号与 TEXT）。
     结果按 (sql, dialect) 缓存。
     """
     target = current_dialect()
@@ -175,13 +178,17 @@ def adapt_sql(sql: str) -> str:
     if cached is not None:
         return cached
     try:
+        # 直接调用 sqlglot（而非 dialect_converter.transpile），因为后者在解析
+        # 失败时会吞掉异常并返回原文，导致本函数无法触发降级分支。
         # identify=True：强制引用所有标识符并保留大小写，使未加引号的表/列名
         # （如 FROM cc_ObjDes）也变为 "cc_ObjDes"（PG）/ `cc_ObjDes`（MySQL），
         # 与加引号的 DDL 保持一致；PG 据此保留混合大小写，匹配应用层字面量。
-        out = dialect_converter.transpile(sql, source_dialect='sqlite',
-                                          target_dialect=target, identify=True)
+        out = sqlglot.transpile(sql, read='sqlite', write=target,
+                                identify=True)[0]
     except Exception:
-        out = sql
+        # sqlglot 无法解析含 :占位符 / LIMIT 占位符的手工拼接查询，
+        # 降级为基于正则的方言适配（仅 mysql/mariadb 需要改写）。
+        out = _fallback_adapt(sql, target)
     if target == 'mysql':
         # MySQL 要求 VARCHAR 必须带长度（PG/SQLite 允许无长度），补默认 255。
         out = re.sub(r'\bVARCHAR\b(?!\s*\()', 'VARCHAR(255)', out)
@@ -257,6 +264,60 @@ def _rewrite_insert_or_replace(sql: str, dialect: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 降级方言适配（sqlglot 无法解析时的正则改写）
+# ---------------------------------------------------------------------------
+# sqlglot 因手工拼接查询中出现的 `:占位符`、`LIMIT :limit OFFSET :offset`
+# 等结构无法解析而抛错，此时 `adapt_sql` 需要一套不依赖完整 AST 的降级逻辑，
+# 把 SQLite 风格查询改写为目标方言可执行的 SQL。
+#   - 仅 mysql / mariadb 需要改写（PostgreSQL 原生支持双引号标识符与 TEXT 类型）。
+#   - 双引号仅匹配「裸标识符」（字母/下划线开头），绝不触碰形如 "%redis%" 的
+#     字符串字面量，故对既有查询是安全的。
+
+# 词间缺失空格修复：引号 / 右括号紧跟以下关键字（且无空格）时补一个空格。
+_SPACE_KEYWORDS = (
+    'WHERE', 'AND', 'OR', 'ORDER', 'FROM', 'GROUP', 'BY', 'SET', 'ON', 'AS',
+    'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'VALUES', 'HAVING', 'LIMIT',
+    'OFFSET', 'DISTINCT', 'ASC', 'DESC', 'NOT', 'IN', 'LIKE', 'NULL', 'IS',
+    'UNION', 'ALL', 'USING',
+)
+_SPACE_AFTER_RE = re.compile(
+    r'(["`\)])(\s*)(' + '|'.join(_SPACE_KEYWORDS) + r')\b',
+    re.IGNORECASE,
+)
+# CAST("col" AS TEXT) -> CAST(`col` AS CHAR)（在双引号阶段处理）。
+_CAST_TEXT_RE = re.compile(
+    r'CAST\(\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*AS\s*TEXT\s*\)',
+    re.IGNORECASE,
+)
+# 仅匹配裸标识符（字母/下划线开头），避免误伤字符串字面量。
+_IDENT_RE = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"')
+# MySQL 要求 VARCHAR 必须带长度。
+_VARCHAR_RE = re.compile(r'\bVARCHAR\b(?!\s*\()')
+
+
+def _fallback_adapt(sql: str, target: str) -> str:
+    """sqlglot 解析失败时的降级方言适配。
+
+    - mysql / mariadb：把 SQLite 风格查询（双引号标识符 + ``CAST AS TEXT``）
+      改写为 MySQL 可执行的「反引号标识符 + ``CAST AS CHAR``」，并补全可能缺失
+      的词间空格、补齐 ``VARCHAR`` 长度。
+    - 其它方言：直接返回原文（PostgreSQL 原生支持双引号与 ``TEXT``，无需改写）。
+    """
+    if target not in ('mysql', 'mariadb'):
+        return sql
+    out = sql
+    # 1) CAST("col" AS TEXT) -> CAST(`col` AS CHAR)
+    out = _CAST_TEXT_RE.sub(r'CAST(`\1` AS CHAR)', out)
+    # 2) 引号 / 右括号紧跟关键字时补空格（如 "tbl"WHERE -> "tbl" WHERE）
+    out = _SPACE_AFTER_RE.sub(r'\1 \2\3', out)
+    # 3) 双引号裸标识符 -> 反引号
+    out = _IDENT_RE.sub(r'`\1`', out)
+    # 4) VARCHAR 无长度 -> VARCHAR(255)
+    out = _VARCHAR_RE.sub('VARCHAR(255)', out)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 内省（取代 sqlite_master / PRAGMA table_info，跨库通用）
 # ---------------------------------------------------------------------------
 def table_exists(name: str) -> bool:
@@ -288,6 +349,20 @@ def get_column_names(name: str) -> list:
         return []
 
 
+def index_exists(table: str, name: str) -> bool:
+    """索引是否存在（跨库通用，取代 SQLite 的 PRAGMA index_list）。
+
+    MySQL 的 ``CREATE INDEX`` **不支持** ``IF NOT EXISTS``（PostgreSQL / SQLite 支持），
+    因此在 MySQL 下建索引必须先探测存在性；表不存在或内省失败时返回 False，
+    交由后续 CREATE INDEX 的报错暴露真实问题。
+    """
+    try:
+        names = {ix['name'] for ix in inspect(_engine()).get_indexes(table)}
+        return name in names
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # upsert（等价 SQLite INSERT OR REPLACE，三库通用）
 # ---------------------------------------------------------------------------
@@ -298,18 +373,30 @@ def _q(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
-def upsert(table: str, columns: list, placeholders: list, conflict: str = 'id') -> str:
+def upsert(table: str, columns: list, placeholders: list,
+           conflict='id') -> str:
     """三库通用 upsert，等价 SQLite「INSERT OR REPLACE INTO」。
 
     Args:
         table: 表名（未引号化）。
         columns: 列名列表（未引号化），如 ['bk_obj_id', 'bk_obj_name']。
         placeholders: 命名参数列表，如 [':bk_obj_id', ':bk_obj_name']。
-        conflict: PG 的 ON CONFLICT 目标列（默认 'id'；非 id 主键表需显式传，
-                  如 cc_ApplicationBase 传 'bk_biz_id'）。
+        conflict: PG 的 ON CONFLICT 目标列。可传：
+                  - 单列名字符串，如 ``'bk_biz_id'``（默认 ``'id'``）；
+                  - 列名序列，用于**复合主键/唯一键**表，如
+                    ``('bk_obj_id', 'bk_property_id')``（cc_ObjAttDes）、
+                    ``('bk_host_id', 'bk_module_id')``（cc_ModuleHostConfig）。
+                  必须与目标表实际存在的主键/唯一约束一致，否则 PG 报
+                  "no unique or exclusion constraint matching the ON CONFLICT
+                  specification"。
 
     Returns:
         完整 INSERT 语句（已含 VALUES(...)）。
+
+    方言差异：
+        - sqlite：``INSERT OR REPLACE``（按所有唯一约束判冲突，删旧插新）；
+        - mysql：``ON DUPLICATE KEY UPDATE``（按任意唯一/主键，无需指定列）；
+        - postgres：``ON CONFLICT (列...) DO UPDATE SET``（必须显式指定冲突列）。
     """
     qcols = ', '.join(_q(c) for c in columns)
     qtable = _q(table)
@@ -320,6 +407,8 @@ def upsert(table: str, columns: list, placeholders: list, conflict: str = 'id') 
     if target == 'mysql':
         assign = ', '.join(f'{_q(c)}=VALUES({_q(c)})' for c in columns)
         return f'INSERT INTO {qtable} ({qcols}) VALUES ({vals}) ON DUPLICATE KEY UPDATE {assign}'
-    # postgresql
+    # postgresql：支持单列与复合冲突键
+    conflict_cols = [conflict] if isinstance(conflict, str) else list(conflict)
+    qconflict = ', '.join(_q(c) for c in conflict_cols)
     assign = ', '.join(f'{_q(c)}=EXCLUDED.{_q(c)}' for c in columns)
-    return f'INSERT INTO {qtable} ({qcols}) VALUES ({vals}) ON CONFLICT ({_q(conflict)}) DO UPDATE SET {assign}'
+    return f'INSERT INTO {qtable} ({qcols}) VALUES ({vals}) ON CONFLICT ({qconflict}) DO UPDATE SET {assign}'
